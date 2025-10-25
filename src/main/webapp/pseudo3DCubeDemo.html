@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>伪3D立方体演示</title>
+    <script type="text/javascript">
+        // 模拟mxGraph的基本对象，用于演示
+        window.mxPoint = function(x, y) {
+            this.x = x || 0;
+            this.y = y || 0;
+        };
+        
+        window.mxUtils = {
+            getRotatedPoint: function(point, cos, sin) {
+                return new mxPoint(
+                    point.x * cos - point.y * sin,
+                    point.x * sin + point.y * cos
+                );
+            },
+            toRadians: function(degrees) {
+                return degrees * Math.PI / 180;
+            },
+            getValue: function(obj, key, defaultValue) {
+                return (obj != null && obj[key] != null) ? obj[key] : defaultValue;
+            }
+        };
+        
+        // 简单的Canvas绘图上下文模拟
+        function SimpleCanvas(canvas) {
+            this.canvas = canvas;
+            this.ctx = canvas.getContext('2d');
+            this.path = [];
+        }
+        
+        SimpleCanvas.prototype = {
+            translate: function(x, y) {
+                // 简化实现，实际应用中可能需要保存状态
+                this.translateX = x || 0;
+                this.translateY = y || 0;
+            },
+            begin: function() {
+                this.path = [];
+                this.ctx.beginPath();
+            },
+            moveTo: function(x, y) {
+                x += this.translateX || 0;
+                y += this.translateY || 0;
+                this.ctx.moveTo(x, y);
+                this.path.push({type: 'move', x: x, y: y});
+            },
+            lineTo: function(x, y) {
+                x += this.translateX || 0;
+                y += this.translateY || 0;
+                this.ctx.lineTo(x, y);
+                this.path.push({type: 'line', x: x, y: y});
+            },
+            close: function() {
+                this.ctx.closePath();
+                this.path.push({type: 'close'});
+            },
+            fillAndStroke: function() {
+                this.ctx.fill();
+                this.ctx.stroke();
+            },
+            stroke: function() {
+                this.ctx.stroke();
+            },
+            setFillColor: function(color) {
+                this.ctx.fillStyle = color;
+            },
+            setStrokeColor: function(color) {
+                this.ctx.strokeStyle = color;
+                this.ctx.lineWidth = 2;
+            },
+            setShadow: function(enabled) {
+                // 简化实现
+                if (enabled) {
+                    this.ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+                    this.ctx.shadowBlur = 5;
+                    this.ctx.shadowOffsetX = 3;
+                    this.ctx.shadowOffsetY = 3;
+                } else {
+                    this.ctx.shadowColor = 'transparent';
+                    this.ctx.shadowBlur = 0;
+                    this.ctx.shadowOffsetX = 0;
+                    this.ctx.shadowOffsetY = 0;
+                }
+            }
+        };
+    </script>
+    <script type="text/javascript" src="js/pseudo3DCube.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+        }
+        .controls {
+            width: 250px;
+            padding: 20px;
+            background: #f5f5f5;
+            border-radius: 5px;
+        }
+        .canvas-container {
+            flex-grow: 1;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="range"] {
+            width: 100%;
+        }
+        input[type="number"] {
+            width: 100%;
+            padding: 5px;
+            box-sizing: border-box;
+        }
+        .vertex-info {
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>伪3D立方体演示</h1>
+    
+    <div class="container">
+        <div class="controls">
+            <h2>控制面板</h2>
+            
+            <div class="form-group">
+                <label for="isoAngle">等距角度: <span id="angleValue">15</span>度</label>
+                <input type="range" id="isoAngle" min="5" max="45" value="15" step="1" oninput="updateCube()">
+            </div>
+            
+            <div class="form-group">
+                <label for="width">宽度: <span id="widthValue">200</span></label>
+                <input type="range" id="width" min="50" max="400" value="200" step="10" oninput="updateCube()">
+            </div>
+            
+            <div class="form-group">
+                <label for="height">高度: <span id="heightValue">150</span></label>
+                <input type="range" id="height" min="50" max="300" value="150" step="10" oninput="updateCube()">
+            </div>
+            
+            <div class="form-group">
+                <label for="depth">深度: <span id="depthValue">100</span></label>
+                <input type="range" id="depth" min="20" max="200" value="100" step="5" oninput="updateCube()">
+            </div>
+            
+            <div class="form-group">
+                <label for="x">X坐标: <span id="xValue">300</span></label>
+                <input type="range" id="x" min="50" max="700" value="300" step="10" oninput="updateCube()">
+            </div>
+            
+            <div class="form-group">
+                <label for="y">Y坐标: <span id="yValue">200</span></label>
+                <input type="range" id="y" min="50" max="500" value="200" step="10" oninput="updateCube()">
+            </div>
+            
+            <div class="vertex-info">
+                <h3>顶点坐标信息</h3>
+                <div id="vertexCoordinates"></div>
+            </div>
+        </div>
+        
+        <div class="canvas-container">
+            <canvas id="cubeCanvas" width="800" height="600"></canvas>
+        </div>
+    </div>
+    
+    <script type="text/javascript">
+        var canvas = document.getElementById('cubeCanvas');
+        var simpleCanvas = new SimpleCanvas(canvas);
+        
+        // 更新立方体显示
+        function updateCube() {
+            // 获取参数
+            var isoAngle = parseInt(document.getElementById('isoAngle').value);
+            var width = parseInt(document.getElementById('width').value);
+            var height = parseInt(document.getElementById('height').value);
+            var depth = parseInt(document.getElementById('depth').value);
+            var x = parseInt(document.getElementById('x').value);
+            var y = parseInt(document.getElementById('y').value);
+            
+            // 更新显示值
+            document.getElementById('angleValue').textContent = isoAngle;
+            document.getElementById('widthValue').textContent = width;
+            document.getElementById('heightValue').textContent = height;
+            document.getElementById('depthValue').textContent = depth;
+            document.getElementById('xValue').textContent = x;
+            document.getElementById('yValue').textContent = y;
+            
+            // 清空画布
+            simpleCanvas.ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制立方体
+            window.Pseudo3DCube.drawPseudo3DCube(
+                simpleCanvas, 
+                x, 
+                y, 
+                width, 
+                height, 
+                depth, 
+                isoAngle, 
+                '#e0e0ff', 
+                '#333366'
+            );
+            
+            // 计算并显示顶点坐标
+            var vertices = window.Pseudo3DCube.calculateCubeVertices(x, y, width, height, depth, isoAngle);
+            var vertexInfo = '';
+            
+            for (var key in vertices) {
+                if (vertices.hasOwnProperty(key)) {
+                    var point = vertices[key];
+                    vertexInfo += key + ': (' + point.x.toFixed(1) + ', ' + point.y.toFixed(1) + ')<br>';
+                }
+            }
+            
+            document.getElementById('vertexCoordinates').innerHTML = vertexInfo;
+            
+            // 绘制坐标轴（可选）
+            drawAxes();
+        }
+        
+        // 绘制坐标轴
+        function drawAxes() {
+            simpleCanvas.setStrokeColor('#999999');
+            simpleCanvas.ctx.lineWidth = 1;
+            simpleCanvas.ctx.setLineDash([5, 5]);
+            
+            // X轴
+            simpleCanvas.begin();
+            simpleCanvas.moveTo(0, canvas.height / 2);
+            simpleCanvas.lineTo(canvas.width, canvas.height / 2);
+            simpleCanvas.stroke();
+            
+            // Y轴
+            simpleCanvas.begin();
+            simpleCanvas.moveTo(canvas.width / 2, 0);
+            simpleCanvas.lineTo(canvas.width / 2, canvas.height);
+            simpleCanvas.stroke();
+            
+            // 重置线条样式
+            simpleCanvas.ctx.setLineDash([]);
+            simpleCanvas.ctx.lineWidth = 2;
+        }
+        
+        // 初始绘制
+        window.onload = function() {
+            updateCube();
+        };
+    </script>
+</body>
+</html>

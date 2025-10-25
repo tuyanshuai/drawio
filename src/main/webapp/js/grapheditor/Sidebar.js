@@ -1773,7 +1773,8 @@ Sidebar.prototype.addGeneralPalette = function(expand)
 	field.vertex = true;
 
 	var fns = [
-	 	this.createVertexTemplateEntry('rounded=0;whiteSpace=wrap;html=1;', 120, 60, '', 'Rectangle', null, null, 'rect rectangle box'),
+	  this.createVertexTemplateEntry('rounded=0;whiteSpace=wrap;html=1;', 120, 60, '', 'Rectangle', null, null, 'rect rectangle box'),
+		this.createVertexTemplateEntry('shape=polygon;whiteSpace=wrap;html=1;points=0.5,0 0.63,0.38 1,0.38 0.69,0.61 0.82,1 0.5,0.76 0.18,1 0.31,0.61 0,0.38 0.37,0.38;', 80, 80, '', 'Star', null, null, 'star polygon'),
 	 	this.createVertexTemplateEntry('rounded=1;whiteSpace=wrap;html=1;', 120, 60, '', 'Rounded Rectangle', null, null, 'rounded rect rectangle box'),
 	 	this.createVertexTemplateEntry(graph.appendFontSize(Editor.defaultTextStyle, graph.vertexFontSize),
 			60, 30, 'Text', 'Text', null, null, 'text textbox textarea label'),
@@ -1793,6 +1794,7 @@ Sidebar.prototype.addGeneralPalette = function(expand)
 	 	this.createVertexTemplateEntry('shape=document;whiteSpace=wrap;html=1;boundedLbl=1;', 120, 80, '', 'Document'),
 	 	this.createVertexTemplateEntry('shape=internalStorage;whiteSpace=wrap;html=1;backgroundOutline=1;', 80, 80, '', 'Internal Storage'),
 	 	this.createVertexTemplateEntry('shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;', 120, 80, '', 'Cube'),
+		this.createVertexTemplateEntry('shape=pseudo3d;whiteSpace=wrap;html=1;rotationX=30;rotationY=30;rotationZ=30;depth=20;', 120, 80, '', '3D Cube', null, null, '3d cube pseudo three dimensional rotation x y z angle'),
 	 	this.createVertexTemplateEntry('shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;', 120, 80, '', 'Step'),
 	 	this.createVertexTemplateEntry('shape=trapezoid;perimeter=trapezoidPerimeter;whiteSpace=wrap;html=1;fixedSize=1;', 120, 60, '', 'Trapezoid'),
 	 	this.createVertexTemplateEntry('shape=tape;whiteSpace=wrap;html=1;', 120, 100, '', 'Tape'),

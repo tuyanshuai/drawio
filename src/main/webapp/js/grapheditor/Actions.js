@@ -409,6 +409,61 @@ Actions.prototype.init = function()
 			ui.handleError(e);
 		}
 	}, null, null, Editor.ctrlKey + '+D');
+
+	this.addAction('add3dEffect', function()
+	{
+		if (graph.isEnabled() && !graph.isSelectionEmpty())
+		{
+			graph.getModel().beginUpdate();
+			try
+			{
+				var cells = graph.getSelectionCells();
+				
+				for (var i = 0; i < cells.length; i++)
+				{
+					var cell = cells[i];
+					
+					// Check if the cell is a vertex (shape) and not already a 3D shape
+					if (graph.getModel().isVertex(cell) && graph.getModel().isConnectable(cell))
+					{
+						var style = graph.getCurrentCellStyle(cell);
+						var shape = mxUtils.getValue(style, mxConstants.STYLE_SHAPE, null);
+						
+						// Skip if already a 3D shape
+						if (shape != 'generic3d' && shape != 'rectangle3d' && shape != 'ellipse3d' && shape != 'triangle3d')
+						{
+							// Determine the appropriate 3D shape based on the original shape
+							var newShape = 'rectangle3d';
+							
+							if (shape == 'ellipse' || shape == 'doubleEllipse')
+							{
+								newShape = 'ellipse3d';
+							}
+							else if (shape == 'triangle')
+							{
+								newShape = 'triangle3d';
+							}
+							
+							// Apply the 3D effect by changing the shape and adding 3D properties
+							graph.setCellStyles(mxConstants.STYLE_SHAPE, newShape, [cell]);
+							graph.setCellStyles('rotationX', '30', [cell]);
+							graph.setCellStyles('rotationY', '30', [cell]);
+							graph.setCellStyles('rotationZ', '30', [cell]);
+							graph.setCellStyles('depth', '20', [cell]);
+							graph.setCellStyles('lightIntensity', '0.7', [cell]);
+							graph.setCellStyles('ambientLight', '0.3', [cell]);
+							graph.setCellStyles('materialShininess', '0.5', [cell]);
+						}
+					}
+				}
+			}
+			finally
+			{
+				graph.getModel().endUpdate();
+			}
+		}
+	}, null, null, Editor.ctrlKey + '+3');
+
 	this.put('mergeCells', new Action('merge', function()
 	{
 		var ss = ui.getSelectionState();

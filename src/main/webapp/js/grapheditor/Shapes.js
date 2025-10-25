@@ -7447,4 +7447,497 @@
           new mxConnectionConstraint(new mxPoint(1, 0.5), false)];
 	ProvidedRequiredInterfaceShape.prototype.constraints = [new mxConnectionConstraint(new mxPoint(0, 0.5), false),
         new mxConnectionConstraint(new mxPoint(1, 0.5), false)];
+
+	// Pseudo 3D Shape with rotation around X, Y, Z axes
+	function Pseudo3dShape()
+	{
+		mxShape.call(this);
+	};
+
+	mxUtils.extend(Pseudo3dShape, mxShape);
+
+	Pseudo3dShape.prototype.paintVertexShape = function(c, x, y, w, h)
+	{
+		// Get rotation angles from style
+		var rotationX = parseFloat(mxUtils.getValue(this.style, 'rotationX', 0));
+		var rotationY = parseFloat(mxUtils.getValue(this.style, 'rotationY', 0));
+		var rotationZ = parseFloat(mxUtils.getValue(this.style, 'rotationZ', 0));
+		var depth = parseFloat(mxUtils.getValue(this.style, 'depth', 20));
+		
+		// Get lighting and material properties
+		var lightIntensity = parseFloat(mxUtils.getValue(this.style, 'lightIntensity', 0.7));
+		var ambientLight = parseFloat(mxUtils.getValue(this.style, 'ambientLight', 0.3));
+		var materialShininess = parseFloat(mxUtils.getValue(this.style, 'materialShininess', 0.5));
+		
+		// Convert degrees to radians
+		var radX = mxUtils.toRadians(rotationX);
+		var radY = mxUtils.toRadians(rotationY);
+		var radZ = mxUtils.toRadians(rotationZ);
+		
+		// Create rotation matrices
+		var cosX = Math.cos(radX);
+		var sinX = Math.sin(radX);
+		var cosY = Math.cos(radY);
+		var sinY = Math.sin(radY);
+		var cosZ = Math.cos(radZ);
+		var sinZ = Math.sin(radZ);
+		
+		// Define cube vertices (centered at origin)
+		var vertices = [
+			// Front face
+			{ x: -w/2, y: -h/2, z: depth/2 },
+			{ x: w/2, y: -h/2, z: depth/2 },
+			{ x: w/2, y: h/2, z: depth/2 },
+			{ x: -w/2, y: h/2, z: depth/2 },
+			// Back face
+			{ x: -w/2, y: -h/2, z: -depth/2 },
+			{ x: w/2, y: -h/2, z: -depth/2 },
+			{ x: w/2, y: h/2, z: -depth/2 },
+			{ x: -w/2, y: h/2, z: -depth/2 }
+		];
+		
+		// Apply 3D rotations
+		for (var i = 0; i < vertices.length; i++) {
+			var v = vertices[i];
+			
+			// Rotate around X axis
+			var y1 = v.y * cosX - v.z * sinX;
+			var z1 = v.y * sinX + v.z * cosX;
+			
+			// Rotate around Y axis
+			var x2 = v.x * cosY + z1 * sinY;
+			var z2 = -v.x * sinY + z1 * cosY;
+			
+			// Rotate around Z axis
+			var x3 = x2 * cosZ - y1 * sinZ;
+			var y3 = x2 * sinZ + y1 * cosZ;
+			
+			// Update vertex
+			v.x = x3;
+			v.y = y3;
+			v.z = z2;
+		}
+		
+		// Project 3D points to 2D (simple orthographic projection)
+		var points2d = [];
+		for (var i = 0; i < vertices.length; i++) {
+			points2d.push(new mxPoint(
+				x + w/2 + vertices[i].x,
+				y + h/2 + vertices[i].y
+			));
+		}
+		
+		// Calculate lighting effects based on rotation angles
+		// var lightIntensity = 0.7;
+		// var ambientLight = 0.3;
+		
+		// Calculate light direction (simplified)
+		var lightX = Math.sin(radY) * Math.cos(radX);
+		var lightY = Math.sin(radX);
+		var lightZ = Math.cos(radY) * Math.cos(radX);
+		
+		// Normalize light vector
+		var lightLength = Math.sqrt(lightX * lightX + lightY * lightY + lightZ * lightZ);
+		if (lightLength > 0) {
+			lightX /= lightLength;
+			lightY /= lightLength;
+			lightZ /= lightLength;
+		}
+		
+		// Define face normals (simplified)
+		var frontNormal = {x: 0, y: 0, z: 1};
+		var backNormal = {x: 0, y: 0, z: -1};
+		var topNormal = {x: 0, y: 1, z: 0};
+		var bottomNormal = {x: 0, y: -1, z: 0};
+		var leftNormal = {x: -1, y: 0, z: 0};
+		var rightNormal = {x: 1, y: 0, z: 0};
+		
+		// Calculate dot products for lighting
+		var frontDot = Math.max(0, frontNormal.z * lightZ);
+		var backDot = Math.max(0, backNormal.z * lightZ);
+		var topDot = Math.max(0, topNormal.y * lightY);
+		var bottomDot = Math.max(0, bottomNormal.y * lightY);
+		var leftDot = Math.max(0, leftNormal.x * lightX);
+		var rightDot = Math.max(0, rightNormal.x * lightX);
+		
+		// Apply material shininess for specular highlights
+		var specularFactor = materialShininess;
+		
+		// Calculate face intensities with specular highlights
+		var frontIntensity = ambientLight + frontDot * lightIntensity + Math.pow(Math.max(0, frontDot), 10) * specularFactor;
+		var backIntensity = ambientLight + backDot * lightIntensity + Math.pow(Math.max(0, backDot), 10) * specularFactor;
+		var topIntensity = ambientLight + topDot * lightIntensity + Math.pow(Math.max(0, topDot), 10) * specularFactor;
+		var bottomIntensity = ambientLight + bottomDot * lightIntensity + Math.pow(Math.max(0, bottomDot), 10) * specularFactor;
+		var leftIntensity = ambientLight + leftDot * lightIntensity + Math.pow(Math.max(0, leftDot), 10) * specularFactor;
+		var rightIntensity = ambientLight + rightDot * lightIntensity + Math.pow(Math.max(0, rightDot), 10) * specularFactor;
+		
+		// Clamp intensities to [0, 1]
+		frontIntensity = Math.min(1, Math.max(0, frontIntensity));
+		backIntensity = Math.min(1, Math.max(0, backIntensity));
+		topIntensity = Math.min(1, Math.max(0, topIntensity));
+		bottomIntensity = Math.min(1, Math.max(0, bottomIntensity));
+		leftIntensity = Math.min(1, Math.max(0, leftIntensity));
+		rightIntensity = Math.min(1, Math.max(0, rightIntensity));
+		
+		// Get current fill color
+		var fillColor = this.style[mxConstants.STYLE_FILLCOLOR] || '#ffffff';
+		
+		// Convert hex color to RGB
+		var hex = fillColor.charAt(0) == '#' ? fillColor.substring(1) : fillColor;
+		var r = parseInt(hex.substring(0, 2), 16);
+		var g = parseInt(hex.substring(2, 4), 16);
+		var b = parseInt(hex.substring(4, 6), 16);
+		
+		// Apply lighting to front face
+		var frontR = Math.min(255, Math.max(0, Math.floor(r * frontIntensity)));
+		var frontG = Math.min(255, Math.max(0, Math.floor(g * frontIntensity)));
+		var frontB = Math.min(255, Math.max(0, Math.floor(b * frontIntensity)));
+		var frontColor = '#' + ((1 << 24) + (frontR << 16) + (frontG << 8) + frontB).toString(16).slice(1);
+		
+		// Apply lighting to back face
+		var backR = Math.min(255, Math.max(0, Math.floor(r * backIntensity)));
+		var backG = Math.min(255, Math.max(0, Math.floor(g * backIntensity)));
+		var backB = Math.min(255, Math.max(0, Math.floor(b * backIntensity)));
+		var backColor = '#' + ((1 << 24) + (backR << 16) + (backG << 8) + backB).toString(16).slice(1);
+		
+		// Apply lighting to top face (simplified, using average of adjacent faces)
+		var topIntensityAvg = (frontIntensity + backIntensity + leftIntensity + rightIntensity) / 4;
+		var topR = Math.min(255, Math.max(0, Math.floor(r * topIntensityAvg)));
+		var topG = Math.min(255, Math.max(0, Math.floor(g * topIntensityAvg)));
+		var topB = Math.min(255, Math.max(0, Math.floor(b * topIntensityAvg)));
+		var topColor = '#' + ((1 << 24) + (topR << 16) + (topG << 8) + topB).toString(16).slice(1);
+		
+		// Apply lighting to bottom face
+		var bottomIntensityAvg = (frontIntensity + backIntensity + leftIntensity + rightIntensity) / 4;
+		var bottomR = Math.min(255, Math.max(0, Math.floor(r * bottomIntensityAvg * 0.8)));
+		var bottomG = Math.min(255, Math.max(0, Math.floor(g * bottomIntensityAvg * 0.8)));
+		var bottomB = Math.min(255, Math.max(0, Math.floor(b * bottomIntensityAvg * 0.8)));
+		var bottomColor = '#' + ((1 << 24) + (bottomR << 16) + (bottomG << 8) + bottomB).toString(16).slice(1);
+		
+		// Apply lighting to left face
+		var leftR = Math.min(255, Math.max(0, Math.floor(r * leftIntensity * 0.9)));
+		var leftG = Math.min(255, Math.max(0, Math.floor(g * leftIntensity * 0.9)));
+		var leftB = Math.min(255, Math.max(0, Math.floor(b * leftIntensity * 0.9)));
+		var leftColor = '#' + ((1 << 24) + (leftR << 16) + (leftG << 8) + leftB).toString(16).slice(1);
+		
+		// Apply lighting to right face
+		var rightR = Math.min(255, Math.max(0, Math.floor(r * rightIntensity * 0.9)));
+		var rightG = Math.min(255, Math.max(0, Math.floor(g * rightIntensity * 0.9)));
+		var rightB = Math.min(255, Math.max(0, Math.floor(b * rightIntensity * 0.9)));
+		var rightColor = '#' + ((1 << 24) + (rightR << 16) + (rightG << 8) + rightB).toString(16).slice(1);
+		
+		// Draw the shape with lighting effects
+		
+		// Draw front face
+		c.setFillColor(frontColor);
+		c.begin();
+		c.moveTo(points2d[0].x, points2d[0].y);
+		c.lineTo(points2d[1].x, points2d[1].y);
+		c.lineTo(points2d[2].x, points2d[2].y);
+		c.lineTo(points2d[3].x, points2d[3].y);
+		c.close();
+		c.fillAndStroke();
+		
+		// Draw back face
+		c.setFillColor(backColor);
+		c.begin();
+		c.moveTo(points2d[4].x, points2d[4].y);
+		c.lineTo(points2d[5].x, points2d[5].y);
+		c.lineTo(points2d[6].x, points2d[6].y);
+		c.lineTo(points2d[7].x, points2d[7].y);
+		c.close();
+		c.fillAndStroke();
+		
+		// Draw top face
+		c.setFillColor(topColor);
+		c.begin();
+		c.moveTo(points2d[0].x, points2d[0].y);
+		c.lineTo(points2d[1].x, points2d[1].y);
+		c.lineTo(points2d[5].x, points2d[5].y);
+		c.lineTo(points2d[4].x, points2d[4].y);
+		c.close();
+		c.fillAndStroke();
+		
+		// Draw bottom face
+		c.setFillColor(bottomColor);
+		c.begin();
+		c.moveTo(points2d[3].x, points2d[3].y);
+		c.lineTo(points2d[2].x, points2d[2].y);
+		c.lineTo(points2d[6].x, points2d[6].y);
+		c.lineTo(points2d[7].x, points2d[7].y);
+		c.close();
+		c.fillAndStroke();
+		
+		// Draw left face
+		c.setFillColor(leftColor);
+		c.begin();
+		c.moveTo(points2d[0].x, points2d[0].y);
+		c.lineTo(points2d[3].x, points2d[3].y);
+		c.lineTo(points2d[7].x, points2d[7].y);
+		c.lineTo(points2d[4].x, points2d[4].y);
+		c.close();
+		c.fillAndStroke();
+		
+		// Draw right face
+		c.setFillColor(rightColor);
+		c.begin();
+		c.moveTo(points2d[1].x, points2d[1].y);
+		c.lineTo(points2d[2].x, points2d[2].y);
+		c.lineTo(points2d[6].x, points2d[6].y);
+		c.lineTo(points2d[5].x, points2d[5].y);
+		c.close();
+		c.fillAndStroke();
+	};
+
+	// Register the shape
+	mxCellRenderer.registerShape('pseudo3d', Pseudo3dShape);
+
+	// Add custom properties for the pseudo3d shape
+	Pseudo3dShape.prototype.customProperties = [
+		{name: 'rotationX', dispName: 'Rotation X', type: 'float', defVal: 0, min: -360, max: 360},
+		{name: 'rotationY', dispName: 'Rotation Y', type: 'float', defVal: 0, min: -360, max: 360},
+		{name: 'rotationZ', dispName: 'Rotation Z', type: 'float', defVal: 0, min: -360, max: 360},
+		{name: 'depth', dispName: 'Depth', type: 'float', defVal: 20, min: 1, max: 100},
+		{name: 'lightIntensity', dispName: 'Light Intensity', type: 'float', defVal: 0.7, min: 0, max: 1},
+		{name: 'ambientLight', dispName: 'Ambient Light', type: 'float', defVal: 0.3, min: 0, max: 1},
+		{name: 'materialShininess', dispName: 'Material Shininess', type: 'float', defVal: 0.5, min: 0, max: 1}
+	];
+
+	// Adds custom properties for the pseudo3d shape
+	Graph.prototype.setCustomProperty = function(cell, name, value)
+	{
+		if (name == 'rotationX' || name == 'rotationY' || name == 'rotationZ' || name == 'depth')
+		{
+			this.setCellStyles(name, value, [cell]);
+			return true;
+		}
+		
+		return false;
+	};
+
+	// Add property names for the pseudo3d shape
+	if (typeof Sidebar !== 'undefined')
+	{
+		var sidebarCreateVertexTemplateEntry = Sidebar.prototype.createVertexTemplateEntry;
+		
+		Sidebar.prototype.createVertexTemplateEntry = function(style, width, height, value, title, showLabel, id, tags)
+		{
+			if (style.indexOf('shape=pseudo3d') >= 0)
+			{
+				tags = (tags || '') + ' 3d rotation x y z angle';
+			}
+			
+			return sidebarCreateVertexTemplateEntry.apply(this, arguments);
+		};
+	}
+	
+	// Generic 3D Shape that can be applied to any closed shape
+	function Generic3dShape()
+	{
+		mxShape.call(this);
+	};
+
+	mxUtils.extend(Generic3dShape, mxShape);
+
+	Generic3dShape.prototype.paintVertexShape = function(c, x, y, w, h)
+	{
+		// Get 3D properties from style
+		var rotationX = parseFloat(mxUtils.getValue(this.style, 'rotationX', 0));
+		var rotationY = parseFloat(mxUtils.getValue(this.style, 'rotationY', 0));
+		var rotationZ = parseFloat(mxUtils.getValue(this.style, 'rotationZ', 0));
+		var depth = parseFloat(mxUtils.getValue(this.style, 'depth', 20));
+		var lightIntensity = parseFloat(mxUtils.getValue(this.style, 'lightIntensity', 0.7));
+		var ambientLight = parseFloat(mxUtils.getValue(this.style, 'ambientLight', 0.3));
+		var materialShininess = parseFloat(mxUtils.getValue(this.style, 'materialShininess', 0.5));
+		
+		// Convert degrees to radians
+		var radX = mxUtils.toRadians(rotationX);
+		var radY = mxUtils.toRadians(rotationY);
+		var radZ = mxUtils.toRadians(rotationZ);
+		
+		// Create rotation matrices
+		var cosX = Math.cos(radX);
+		var sinX = Math.sin(radX);
+		var cosY = Math.cos(radY);
+		var sinY = Math.sin(radY);
+		var cosZ = Math.cos(radZ);
+		var sinZ = Math.sin(radZ);
+		
+		// For generic shapes, we'll create a simple 3D effect by duplicating the shape
+		// and offsetting it to create the depth effect
+		
+		// Save the original state
+		c.save();
+		
+		// Get the base shape points
+		var pts = this.getPoints(c, x, y, w, h);
+		
+		// Calculate light direction (simplified)
+		var lightX = Math.sin(radY) * Math.cos(radX);
+		var lightY = Math.sin(radX);
+		var lightZ = Math.cos(radY) * Math.cos(radX);
+		
+		// Normalize light vector
+		var lightLength = Math.sqrt(lightX * lightX + lightY * lightY + lightZ * lightZ);
+		if (lightLength > 0) {
+			lightX /= lightLength;
+			lightY /= lightLength;
+			lightZ /= lightLength;
+		}
+		
+		// Get current fill color
+		var fillColor = this.style[mxConstants.STYLE_FILLCOLOR] || '#ffffff';
+		
+		// Convert hex color to RGB
+		var hex = fillColor.charAt(0) == '#' ? fillColor.substring(1) : fillColor;
+		var r = parseInt(hex.substring(0, 2), 16);
+		var g = parseInt(hex.substring(2, 4), 16);
+		var b = parseInt(hex.substring(4, 6), 16);
+		
+		// Calculate lighting intensity based on light direction
+		// For a generic shape, we'll use a simplified approach
+		var intensity = ambientLight + Math.abs(lightZ) * lightIntensity;
+		intensity = Math.min(1, Math.max(0, intensity));
+		
+		// Apply specular highlight
+		var specular = Math.pow(Math.max(0, Math.abs(lightZ)), 10) * materialShininess;
+		intensity = Math.min(1, intensity + specular);
+		
+		// Apply lighting to color
+		var lightR = Math.min(255, Math.max(0, Math.floor(r * intensity)));
+		var lightG = Math.min(255, Math.max(0, Math.floor(g * intensity)));
+		var lightB = Math.min(255, Math.max(0, Math.floor(b * intensity)));
+		var lightColor = '#' + ((1 << 24) + (lightR << 16) + (lightG << 8) + lightB).toString(16).slice(1);
+		
+		// Calculate shadow intensity (opposite side)
+		var shadowIntensity = ambientLight + Math.abs(-lightZ) * lightIntensity * 0.5;
+		shadowIntensity = Math.min(1, Math.max(0, shadowIntensity));
+		
+		// Apply lighting to shadow color
+		var shadowR = Math.min(255, Math.max(0, Math.floor(r * shadowIntensity)));
+		var shadowG = Math.min(255, Math.max(0, Math.floor(g * shadowIntensity)));
+		var shadowB = Math.min(255, Math.max(0, Math.floor(b * shadowIntensity)));
+		var shadowColor = '#' + ((1 << 24) + (shadowR << 16) + (shadowG << 8) + shadowB).toString(16).slice(1);
+		
+		// Draw the back face (shadow)
+		c.translate(depth * lightX, depth * lightY);
+		c.setFillColor(shadowColor);
+		this.paintBaseShape(c, x, y, w, h);
+		
+		// Restore and draw the front face (lit)
+		c.restore();
+		c.setFillColor(lightColor);
+		this.paintBaseShape(c, x, y, w, h);
+		
+		// Draw connecting lines if needed
+		if (pts && pts.length > 0) {
+			c.setStrokeColor(this.stroke);
+			c.begin();
+			for (var i = 0; i < pts.length; i++) {
+				var pt1 = pts[i];
+				var pt2 = {x: pt1.x + depth * lightX, y: pt1.y + depth * lightY};
+				c.moveTo(pt1.x, pt1.y);
+				c.lineTo(pt2.x, pt2.y);
+			}
+			c.stroke();
+		}
+	};
+	
+	Generic3dShape.prototype.getPoints = function(c, x, y, w, h)
+	{
+		// This method should be overridden by specific shapes
+		// For now, we'll return a simple rectangle
+		return [
+			{x: x, y: y},
+			{x: x + w, y: y},
+			{x: x + w, y: y + h},
+			{x: x, y: y + h}
+		];
+	};
+	
+	Generic3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		// This method should be overridden by specific shapes
+		// For now, we'll draw a simple rectangle
+		c.begin();
+		c.moveTo(x, y);
+		c.lineTo(x + w, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	// Add custom properties for the generic 3D shape
+	Generic3dShape.prototype.customProperties = [
+		{name: 'rotationX', dispName: 'Rotation X', type: 'float', defVal: 0, min: -360, max: 360},
+		{name: 'rotationY', dispName: 'Rotation Y', type: 'float', defVal: 0, min: -360, max: 360},
+		{name: 'rotationZ', dispName: 'Rotation Z', type: 'float', defVal: 0, min: -360, max: 360},
+		{name: 'depth', dispName: 'Depth', type: 'float', defVal: 20, min: 1, max: 100},
+		{name: 'lightIntensity', dispName: 'Light Intensity', type: 'float', defVal: 0.7, min: 0, max: 1},
+		{name: 'ambientLight', dispName: 'Ambient Light', type: 'float', defVal: 0.3, min: 0, max: 1},
+		{name: 'materialShininess', dispName: 'Material Shininess', type: 'float', defVal: 0.5, min: 0, max: 1}
+	];
+	
+	// Now let's create specific 3D shapes that extend the generic one
+	
+	// 3D Rectangle
+	function Rectangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Rectangle3dShape, Generic3dShape);
+	
+	Rectangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x, y);
+		c.lineTo(x + w, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('rectangle3d', Rectangle3dShape);
+	
+	// 3D Ellipse
+	function Ellipse3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Ellipse3dShape, Generic3dShape);
+	
+	Ellipse3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.ellipse(x, y, w, h);
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('ellipse3d', Ellipse3dShape);
+	
+	// 3D Triangle
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
 })();
