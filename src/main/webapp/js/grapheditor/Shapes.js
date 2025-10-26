@@ -7919,6 +7919,33 @@
 		c.fillAndStroke();
 	};
 	
+	// 添加getPoints方法来获取椭圆边界上的点
+	Ellipse3dShape.prototype.getPoints = function(c, x, y, w, h)
+	{
+		var points = [];
+		var a = w / 2;  // 半长轴
+		var b = h / 2;  // 半短轴
+		var cx = x + a; // 中心点x坐标
+		var cy = y + b; // 中心点y坐标
+		
+		// 使用拉马努金公式计算椭圆周长
+		var h_param = Math.pow(a - b, 2) / Math.pow(a + b, 2);
+		var perimeter = Math.PI * (a + b) * (1 + (3 * h_param) / (10 + Math.sqrt(4 - 3 * h_param)));
+		
+		// 根据周长动态确定点数，最大点数为5000
+		var numPoints = Math.min(5000, Math.max(50, Math.floor(perimeter / 5)));
+		
+		// 生成椭圆边界上的点
+		for (var i = 0; i < numPoints; i++) {
+			var angle = (2 * Math.PI * i) / numPoints;
+			var px = cx + a * Math.cos(angle);
+			var py = cy + b * Math.sin(angle);
+			points.push({x: px, y: py});
+		}
+		
+		return points;
+	};
+	
 	mxCellRenderer.registerShape('ellipse3d', Ellipse3dShape);
 	
 	// 3D Triangle
