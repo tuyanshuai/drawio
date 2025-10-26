@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 const hostname = '127.0.0.1';
-const port = 8087;  // 修改端口为8087
+const port = 8089;  // 修改端口为8089
 
 // MIME types
 const mimeTypes = {

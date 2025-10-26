@@ -7763,16 +7763,73 @@
 		var cosZ = Math.cos(radZ);
 		var sinZ = Math.sin(radZ);
 		
-		// For generic shapes, we'll create a simple 3D effect by duplicating the shape
-		// and offsetting it to create the depth effect
-		
-		// Save the original state
-		c.save();
-		
-		// Get the base shape points
+		// Get the base shape points in 3D space
 		var pts = this.getPoints(c, x, y, w, h);
 		
-		// Calculate light direction (simplified)
+		// Find the center of the shape for proper rotation
+		var centerX = x + w / 2;
+		var centerY = y + h / 2;
+		
+		// Convert 2D points to 3D points with depth
+		var points3d = [];
+		for (var i = 0; i < pts.length; i++) {
+			// Translate points to origin for rotation, then apply 3D transformation
+			var translatedX = pts[i].x - centerX;
+			var translatedY = pts[i].y - centerY;
+			
+			points3d.push({
+				x: translatedX,
+				y: translatedY,
+				z: 0
+			});
+		}
+		
+		// Create back face points with depth
+		var backPoints3d = [];
+		for (var i = 0; i < pts.length; i++) {
+			// Translate points to origin for rotation, then apply 3D transformation
+			var translatedX = pts[i].x - centerX;
+			var translatedY = pts[i].y - centerY;
+			
+			backPoints3d.push({
+				x: translatedX,
+				y: translatedY,
+				z: depth
+			});
+		}
+		
+		// Apply 3D rotations to all points
+		var rotatedPoints = [];
+		var rotatedBackPoints = [];
+		
+		for (var i = 0; i < points3d.length; i++) {
+			var pt = points3d[i];
+			var backPt = backPoints3d[i];
+			
+			// Apply rotation around X axis
+			var y1 = pt.y * cosX - pt.z * sinX;
+			var z1 = pt.y * sinX + pt.z * cosX;
+			var backY1 = backPt.y * cosX - backPt.z * sinX;
+			var backZ1 = backPt.y * sinX + backPt.z * cosX;
+			
+			// Apply rotation around Y axis
+			var x2 = pt.x * cosY + z1 * sinY;
+			var z2 = -pt.x * sinY + z1 * cosY;
+			var backX2 = backPt.x * cosY + backZ1 * sinY;
+			var backZ2 = -backPt.x * sinY + backZ1 * cosY;
+			
+			// Apply rotation around Z axis
+			var x3 = x2 * cosZ - y1 * sinZ;
+			var y3 = x2 * sinZ + y1 * cosZ;
+			var backX3 = backX2 * cosZ - backY1 * sinZ;
+			var backY3 = backX2 * sinZ + backY1 * cosZ;
+			
+			// Translate back to original position
+			rotatedPoints.push({x: x3 + centerX, y: y3 + centerY});
+			rotatedBackPoints.push({x: backX3 + centerX, y: backY3 + centerY});
+		}
+		
+		// Calculate light direction based on rotation angles
 		var lightX = Math.sin(radY) * Math.cos(radX);
 		var lightY = Math.sin(radX);
 		var lightZ = Math.cos(radY) * Math.cos(radX);
@@ -7795,12 +7852,11 @@
 		var b = parseInt(hex.substring(4, 6), 16);
 		
 		// Calculate lighting intensity based on light direction
-		// For a generic shape, we'll use a simplified approach
 		var intensity = ambientLight + Math.abs(lightZ) * lightIntensity;
 		intensity = Math.min(1, Math.max(0, intensity));
 		
 		// Apply specular highlight
-		var specular = Math.pow(Math.max(0, Math.abs(lightZ)), 10) * materialShininess;
+		var specular = Math.pow(Math.max(0, lightZ), 10) * materialShininess;
 		intensity = Math.min(1, intensity + specular);
 		
 		// Apply lighting to color
@@ -7809,8 +7865,8 @@
 		var lightB = Math.min(255, Math.max(0, Math.floor(b * intensity)));
 		var lightColor = '#' + ((1 << 24) + (lightR << 16) + (lightG << 8) + lightB).toString(16).slice(1);
 		
-		// Calculate shadow intensity (opposite side)
-		var shadowIntensity = ambientLight + Math.abs(-lightZ) * lightIntensity * 0.5;
+		// Calculate shadow intensity
+		var shadowIntensity = ambientLight * 0.7 + Math.max(0, -lightZ) * lightIntensity * 0.5;
 		shadowIntensity = Math.min(1, Math.max(0, shadowIntensity));
 		
 		// Apply lighting to shadow color
@@ -7819,27 +7875,41 @@
 		var shadowB = Math.min(255, Math.max(0, Math.floor(b * shadowIntensity)));
 		var shadowColor = '#' + ((1 << 24) + (shadowR << 16) + (shadowG << 8) + shadowB).toString(16).slice(1);
 		
-		// Draw the back face (shadow)
-		c.translate(depth * lightX, depth * lightY);
+		// Draw the back face
 		c.setFillColor(shadowColor);
-		this.paintBaseShape(c, x, y, w, h);
-		
-		// Restore and draw the front face (lit)
-		c.restore();
-		c.setFillColor(lightColor);
-		this.paintBaseShape(c, x, y, w, h);
-		
-		// Draw connecting lines if needed
-		if (pts && pts.length > 0) {
-			c.setStrokeColor(this.stroke);
-			c.begin();
-			for (var i = 0; i < pts.length; i++) {
-				var pt1 = pts[i];
-				var pt2 = {x: pt1.x + depth * lightX, y: pt1.y + depth * lightY};
-				c.moveTo(pt1.x, pt1.y);
-				c.lineTo(pt2.x, pt2.y);
+		c.begin();
+		if (rotatedBackPoints.length > 0) {
+			c.moveTo(rotatedBackPoints[0].x, rotatedBackPoints[0].y);
+			for (var i = 1; i < rotatedBackPoints.length; i++) {
+				c.lineTo(rotatedBackPoints[i].x, rotatedBackPoints[i].y);
 			}
-			c.stroke();
+			c.close();
+			c.fillAndStroke();
+		}
+		
+		// Draw connecting sides between front and back faces
+		c.setFillColor(shadowColor);
+		for (var i = 0; i < rotatedPoints.length; i++) {
+			var nextIndex = (i + 1) % rotatedPoints.length;
+			c.begin();
+			c.moveTo(rotatedPoints[i].x, rotatedPoints[i].y);
+			c.lineTo(rotatedBackPoints[i].x, rotatedBackPoints[i].y);
+			c.lineTo(rotatedBackPoints[nextIndex].x, rotatedBackPoints[nextIndex].y);
+			c.lineTo(rotatedPoints[nextIndex].x, rotatedPoints[nextIndex].y);
+			c.close();
+			c.fillAndStroke();
+		}
+		
+		// Draw the front face (lit)
+		c.setFillColor(lightColor);
+		c.begin();
+		if (rotatedPoints.length > 0) {
+			c.moveTo(rotatedPoints[0].x, rotatedPoints[0].y);
+			for (var i = 1; i < rotatedPoints.length; i++) {
+				c.lineTo(rotatedPoints[i].x, rotatedPoints[i].y);
+			}
+			c.close();
+			c.fillAndStroke();
 		}
 	};
 	
@@ -7866,6 +7936,7373 @@
 		c.lineTo(x, y + h);
 		c.close();
 		c.fillAndStroke();
+	};
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
+	};
+	
+	// Register the generic 3D shape
+	mxCellRenderer.registerShape('generic3d', Generic3dShape);
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+	};
+	
+	function Triangle3dShape()
+	{
+		Generic3dShape.call(this);
+	};
+	
+	mxUtils.extend(Triangle3dShape, Generic3dShape);
+	
+	Triangle3dShape.prototype.paintBaseShape = function(c, x, y, w, h)
+	{
+		c.begin();
+		c.moveTo(x + w / 2, y);
+		c.lineTo(x + w, y + h);
+		c.lineTo(x, y + h);
+		c.close();
+		c.fillAndStroke();
+	};
+	
+	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);
+	
+	// Add a method to get the position of rotation handles for 3D shapes
+	Generic3dShape.prototype.getRotationHandlePosition = function(bounds, rotationType)
+	{
+		if (rotationType === 'rotationX') {
+			// Position the X rotation handle at the top-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y);
+		} else if (rotationType === 'rotationY') {
+			// Position the Y rotation handle at the top-left corner of the shape
+			return new mxPoint(bounds.x, bounds.y);
+		} else if (rotationType === 'rotationZ') {
+			// Position the Z rotation handle at the bottom-right corner of the shape
+			return new mxPoint(bounds.x + bounds.width, bounds.y + bounds.height);
+		}
+		// Default position at the center top
+		return new mxPoint(bounds.x + bounds.width / 2, bounds.y);
 	};
 	
 	// Register the generic 3D shape
@@ -7903,6 +15340,17 @@
 		c.fillAndStroke();
 	};
 	
+	// 添加getPoints方法来获取矩形边界上的点
+	Rectangle3dShape.prototype.getPoints = function(c, x, y, w, h)
+	{
+		return [
+			{x: x, y: y},
+			{x: x + w, y: y},
+			{x: x + w, y: y + h},
+			{x: x, y: y + h}
+		];
+	};
+	
 	mxCellRenderer.registerShape('rectangle3d', Rectangle3dShape);
 	
 	// 3D Ellipse
@@ -7928,12 +15376,8 @@
 		var cx = x + a; // 中心点x坐标
 		var cy = y + b; // 中心点y坐标
 		
-		// 使用拉马努金公式计算椭圆周长
-		var h_param = Math.pow(a - b, 2) / Math.pow(a + b, 2);
-		var perimeter = Math.PI * (a + b) * (1 + (3 * h_param) / (10 + Math.sqrt(4 - 3 * h_param)));
-		
-		// 根据周长动态确定点数，最大点数为5000
-		var numPoints = Math.min(5000, Math.max(50, Math.floor(perimeter / 5)));
+		// 使用更简单的点生成方法，确保点数适中
+		var numPoints = 32; // 固定点数以确保一致性
 		
 		// 生成椭圆边界上的点
 		for (var i = 0; i < numPoints; i++) {
@@ -7964,6 +15408,16 @@
 		c.lineTo(x, y + h);
 		c.close();
 		c.fillAndStroke();
+	};
+	
+	// 添加getPoints方法来获取三角形顶点
+	Triangle3dShape.prototype.getPoints = function(c, x, y, w, h)
+	{
+		return [
+			{x: x + w / 2, y: y},
+			{x: x + w, y: y + h},
+			{x: x, y: y + h}
+		];
 	};
 	
 	mxCellRenderer.registerShape('triangle3d', Triangle3dShape);

@@ -848,10 +848,20 @@ mxVertexHandler.prototype.mouseMove = function(sender, me)
 		{
 			if (this.index <= mxEvent.CUSTOM_HANDLE)
 			{
-				if (this.customHandles != null && this.customHandles[mxEvent.CUSTOM_HANDLE - this.index] != null)
+				// Add extra null checks to prevent "Cannot read properties of null" errors
+				var customHandleIndex = mxEvent.CUSTOM_HANDLE - this.index;
+				if (this.customHandles != null && customHandleIndex >= 0 && customHandleIndex < this.customHandles.length && this.customHandles[customHandleIndex] != null)
 				{
-					this.customHandles[mxEvent.CUSTOM_HANDLE - this.index].processEvent(me);
-					this.customHandles[mxEvent.CUSTOM_HANDLE - this.index].active = true;
+					// Use safe methods to process the handle
+					if (typeof mxHandle.safeProcessEvent === 'function')
+					{
+						mxHandle.safeProcessEvent(this.customHandles[customHandleIndex], me);
+					}
+					else
+					{
+						this.customHandles[customHandleIndex].processEvent(me);
+						this.customHandles[customHandleIndex].active = true;
+					}
 					
 					if (this.ghostPreview != null)
 					{
@@ -874,8 +884,21 @@ mxVertexHandler.prototype.mouseMove = function(sender, me)
 							this.moveToFront();
 						}
 						
-						this.customHandles[mxEvent.CUSTOM_HANDLE - this.index].positionChanged();
+						// Use safe method to call positionChanged
+						if (typeof mxHandle.safePositionChanged === 'function')
+						{
+							mxHandle.safePositionChanged(this.customHandles[customHandleIndex]);
+						}
+						else
+						{
+							this.customHandles[customHandleIndex].positionChanged();
+						}
 					}
+				}
+				else
+				{
+					// Log warning if custom handle is null
+					console.warn('Custom handle at index ' + customHandleIndex + ' is null or undefined');
 				}
 			}
 			else if (this.index == mxEvent.LABEL_HANDLE)
@@ -1292,22 +1315,46 @@ mxVertexHandler.prototype.mouseUp = function(sender, me)
 		{
 			if (index <= mxEvent.CUSTOM_HANDLE)
 			{
-				if (this.customHandles != null && this.customHandles[mxEvent.CUSTOM_HANDLE - index] != null)
+				// Add extra null checks to prevent "Cannot read properties of null" errors
+				var customHandleIndex = mxEvent.CUSTOM_HANDLE - index;
+				if (this.customHandles != null && customHandleIndex >= 0 && customHandleIndex < this.customHandles.length && this.customHandles[customHandleIndex] != null)
 				{
 					// Creates style before changing cell state
 					var style = this.state.view.graph.getCellStyle(this.state.cell);
 					
-					this.customHandles[mxEvent.CUSTOM_HANDLE - index].active = false;
-					this.customHandles[mxEvent.CUSTOM_HANDLE - index].execute(me);
+					// Use safe method to execute the handle
+					if (typeof mxHandle.safeExecute === 'function')
+					{
+						mxHandle.safeExecute(this.customHandles[customHandleIndex], me);
+					}
+					else
+					{
+						this.customHandles[customHandleIndex].active = false;
+						this.customHandles[customHandleIndex].execute(me);
+					}
 					
 					// Sets style and apply on shape to force repaint and
 					// check if execute has removed custom handles
 					if (this.customHandles != null &&
-						this.customHandles[mxEvent.CUSTOM_HANDLE - index] != null)
+						customHandleIndex >= 0 && customHandleIndex < this.customHandles.length &&
+						this.customHandles[customHandleIndex] != null)
 					{
 						this.state.style = style;
-						this.customHandles[mxEvent.CUSTOM_HANDLE - index].positionChanged();
+						// Use safe method to call positionChanged
+						if (typeof mxHandle.safePositionChanged === 'function')
+						{
+							mxHandle.safePositionChanged(this.customHandles[customHandleIndex]);
+						}
+						else
+						{
+							this.customHandles[customHandleIndex].positionChanged();
+						}
 					}
+				}
+				else
+				{
+					// Log warning if custom handle is null
+					console.warn('Custom handle at index ' + customHandleIndex + ' is null or undefined during mouseUp');
 				}
 			}
 			else if (index == mxEvent.ROTATION_HANDLE)
