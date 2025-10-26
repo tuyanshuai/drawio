@@ -95,7 +95,7 @@
                 <li>选中形状后，应该能看到红色和黄色的控制点</li>
                 <li>拖拽红色控制点绕X轴旋转</li>
                 <li>拖拽黄色控制点绕Y轴旋转</li>
-                <li>观察旋转后顶点的计算是否正确</li>
+                <li>观察旋转后隐藏线功能是否正常工作</li>
             </ol>
         </div>
         
@@ -107,6 +107,7 @@
                 <button onclick="add3DTriangle()">添加3D三角形</button>
                 <button onclick="clearGraph()">清空画布</button>
                 <button onclick="check3DFunctionality()">检查3D功能</button>
+                <button onclick="testBackfaceCulling()">测试背面剔除</button>
             </div>
             
             <div class="panel">
@@ -275,6 +276,45 @@
                 
             } catch (e) {
                 updateStatus('检查3D功能时出错: ' + e.message, 'error');
+                console.error(e);
+            }
+        }
+        
+        // Test backface culling
+        function testBackfaceCulling() {
+            try {
+                // Get selected cells
+                var cells = graph.getSelectionCells();
+                
+                if (cells.length === 0) {
+                    updateStatus('请先选择一个3D形状', 'info');
+                    return;
+                }
+                
+                // Find a 3D shape
+                var cell = null;
+                for (var i = 0; i < cells.length; i++) {
+                    var style = graph.getCellStyle(cells[i]);
+                    var shape = style[mxConstants.STYLE_SHAPE];
+                    
+                    if (shape && (shape.indexOf('3d') > 0 || shape.indexOf('3D') > 0)) {
+                        cell = cells[i];
+                        break;
+                    }
+                }
+                
+                if (!cell) {
+                    updateStatus('请选择一个3D形状', 'info');
+                    return;
+                }
+                
+                // Apply a rotation that should trigger backface culling
+                graph.setCellStyles('rotationX', 180, [cell]);
+                graph.setCellStyles('rotationY', 180, [cell]);
+                
+                updateStatus('已应用180度旋转，检查背面剔除效果', 'success');
+            } catch (e) {
+                updateStatus('测试背面剔除时出错: ' + e.message, 'error');
                 console.error(e);
             }
         }

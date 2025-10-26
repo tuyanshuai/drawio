@@ -7829,6 +7829,48 @@
 			rotatedBackPoints.push({x: backX3 + centerX, y: backY3 + centerY});
 		}
 		
+		// Calculate normal vector for front face to determine visibility
+		// For a polygon, we can calculate the normal using the first three points
+		if (rotatedPoints.length >= 3) {
+			var p0 = rotatedPoints[0];
+			var p1 = rotatedPoints[1];
+			var p2 = rotatedPoints[2];
+			
+			// Calculate two edge vectors
+			var edge1 = {x: p1.x - p0.x, y: p1.y - p0.y};
+			var edge2 = {x: p2.x - p0.x, y: p2.y - p0.y};
+			
+			// Calculate normal vector (assuming z=0 for 2D projection)
+			// In 3D, we would calculate the cross product, but for 2D projection,
+			// we can determine visibility based on the winding order
+			var crossProduct = edge1.x * edge2.y - edge1.y * edge2.x;
+			
+			// If cross product is positive, the face is facing towards the viewer
+			var isFrontFaceVisible = crossProduct > 0;
+			
+			// Calculate normal vector for back face
+			if (rotatedBackPoints.length >= 3) {
+				var bp0 = rotatedBackPoints[0];
+				var bp1 = rotatedBackPoints[1];
+				var bp2 = rotatedBackPoints[2];
+				
+				// Calculate two edge vectors
+				var bedge1 = {x: bp1.x - bp0.x, y: bp1.y - bp0.y};
+				var bedge2 = {x: bp2.x - bp0.x, y: bp2.y - bp0.y};
+				
+				// Calculate cross product
+				var backCrossProduct = bedge1.x * bedge2.y - bedge1.y * bedge2.x;
+				
+				// If cross product is negative, the back face is facing towards the viewer
+				var isBackFaceVisible = backCrossProduct < 0;
+			} else {
+				var isBackFaceVisible = false;
+			}
+		} else {
+			var isFrontFaceVisible = true;
+			var isBackFaceVisible = true;
+		}
+		
 		// Calculate light direction based on rotation angles
 		var lightX = Math.sin(radY) * Math.cos(radX);
 		var lightY = Math.sin(radX);
@@ -7875,41 +7917,54 @@
 		var shadowB = Math.min(255, Math.max(0, Math.floor(b * shadowIntensity)));
 		var shadowColor = '#' + ((1 << 24) + (shadowR << 16) + (shadowG << 8) + shadowB).toString(16).slice(1);
 		
-		// Draw the back face
-		c.setFillColor(shadowColor);
-		c.begin();
-		if (rotatedBackPoints.length > 0) {
-			c.moveTo(rotatedBackPoints[0].x, rotatedBackPoints[0].y);
-			for (var i = 1; i < rotatedBackPoints.length; i++) {
-				c.lineTo(rotatedBackPoints[i].x, rotatedBackPoints[i].y);
+		// Draw the back face only if it's visible
+		if (isBackFaceVisible) {
+			c.setFillColor(shadowColor);
+			c.begin();
+			if (rotatedBackPoints.length > 0) {
+				c.moveTo(rotatedBackPoints[0].x, rotatedBackPoints[0].y);
+				for (var i = 1; i < rotatedBackPoints.length; i++) {
+					c.lineTo(rotatedBackPoints[i].x, rotatedBackPoints[i].y);
+				}
+				c.close();
+				c.fillAndStroke();
 			}
-			c.close();
-			c.fillAndStroke();
 		}
 		
 		// Draw connecting sides between front and back faces
+		// Only draw the sides that are visible (facing towards the viewer)
 		c.setFillColor(shadowColor);
 		for (var i = 0; i < rotatedPoints.length; i++) {
 			var nextIndex = (i + 1) % rotatedPoints.length;
-			c.begin();
-			c.moveTo(rotatedPoints[i].x, rotatedPoints[i].y);
-			c.lineTo(rotatedBackPoints[i].x, rotatedBackPoints[i].y);
-			c.lineTo(rotatedBackPoints[nextIndex].x, rotatedBackPoints[nextIndex].y);
-			c.lineTo(rotatedPoints[nextIndex].x, rotatedPoints[nextIndex].y);
-			c.close();
-			c.fillAndStroke();
+			
+			// Calculate visibility of this side face
+			// We'll simplify this by checking if the side connects front and back faces
+			// In a more advanced implementation, we would calculate the normal of each side face
+			var isSideVisible = true; // For now, we'll draw all side faces
+			
+			if (isSideVisible) {
+				c.begin();
+				c.moveTo(rotatedPoints[i].x, rotatedPoints[i].y);
+				c.lineTo(rotatedBackPoints[i].x, rotatedBackPoints[i].y);
+				c.lineTo(rotatedBackPoints[nextIndex].x, rotatedBackPoints[nextIndex].y);
+				c.lineTo(rotatedPoints[nextIndex].x, rotatedPoints[nextIndex].y);
+				c.close();
+				c.fillAndStroke();
+			}
 		}
 		
-		// Draw the front face (lit)
-		c.setFillColor(lightColor);
-		c.begin();
-		if (rotatedPoints.length > 0) {
-			c.moveTo(rotatedPoints[0].x, rotatedPoints[0].y);
-			for (var i = 1; i < rotatedPoints.length; i++) {
-				c.lineTo(rotatedPoints[i].x, rotatedPoints[i].y);
+		// Draw the front face (lit) only if it's visible
+		if (isFrontFaceVisible) {
+			c.setFillColor(lightColor);
+			c.begin();
+			if (rotatedPoints.length > 0) {
+				c.moveTo(rotatedPoints[0].x, rotatedPoints[0].y);
+				for (var i = 1; i < rotatedPoints.length; i++) {
+					c.lineTo(rotatedPoints[i].x, rotatedPoints[i].y);
+				}
+				c.close();
+				c.fillAndStroke();
 			}
-			c.close();
-			c.fillAndStroke();
 		}
 	};
 	
