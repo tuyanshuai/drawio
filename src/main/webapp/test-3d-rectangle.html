@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>3D Rectangle Test</title>
+    <meta charset="utf-8">
+    <script type="text/javascript">
+        // Set the base path for mxGraph
+        mxBasePath = 'mxgraph';
+    </script>
+    <script type="text/javascript" src="mxgraph/mxClient.js"></script>
+    <script type="text/javascript">
+        function main() {
+            // Check if browser is supported
+            if (!mxClient.isBrowserSupported()) {
+                mxUtils.error('Browser is not supported!', 200, false);
+            } else {
+                // Creates the graph inside the given container
+                var container = document.getElementById('graphContainer');
+                var graph = new mxGraph(container);
+                
+                // Enables rubberband selection
+                new mxRubberband(graph);
+                
+                // Gets the default parent for inserting new cells
+                var parent = graph.getDefaultParent();
+                
+                // Adds cells to the model in a single step
+                graph.getModel().beginUpdate();
+                try {
+                    // Create a 3D rectangle
+                    var v1 = graph.insertVertex(parent, null, '3D Rectangle', 100, 100, 120, 80, 
+                        'shape=rectangle3d;whiteSpace=wrap;html=1;rotationX=0.5;rotationY=0.5;rotationZ=0.1;extrudeDepth=20;fillColor=#3399FF;');
+                    
+                    // Create another 3D rectangle with different rotation
+                    var v2 = graph.insertVertex(parent, null, '3D Rectangle 2', 300, 100, 120, 80, 
+                        'shape=rectangle3d;whiteSpace=wrap;html=1;rotationX=1.0;rotationY=0.2;rotationZ=0.3;extrudeDepth=30;fillColor=#FF6666;');
+                        
+                    // Create a third 3D rectangle
+                    var v3 = graph.insertVertex(parent, null, '3D Rectangle 3', 200, 250, 120, 80, 
+                        'shape=rectangle3d;whiteSpace=wrap;html=1;rotationX=0.2;rotationY=1.0;rotationZ=0.5;extrudeDepth=15;fillColor=#66CC66;');
+                } finally {
+                    // Updates the display
+                    graph.getModel().endUpdate();
+                }
+            }
+        }
+    </script>
+</head>
+<body onload="main();">
+    <h1>3D Rectangle Test</h1>
+    <p>This page demonstrates the 3D rectangle shape implementation based on Isomer.js concepts.</p>
+    <div id="graphContainer" style="position:relative;overflow:hidden;width:800px;height:600px;background:url('images/grid.gif');cursor:default;">
+    </div>
+</body>
+</html>

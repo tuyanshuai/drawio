@@ -987,6 +987,666 @@
 		c.close();
 		c.fillAndStroke();
 		
+	};
+
+	// 3D Rectangle Shape
+	function Rectangle3DShape(bounds, fill, stroke, strokewidth)
+	{
+		mxRectangleShape.call(this);
+		this.bounds = bounds;
+		this.fill = fill;
+		this.stroke = stroke;
+		this.strokewidth = (strokewidth != null) ? strokewidth : 1;
+		
+		// 3D properties with default values similar to Isomer.js
+		this.rotationX = 0.5;  // Rotation around X axis (radians)
+		this.rotationY = 0.5;  // Rotation around Y axis (radians)
+		this.rotationZ = 0.1;  // Rotation around Z axis (radians)
+		this.extrudeDepth = 20; // Extrusion depth in pixels
+	};
+
+	mxUtils.extend(Rectangle3DShape, mxRectangleShape);
+
+	Rectangle3DShape.prototype.apply = function(state)
+	{
+		mxRectangleShape.prototype.apply.apply(this, arguments);
+		
+		if (this.style != null)
+		{
+			this.rotationX = parseFloat(mxUtils.getValue(this.style, 'rotationX', this.rotationX));
+			this.rotationY = parseFloat(mxUtils.getValue(this.style, 'rotationY', this.rotationY));
+			this.rotationZ = parseFloat(mxUtils.getValue(this.style, 'rotationZ', this.rotationZ));
+			this.extrudeDepth = parseFloat(mxUtils.getValue(this.style, 'extrudeDepth', this.extrudeDepth));
+		}
+	};
+
+	// Point class for 3D operations
+	function Point3D(x, y, z) {
+		this.x = x || 0;
+		this.y = y || 0;
+		this.z = z || 0;
+	}
+
+	Point3D.prototype.translate = function(dx, dy, dz) {
+		return new Point3D(this.x + dx, this.y + dy, this.z + dz);
+	};
+
+	// Path class for 3D operations
+	function Path3D(points) {
+		this.points = points || [];
+	}
+
+	Path3D.prototype.translate = function(dx, dy, dz) {
+		return new Path3D(this.points.map(function(point) {
+			return point.translate(dx, dy, dz);
+		}));
+	};
+
+	// Shape class for 3D operations
+	function Shape3D(paths) {
+		this.paths = paths || [];
+	}
+
+	Shape3D.prototype.push = function(path) {
+		this.paths.push(path);
+	};
+
+	// Extrude function similar to Isomer.js
+	Shape3D.extrude = function(path, height) {
+		height = (typeof height === 'number') ? height : 1;
+		
+		var topPath = path.translate(0, 0, height);
+		var shape = new Shape3D();
+		
+		// Push the top and bottom faces
+		shape.push(new Path3D(path.points.slice().reverse())); // Bottom face (reversed for correct orientation)
+		shape.push(topPath); // Top face
+		
+		// Push each side face
+		for (var i = 0; i < path.points.length; i++) {
+			shape.push(new Path3D([
+				topPath.points[i],
+				path.points[i],
+				path.points[(i + 1) % path.points.length],
+				topPath.points[(i + 1) % topPath.points.length]
+			]));
+		}
+		
+		return shape;
+	};
+
+	// Helper function to rotate a point around the X axis
+	Rectangle3DShape.prototype.rotateX = function(point, angle, origin) {
+		origin = origin || new Point3D(0, 0, 0);
+		var p = new Point3D(point.x - origin.x, point.y - origin.y, point.z - origin.z);
+		var y = p.y * Math.cos(angle) - p.z * Math.sin(angle);
+		var z = p.y * Math.sin(angle) + p.z * Math.cos(angle);
+		return new Point3D(p.x + origin.x, y + origin.y, z + origin.z);
+	};
+
+	// Helper function to rotate a point around the Y axis
+	Rectangle3DShape.prototype.rotateY = function(point, angle, origin) {
+		origin = origin || new Point3D(0, 0, 0);
+		var p = new Point3D(point.x - origin.x, point.y - origin.y, point.z - origin.z);
+		var x = p.x * Math.cos(angle) + p.z * Math.sin(angle);
+		var z = -p.x * Math.sin(angle) + p.z * Math.cos(angle);
+		return new Point3D(x + origin.x, p.y + origin.y, z + origin.z);
+	};
+
+	// Helper function to rotate a point around the Z axis
+	Rectangle3DShape.prototype.rotateZ = function(point, angle, origin) {
+		origin = origin || new Point3D(0, 0, 0);
+		var p = new Point3D(point.x - origin.x, point.y - origin.y, point.z - origin.z);
+		var x = p.x * Math.cos(angle) - p.y * Math.sin(angle);
+		var y = p.x * Math.sin(angle) + p.y * Math.cos(angle);
+		return new Point3D(x + origin.x, y + origin.y, p.z + origin.z);
+	};
+
+	// Apply all rotations to a point
+	Rectangle3DShape.prototype.applyRotations = function(point, origin) {
+		var p = point;
+		if (this.rotationX !== 0) p = this.rotateX(p, this.rotationX, origin);
+		if (this.rotationY !== 0) p = this.rotateY(p, this.rotationY, origin);
+		if (this.rotationZ !== 0) p = this.rotateZ(p, this.rotationZ, origin);
+		return p;
+	};
+
+	// Project 3D point to 2D isometric view
+	Rectangle3DShape.prototype.project = function(point) {
+		// Isometric projection parameters
+		var angle = Math.PI / 6; // 30 degrees
+		
+		// Calculate isometric coordinates
+		var x = point.x - point.z * Math.cos(angle);
+		var y = point.y - point.z * Math.sin(angle);
+		
+		return new Point3D(x, y, 0);
+	};
+
+	Rectangle3DShape.prototype.paintBackground = function(c, x, y, w, h)
+	{
+		// Save the canvas state
+		c.save();
+		
+		// Set stroke width
+		c.setStrokeWidth(this.strokewidth);
+		c.setStrokeColor(this.stroke);
+		c.setFillColor(this.fill);
+		
+		// Define the depth
+		var depth = this.extrudeDepth;
+		
+		// Create a rectangle path in 3D
+		var rectPoints = [
+			new Point3D(x, y, 0),           // top-left
+			new Point3D(x + w, y, 0),       // top-right
+			new Point3D(x + w, y + h, 0),   // bottom-right
+			new Point3D(x, y + h, 0)        // bottom-left
+		];
+		
+		var rectPath = new Path3D(rectPoints);
+		
+		// Extrude the rectangle to create a 3D shape
+		var shape3D = Shape3D.extrude(rectPath, depth);
+		
+		// Find the center of the shape for rotation
+		var centerX = x + w / 2;
+		var centerY = y + h / 2;
+		var centerZ = depth / 2;
+		var center = new Point3D(centerX, centerY, centerZ);
+		
+		// Apply rotations to all points in the shape
+		var rotatedShape = new Shape3D();
+		for (var i = 0; i < shape3D.paths.length; i++) {
+			var path = shape3D.paths[i];
+			var rotatedPoints = [];
+			for (var j = 0; j < path.points.length; j++) {
+				var rotatedPoint = this.applyRotations(path.points[j], center);
+				rotatedPoints.push(rotatedPoint);
+			}
+			rotatedShape.push(new Path3D(rotatedPoints));
+		}
+		
+		// Project 3D points to 2D and draw
+		var projectedPaths = [];
+		for (var i = 0; i < rotatedShape.paths.length; i++) {
+			var path = rotatedShape.paths[i];
+			var projectedPoints = [];
+			for (var j = 0; j < path.points.length; j++) {
+				var projectedPoint = this.project(path.points[j]);
+				projectedPoints.push(projectedPoint);
+			}
+			projectedPaths.push({
+				points: projectedPoints,
+				index: i
+			});
+		}
+		
+		// Sort faces by z-depth for proper rendering order
+		projectedPaths.sort(function(a, b) {
+			// Calculate average z-depth for each face
+			var avgZa = a.points.reduce(function(sum, p) { return sum + p.z; }, 0) / a.points.length;
+			var avgZb = b.points.reduce(function(sum, p) { return sum + p.z; }, 0) / b.points.length;
+			return avgZb - avgZa; // Back to front rendering
+		});
+		
+		// Draw each face with different shades to create 3D effect
+		for (var i = 0; i < projectedPaths.length; i++) {
+			var face = projectedPaths[i];
+			var points = face.points;
+			
+			// Calculate face normal for shading
+			if (points.length >= 3) {
+				// Simple shading based on face index and type
+				var shadeFactor = 0;
+				
+				// Different shading for different faces:
+				// 0, 1: Top/bottom faces
+				// 2, 3, 4, 5: Side faces
+				if (face.index === 0) {
+					// Bottom face
+					shadeFactor = -50;
+				} else if (face.index === 1) {
+					// Top face
+					shadeFactor = -20;
+				} else {
+					// Side faces
+					shadeFactor = -30 - (face.index * 5);
+				}
+				
+				// Apply shading to fill color
+				var shadedColor = this.adjustColor(this.fill, shadeFactor);
+				c.setFillColor(shadedColor);
+			}
+			
+			// Draw the face
+			if (points.length > 0) {
+				c.begin();
+				c.moveTo(points[0].x, points[0].y);
+				for (var j = 1; j < points.length; j++) {
+					c.lineTo(points[j].x, points[j].y);
+				}
+				c.close();
+				c.fillAndStroke();
+			}
+		}
+		
+		// Restore the canvas state
+		c.restore();
+	};
+
+	// Helper function to adjust color brightness
+	Rectangle3DShape.prototype.adjustColor = function(color, adjustment) {
+		if (!color) return color;
+		
+		// Handle special color values
+		if (color === 'none' || color === 'transparent') return color;
+		
+		// Parse the color
+		var rgb = mxUtils.parseColor(color);
+		if (!rgb) return color;
+		
+		// Adjust each component
+		var r = Math.max(0, Math.min(255, rgb[0] + adjustment));
+		var g = Math.max(0, Math.min(255, rgb[1] + adjustment));
+		var b = Math.max(0, Math.min(255, rgb[2] + adjustment));
+		
+		return 'rgb(' + r + ',' + g + ',' + b + ')';
+	};
+
+	// Helper function to adjust color with material properties
+	Rectangle3DShape.prototype.adjustColorWithMaterial = function(color, adjustment, materialFactor) {
+		if (!color) return color;
+		
+		// Handle special color values
+		if (color === 'none' || color === 'transparent') return color;
+		
+		// Parse the color
+		var rgb = mxUtils.parseColor(color);
+		if (!rgb) return color;
+		
+		// Apply adjustment based on material factor
+		// First apply material factor as a multiplier to RGB values
+		var r = Math.max(0, Math.min(255, Math.round(rgb[0] * materialFactor)));
+		var g = Math.max(0, Math.min(255, Math.round(rgb[1] * materialFactor)));
+		var b = Math.max(0, Math.min(255, Math.round(rgb[2] * materialFactor)));
+		
+		// Then apply adjustment (lighting)
+		r = Math.max(0, Math.min(255, r + adjustment));
+		g = Math.max(0, Math.min(255, g + adjustment));
+		b = Math.max(0, Math.min(255, b + adjustment));
+		
+		return 'rgb(' + r + ',' + g + ',' + b + ')';
+	};
+
+	// Register the 3D rectangle shape
+	mxCellRenderer.registerShape('rectangle3d', Rectangle3DShape);
+
+	// 3D Rectangle Shape
+	function Rectangle3DShape(bounds, fill, stroke, strokewidth)
+	{
+		mxRectangleShape.call(this);
+		this.bounds = bounds;
+		this.fill = fill;
+		this.stroke = stroke;
+		this.strokewidth = (strokewidth != null) ? strokewidth : 1;
+		
+		// 3D properties
+		this.rotationX = 0.5;  // Default rotation values for better visualization
+		this.rotationY = 0.5;
+		this.rotationZ = 0.1;
+		this.extrudeDepth = 20;
+	};
+
+	mxUtils.extend(Rectangle3DShape, mxRectangleShape);
+
+	Rectangle3DShape.prototype.apply = function(state)
+	{
+		mxRectangleShape.prototype.apply.apply(this, arguments);
+		
+		if (this.style != null)
+		{
+			this.rotationX = parseFloat(mxUtils.getValue(this.style, 'rotationX', this.rotationX));
+			this.rotationY = parseFloat(mxUtils.getValue(this.style, 'rotationY', this.rotationY));
+			this.rotationZ = parseFloat(mxUtils.getValue(this.style, 'rotationZ', this.rotationZ));
+			this.extrudeDepth = parseFloat(mxUtils.getValue(this.style, 'extrudeDepth', this.extrudeDepth));
+		}
+	};
+
+	// Rotate a point around the X axis
+	Rectangle3DShape.prototype.rotateX = function(x, y, z, angle) {
+		var cos = Math.cos(angle);
+		var sin = Math.sin(angle);
+		var newY = y * cos - z * sin;
+		var newZ = y * sin + z * cos;
+		return {x: x, y: newY, z: newZ};
+	};
+
+	// Rotate a point around the Y axis
+	Rectangle3DShape.prototype.rotateY = function(x, y, z, angle) {
+		var cos = Math.cos(angle);
+		var sin = Math.sin(angle);
+		var newX = x * cos + z * sin;
+		var newZ = -x * sin + z * cos;
+		return {x: newX, y: y, z: newZ};
+	};
+
+	// Rotate a point around the Z axis
+	Rectangle3DShape.prototype.rotateZ = function(x, y, z, angle) {
+		var cos = Math.cos(angle);
+		var sin = Math.sin(angle);
+		var newX = x * cos - y * sin;
+		var newY = x * sin + y * cos;
+		return {x: newX, y: newY, z: z};
+	};
+
+	// Apply all rotations to a point
+	Rectangle3DShape.prototype.applyRotations = function(x, y, z) {
+		var point = {x: x, y: y, z: z};
+		
+		// Apply rotations in order: X, Y, Z
+		if (this.rotationX !== 0) {
+			point = this.rotateX(point.x, point.y, point.z, this.rotationX);
+		}
+		if (this.rotationY !== 0) {
+			point = this.rotateY(point.x, point.y, point.z, this.rotationY);
+		}
+		if (this.rotationZ !== 0) {
+			point = this.rotateZ(point.x, point.y, point.z, this.rotationZ);
+		}
+		
+		return point;
+	};
+
+	// Project 3D coordinates to 2D
+	Rectangle3DShape.prototype.project = function(x, y, z) {
+		// Simple isometric projection
+		var isoAngle = Math.PI / 6; // 30 degrees
+		var x2d = x - z * Math.cos(isoAngle);
+		var y2d = y - z * Math.sin(isoAngle);
+		return {x: x2d, y: y2d};
+	};
+
+	Rectangle3DShape.prototype.paintBackground = function(c, x, y, w, h)
+	{
+		// Save the canvas state
+		c.save();
+		
+		// Set stroke width
+		c.setStrokeWidth(this.strokewidth);
+		c.setStrokeColor(this.stroke);
+		
+		// Define the depth
+		var depth = this.extrudeDepth;
+		
+		// Define the 8 vertices of the extruded rectangle
+		var vertices = [
+			// Front face (z = 0)
+			{x: x, y: y, z: 0},           // 0: top-left
+			{x: x + w, y: y, z: 0},       // 1: top-right
+			{x: x + w, y: y + h, z: 0},   // 2: bottom-right
+			{x: x, y: y + h, z: 0},       // 3: bottom-left
+			
+			// Back face (z = depth)
+			{x: x + depth/2, y: y - depth/2, z: depth},           // 4: top-left
+			{x: x + w + depth/2, y: y - depth/2, z: depth},       // 5: top-right
+			{x: x + w + depth/2, y: y + h - depth/2, z: depth},   // 6: bottom-right
+			{x: x + depth/2, y: y + h - depth/2, z: depth}        // 7: bottom-left
+		];
+		
+		// Apply rotations to all vertices
+		var center = {
+			x: x + w/2,
+			y: y + h/2,
+			z: depth/2
+		};
+		
+		for (var i = 0; i < vertices.length; i++) {
+			// Translate to origin
+			var vx = vertices[i].x - center.x;
+			var vy = vertices[i].y - center.y;
+			var vz = vertices[i].z - center.z;
+			
+			// Apply rotations
+			var rotated = this.applyRotations(vx, vy, vz);
+			
+			// Translate back
+			vertices[i].x = rotated.x + center.x;
+			vertices[i].y = rotated.y + center.y;
+			vertices[i].z = rotated.z + center.z;
+		}
+		
+		// Project 3D points to 2D
+		var projected = [];
+		for (var i = 0; i < vertices.length; i++) {
+			var proj = this.project(vertices[i].x, vertices[i].y, vertices[i].z);
+			projected.push({
+				x: proj.x,
+				y: proj.y,
+				z: vertices[i].z // Keep z for depth sorting
+			});
+		}
+		
+		// Define faces (as indices into the vertices array)
+		var faces = [
+			{vertices: [0, 1, 2, 3], fill: this.fill, stroke: this.stroke},           // Front
+			{vertices: [4, 5, 6, 7], fill: this.adjustColor(this.fill, -30), stroke: '#a0a0a0'}, // Back
+			{vertices: [0, 1, 5, 4], fill: this.adjustColor(this.fill, -15), stroke: this.stroke}, // Top
+			{vertices: [2, 3, 7, 6], fill: this.adjustColor(this.fill, -25), stroke: this.stroke}, // Bottom
+			{vertices: [0, 3, 7, 4], fill: this.adjustColor(this.fill, -20), stroke: this.stroke}, // Left
+			{vertices: [1, 2, 6, 5], fill: this.adjustColor(this.fill, -20), stroke: this.stroke}  // Right
+		];
+		
+		// Sort faces by average z-depth (simple painter's algorithm)
+		faces.sort(function(a, b) {
+			var avgZA = a.vertices.reduce(function(sum, idx) { return sum + projected[idx].z; }, 0) / a.vertices.length;
+			var avgZB = b.vertices.reduce(function(sum, idx) { return sum + projected[idx].z; }, 0) / b.vertices.length;
+			return avgZB - avgZA; // Draw back faces first
+		});
+		
+		// Draw each face
+		for (var i = 0; i < faces.length; i++) {
+			var face = faces[i];
+			var points = face.vertices.map(function(idx) { return projected[idx]; });
+			
+			// Set colors
+			c.setFillColor(face.fill);
+			c.setStrokeColor(face.stroke);
+			
+			// Draw the face
+			if (points.length > 0) {
+				c.begin();
+				c.moveTo(points[0].x, points[0].y);
+				for (var j = 1; j < points.length; j++) {
+					c.lineTo(points[j].x, points[j].y);
+				}
+				c.close();
+				c.fillAndStroke();
+			}
+		}
+		
+		// Restore the canvas state
+		c.restore();
+	};
+
+	// Helper function to adjust color brightness
+	Rectangle3DShape.prototype.adjustColor = function(color, adjustment) {
+		if (!color) return color;
+		
+		// Handle special color values
+		if (color === 'none' || color === 'transparent') return color;
+		
+		// Parse the color
+		var rgb = mxUtils.parseColor(color);
+		if (!rgb) return color;
+		
+		// Adjust each component
+		var r = Math.max(0, Math.min(255, rgb[0] + adjustment));
+		var g = Math.max(0, Math.min(255, rgb[1] + adjustment));
+		var b = Math.max(0, Math.min(255, rgb[2] + adjustment));
+		
+		return 'rgb(' + r + ',' + g + ',' + b + ')';
+	};
+
+	// Register the 3D rectangle shape
+	mxCellRenderer.registerShape('rectangle3d', Rectangle3DShape);
+
+	// 3D Rectangle Shape
+	function Rectangle3DShape(bounds, fill, stroke, strokewidth)
+	{
+		mxRectangleShape.call(this);
+		this.bounds = bounds;
+		this.fill = fill;
+		this.stroke = stroke;
+		this.strokewidth = (strokewidth != null) ? strokewidth : 1;
+		
+		// 3D properties
+		this.rotationX = 0;
+		this.rotationY = 0;
+		this.rotationZ = 0;
+		this.extrudeDepth = 20;
+	};
+
+	mxUtils.extend(Rectangle3DShape, mxRectangleShape);
+
+	Rectangle3DShape.prototype.apply = function(state)
+	{
+		mxRectangleShape.prototype.apply.apply(this, arguments);
+		
+		if (this.style != null)
+		{
+			this.rotationX = parseFloat(mxUtils.getValue(this.style, 'rotationX', this.rotationX));
+			this.rotationY = parseFloat(mxUtils.getValue(this.style, 'rotationY', this.rotationY));
+			this.rotationZ = parseFloat(mxUtils.getValue(this.style, 'rotationZ', this.rotationZ));
+			this.extrudeDepth = parseFloat(mxUtils.getValue(this.style, 'extrudeDepth', this.extrudeDepth));
+		}
+	};
+
+	// Helper function to rotate a point around the X axis
+	Rectangle3DShape.prototype.rotateX = function(point, angle) {
+		var y = point.y * Math.cos(angle) - point.z * Math.sin(angle);
+		var z = point.y * Math.sin(angle) + point.z * Math.cos(angle);
+		return {x: point.x, y: y, z: z};
+	};
+
+	// Helper function to rotate a point around the Y axis
+	Rectangle3DShape.prototype.rotateY = function(point, angle) {
+		var x = point.x * Math.cos(angle) + point.z * Math.sin(angle);
+		var z = -point.x * Math.sin(angle) + point.z * Math.cos(angle);
+		return {x: x, y: point.y, z: z};
+	};
+
+	// Helper function to rotate a point around the Z axis
+	Rectangle3DShape.prototype.rotateZ = function(point, angle) {
+		var x = point.x * Math.cos(angle) - point.y * Math.sin(angle);
+		var y = point.x * Math.sin(angle) + point.y * Math.cos(angle);
+		return {x: x, y: y, z: point.z};
+	};
+
+	// Apply all rotations to a point
+	Rectangle3DShape.prototype.applyRotations = function(point) {
+		var p = point;
+		if (this.rotationX !== 0) p = this.rotateX(p, this.rotationX);
+		if (this.rotationY !== 0) p = this.rotateY(p, this.rotationY);
+		if (this.rotationZ !== 0) p = this.rotateZ(p, this.rotationZ);
+		return p;
+	};
+
+	Rectangle3DShape.prototype.paintBackground = function(c, x, y, w, h)
+	{
+		// Save the canvas state
+		c.save();
+		
+		// Set stroke width
+		c.setStrokeWidth(this.strokewidth);
+		
+		// Define the 8 vertices of the extruded rectangle
+		var depth = this.extrudeDepth;
+		var vertices = [
+			// Front face (z = 0)
+			{x: x, y: y, z: 0},           // 0: top-left
+			{x: x + w, y: y, z: 0},       // 1: top-right
+			{x: x + w, y: y + h, z: 0},   // 2: bottom-right
+			{x: x, y: y + h, z: 0},       // 3: bottom-left
+			
+			// Back face (z = depth)
+			{x: x + depth, y: y - depth, z: depth},           // 4: top-left
+			{x: x + w + depth, y: y - depth, z: depth},       // 5: top-right
+			{x: x + w + depth, y: y + h - depth, z: depth},   // 6: bottom-right
+			{x: x + depth, y: y + h - depth, z: depth}        // 7: bottom-left
+		];
+		
+		// Apply rotations to all vertices
+		for (var i = 0; i < vertices.length; i++) {
+			vertices[i] = this.applyRotations(vertices[i]);
+		}
+		
+		// Project 3D points to 2D (simple orthographic projection)
+		var project = function(point) {
+			// For simplicity, we'll just use x and y coordinates
+			// In a more advanced implementation, we could implement proper isometric projection
+			return {x: point.x, y: point.y};
+		};
+		
+		var projected = vertices.map(project);
+		
+		// Draw the front face (0, 1, 2, 3)
+		c.begin();
+		c.moveTo(projected[0].x, projected[0].y);
+		c.lineTo(projected[1].x, projected[1].y);
+		c.lineTo(projected[2].x, projected[2].y);
+		c.lineTo(projected[3].x, projected[3].y);
+		c.close();
+		c.fillAndStroke();
+		
+		// Draw the back face (4, 5, 6, 7) with lighter stroke
+		c.setStrokeColor('#a0a0a0');
+		c.begin();
+		c.moveTo(projected[4].x, projected[4].y);
+		c.lineTo(projected[5].x, projected[5].y);
+		c.lineTo(projected[6].x, projected[6].y);
+		c.lineTo(projected[7].x, projected[7].y);
+		c.close();
+		c.stroke();
+		
+		// Draw the connecting sides
+		c.setStrokeColor(this.stroke);
+		
+		// Top side (0, 1, 5, 4)
+		c.begin();
+		c.moveTo(projected[0].x, projected[0].y);
+		c.lineTo(projected[1].x, projected[1].y);
+		c.lineTo(projected[5].x, projected[5].y);
+		c.lineTo(projected[4].x, projected[4].y);
+		c.close();
+		c.fillAndStroke();
+		
+		// Right side (1, 2, 6, 5)
+		c.begin();
+		c.moveTo(projected[1].x, projected[1].y);
+		c.lineTo(projected[2].x, projected[2].y);
+		c.lineTo(projected[6].x, projected[6].y);
+		c.lineTo(projected[5].x, projected[5].y);
+		c.close();
+		c.fillAndStroke();
+		
+		// Bottom side (2, 3, 7, 6)
+		c.begin();
+		c.moveTo(projected[2].x, projected[2].y);
+		c.lineTo(projected[3].x, projected[3].y);
+		c.lineTo(projected[7].x, projected[7].y);
+		c.lineTo(projected[6].x, projected[6].y);
+		c.close();
+		c.fillAndStroke();
+		
+		// Left side (3, 0, 4, 7)
+		c.begin();
+		c.moveTo(projected[3].x, projected[3].y);
+		c.lineTo(projected[0].x, projected[0].y);
+		c.lineTo(projected[4].x, projected[4].y);
+		c.lineTo(projected[7].x, projected[7].y);
+		c.close();
+		c.fillAndStroke();
 		c.setShadow(false);
 	
 		var sym = mxUtils.getValue(this.style, 'folderSymbol', null);
@@ -7447,4 +8107,483 @@
           new mxConnectionConstraint(new mxPoint(1, 0.5), false)];
 	ProvidedRequiredInterfaceShape.prototype.constraints = [new mxConnectionConstraint(new mxPoint(0, 0.5), false),
         new mxConnectionConstraint(new mxPoint(1, 0.5), false)];
+
+	// 3D Rectangle Shape
+	function Rectangle3DShape(bounds, fill, stroke, strokewidth)
+	{
+		mxRectangleShape.call(this);
+		this.bounds = bounds;
+		this.fill = fill;
+		this.stroke = stroke;
+		this.strokewidth = (strokewidth != null) ? strokewidth : 1;
+		
+		// 3D properties
+		this.rotationX = 0.5;  // Default rotation values for better visualization
+		this.rotationY = 0.5;
+		this.rotationZ = 0.1;
+		this.extrudeDepth = 20;
+	};
+
+	mxUtils.extend(Rectangle3DShape, mxRectangleShape);
+
+	Rectangle3DShape.prototype.apply = function(state)
+	{
+		mxRectangleShape.prototype.apply.apply(this, arguments);
+		
+		if (this.style != null)
+		{
+			this.rotationX = parseFloat(mxUtils.getValue(this.style, 'rotationX', this.rotationX));
+			this.rotationY = parseFloat(mxUtils.getValue(this.style, 'rotationY', this.rotationY));
+			this.rotationZ = parseFloat(mxUtils.getValue(this.style, 'rotationZ', this.rotationZ));
+			this.extrudeDepth = parseFloat(mxUtils.getValue(this.style, 'extrudeDepth', this.extrudeDepth));
+		}
+	};
+
+	// Point class for 3D operations
+	function Point3D(x, y, z) {
+		this.x = x || 0;
+		this.y = y || 0;
+		this.z = z || 0;
+	}
+
+	Point3D.prototype.translate = function(dx, dy, dz) {
+		return new Point3D(this.x + dx, this.y + dy, this.z + dz);
+	};
+
+	// Path class for 3D operations
+	function Path3D(points) {
+		this.points = points || [];
+	}
+
+	Path3D.prototype.translate = function(dx, dy, dz) {
+		return new Path3D(this.points.map(function(point) {
+			return point.translate(dx, dy, dz);
+		}));
+	};
+
+	// Shape class for 3D operations
+	function Shape3D(paths) {
+		this.paths = paths || [];
+	}
+
+	Shape3D.prototype.push = function(path) {
+		this.paths.push(path);
+	};
+
+	// Extrude function similar to Isomer.js
+	Shape3D.extrude = function(path, height) {
+		height = (typeof height === 'number') ? height : 1;
+		
+		var topPath = path.translate(0, 0, height);
+		var shape = new Shape3D();
+		
+		// Push the top and bottom faces
+		shape.push(new Path3D(path.points.slice().reverse())); // Bottom face (reversed for correct orientation)
+		shape.push(topPath); // Top face
+		
+		// Push each side face
+		for (var i = 0; i < path.points.length; i++) {
+			shape.push(new Path3D([
+				topPath.points[i],
+				path.points[i],
+				path.points[(i + 1) % path.points.length],
+				topPath.points[(i + 1) % topPath.points.length]
+			]));
+		}
+		
+		return shape;
+	};
+
+	// Helper function to rotate a point around the X axis
+	Rectangle3DShape.prototype.rotateX = function(point, angle, origin) {
+		origin = origin || new Point3D(0, 0, 0);
+		var p = new Point3D(point.x - origin.x, point.y - origin.y, point.z - origin.z);
+		var y = p.y * Math.cos(angle) - p.z * Math.sin(angle);
+		var z = p.y * Math.sin(angle) + p.z * Math.cos(angle);
+		return new Point3D(p.x + origin.x, y + origin.y, z + origin.z);
+	};
+
+	// Helper function to rotate a point around the Y axis
+	Rectangle3DShape.prototype.rotateY = function(point, angle, origin) {
+		origin = origin || new Point3D(0, 0, 0);
+		var p = new Point3D(point.x - origin.x, point.y - origin.y, point.z - origin.z);
+		var x = p.x * Math.cos(angle) + p.z * Math.sin(angle);
+		var z = -p.x * Math.sin(angle) + p.z * Math.cos(angle);
+		return new Point3D(x + origin.x, p.y + origin.y, z + origin.z);
+	};
+
+	// Helper function to rotate a point around the Z axis
+	Rectangle3DShape.prototype.rotateZ = function(point, angle, origin) {
+		origin = origin || new Point3D(0, 0, 0);
+		var p = new Point3D(point.x - origin.x, point.y - origin.y, point.z - origin.z);
+		var x = p.x * Math.cos(angle) - p.y * Math.sin(angle);
+		var y = p.x * Math.sin(angle) + p.y * Math.cos(angle);
+		return new Point3D(x + origin.x, y + origin.y, p.z + origin.z);
+	};
+
+	// Apply all rotations to a point
+	Rectangle3DShape.prototype.applyRotations = function(point, origin) {
+		var p = point;
+		if (this.rotationX !== 0) p = this.rotateX(p, this.rotationX, origin);
+		if (this.rotationY !== 0) p = this.rotateY(p, this.rotationY, origin);
+		if (this.rotationZ !== 0) p = this.rotateZ(p, this.rotationZ, origin);
+		return p;
+	};
+
+	// Project 3D point to 2D isometric view
+	Rectangle3DShape.prototype.project = function(point) {
+		// Isometric projection parameters
+		var angle = Math.PI / 6; // 30 degrees
+		
+		// Calculate isometric coordinates
+		var x = point.x - point.z * Math.cos(angle);
+		var y = point.y - point.z * Math.sin(angle);
+		
+		return new Point3D(x, y, 0);
+	};
+
+	Rectangle3DShape.prototype.paintBackground = function(c, x, y, w, h)
+	{
+		// Save the canvas state
+		c.save();
+		
+		// Set stroke width
+		c.setStrokeWidth(this.strokewidth);
+		c.setStrokeColor(this.stroke);
+		c.setFillColor(this.fill);
+		
+		// Define the depth
+		var depth = this.extrudeDepth;
+		
+		// Create a rectangle path in 3D
+		var rectPoints = [
+			new Point3D(x, y, 0),           // top-left
+			new Point3D(x + w, y, 0),       // top-right
+			new Point3D(x + w, y + h, 0),   // bottom-right
+			new Point3D(x, y + h, 0)        // bottom-left
+		];
+		
+		var rectPath = new Path3D(rectPoints);
+		
+		// Extrude the rectangle to create a 3D shape
+		var shape3D = Shape3D.extrude(rectPath, depth);
+		
+		// Find the center of the shape for rotation
+		var centerX = x + w / 2;
+		var centerY = y + h / 2;
+		var centerZ = depth / 2;
+		var center = new Point3D(centerX, centerY, centerZ);
+		
+		// Apply rotations to all points in the shape
+		var rotatedShape = new Shape3D();
+		for (var i = 0; i < shape3D.paths.length; i++) {
+			var path = shape3D.paths[i];
+			var rotatedPoints = [];
+			for (var j = 0; j < path.points.length; j++) {
+				var rotatedPoint = this.applyRotations(path.points[j], center);
+				rotatedPoints.push(rotatedPoint);
+			}
+			rotatedShape.push(new Path3D(rotatedPoints));
+		}
+		
+		// Project 3D points to 2D and draw
+		var projectedPaths = [];
+		for (var i = 0; i < rotatedShape.paths.length; i++) {
+			var path = rotatedShape.paths[i];
+			var projectedPoints = [];
+			for (var j = 0; j < path.points.length; j++) {
+				var projectedPoint = this.project(path.points[j]);
+				projectedPoints.push(projectedPoint);
+			}
+			projectedPaths.push({
+				points: projectedPoints,
+				index: i
+			});
+		}
+		
+		// Sort faces by z-depth for proper rendering order
+		projectedPaths.sort(function(a, b) {
+			// Calculate average z-depth for each face
+			var avgZa = a.points.reduce(function(sum, p) { return sum + p.z; }, 0) / a.points.length;
+			var avgZb = b.points.reduce(function(sum, p) { return sum + p.z; }, 0) / b.points.length;
+			return avgZb - avgZa; // Back to front rendering
+		});
+		
+		// Draw each face with different shades and materials to create 3D effect
+		// Implementation based on Isomer.js lighting model
+		for (var i = 0; i < projectedPaths.length; i++) {
+			var face = projectedPaths[i];
+			var points = face.points;
+			
+			if (points.length >= 3) {
+				// Calculate face normal using the first three points
+				// Vector from point 0 to point 1
+				var v1 = {
+					x: points[1].x - points[0].x,
+					y: points[1].y - points[0].y,
+					z: points[1].z - points[0].z
+				};
+				
+				// Vector from point 1 to point 2
+				var v2 = {
+					x: points[2].x - points[1].x,
+					y: points[2].y - points[1].y,
+					z: points[2].z - points[1].z
+				};
+				
+				// Calculate cross product to get normal vector
+				var normal = {
+					x: v1.y * v2.z - v1.z * v2.y,
+					y: v1.z * v2.x - v1.x * v2.z,
+					z: v1.x * v2.y - v1.y * v2.x
+				};
+				
+				// Normalize the normal vector
+				var magnitude = Math.sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
+				if (magnitude > 0) {
+					normal.x /= magnitude;
+					normal.y /= magnitude;
+					normal.z /= magnitude;
+				}
+				
+				// Define light source direction (similar to Isomer.js)
+				var lightDirection = {
+					x: 2,
+					y: -1,
+					z: 3
+				};
+				
+				// Normalize light direction
+				var lightMagnitude = Math.sqrt(lightDirection.x * lightDirection.x + 
+												lightDirection.y * lightDirection.y + 
+												lightDirection.z * lightDirection.z);
+				if (lightMagnitude > 0) {
+					lightDirection.x /= lightMagnitude;
+					lightDirection.y /= lightMagnitude;
+					lightDirection.z /= lightMagnitude;
+				}
+				
+				// Calculate dot product between normal and light direction
+				var dotProduct = normal.x * lightDirection.x + normal.y * lightDirection.y + normal.z * lightDirection.z;
+				
+				// Clamp dot product between -1 and 1
+				dotProduct = Math.max(-1, Math.min(1, dotProduct));
+				
+				// Calculate brightness based on dot product
+				var brightness = dotProduct;
+				
+				// Define maximum color difference (similar to Isomer.js)
+				var colorDifference = 0.20;
+				
+				// Calculate shade factor based on brightness
+				var shadeFactor = Math.round(brightness * colorDifference * 100);
+				
+				// Apply shading to fill color
+				var shadedColor = this.adjustColor(this.fill, shadeFactor * 2); // Multiply by 2 for more visible effect
+				
+				// Debug: Print color information
+				console.log('Face index:', face.index, 'Brightness:', brightness, 'Shade factor:', shadeFactor, 'Original color:', this.fill, 'Shaded color:', shadedColor);
+				
+				// Check if color is valid, if not use a default color
+				if (shadedColor.indexOf('NaN') !== -1) {
+					console.log('Invalid color detected, using default color');
+					// Use a default color based on the face index for differentiation
+					var baseColors = ['#FF9999', '#99FF99', '#9999FF', '#FFFF99', '#FF99FF', '#99FFFF'];
+					shadedColor = baseColors[face.index % baseColors.length];
+				}
+				
+				c.setFillColor(shadedColor);
+			}
+			
+			// Draw the face
+			if (points.length > 0) {
+				c.begin();
+				c.moveTo(points[0].x, points[0].y);
+				for (var j = 1; j < points.length; j++) {
+					c.lineTo(points[j].x, points[j].y);
+				}
+				c.close();
+				c.fillAndStroke();
+			}
+		}
+		
+		// Restore the canvas state
+		c.restore();
+	};
+
+	// Helper function to adjust color brightness
+	Rectangle3DShape.prototype.adjustColor = function(color, adjustment) {
+		if (!color) return color;
+		
+		// Handle special color values
+		if (color === 'none' || color === 'transparent') return color;
+		
+		// Handle CSS light-dark() function
+		if (color.startsWith('light-dark(')) {
+			// Extract the light color (first parameter)
+			var lightColor = color.match(/light-dark\(([^,]+),/);
+			if (lightColor && lightColor[1]) {
+				color = lightColor[1].trim();
+			}
+		}
+		
+		// Parse the color
+		var rgb = mxUtils.parseColor(color);
+		
+		// If mxUtils.parseColor returns an object with r, g, b properties, convert it to array
+		if (rgb && typeof rgb === 'object' && 'r' in rgb && 'g' in rgb && 'b' in rgb) {
+			rgb = [rgb.r, rgb.g, rgb.b];
+		}
+		
+		// If mxUtils.parseColor fails, try to parse hex color manually
+		if (!rgb) {
+			// Check if it's a hex color
+			if (color.charAt(0) === '#') {
+				var hex = color.substring(1);
+				
+				// Handle both 3-digit and 6-digit hex colors
+				if (hex.length === 3) {
+					hex = hex.charAt(0) + hex.charAt(0) + hex.charAt(1) + hex.charAt(1) + hex.charAt(2) + hex.charAt(2);
+				}
+				
+				if (hex.length === 6) {
+					var r = parseInt(hex.substring(0, 2), 16);
+					var g = parseInt(hex.substring(2, 4), 16);
+					var b = parseInt(hex.substring(4, 6), 16);
+					rgb = [r, g, b];
+				}
+			}
+		}
+		
+		// If still no valid RGB, return original color
+		if (!rgb) {
+			console.log('Color parsing failed for:', color);
+			return color;
+		}
+		
+		// Ensure RGB values are valid numbers
+		if (typeof rgb[0] !== 'number' || typeof rgb[1] !== 'number' || typeof rgb[2] !== 'number') {
+			console.log('Invalid RGB values:', rgb);
+			return color;
+		}
+		
+		// Ensure adjustment is a valid number
+		if (typeof adjustment !== 'number' || isNaN(adjustment)) {
+			console.log('Invalid adjustment value:', adjustment);
+			return color;
+		}
+		
+		// Adjust each component
+		var r = Math.max(0, Math.min(255, Math.round(rgb[0] + adjustment)));
+		var g = Math.max(0, Math.min(255, Math.round(rgb[1] + adjustment)));
+		var b = Math.max(0, Math.min(255, Math.round(rgb[2] + adjustment)));
+		
+		// Check if result values are valid numbers
+		if (isNaN(r) || isNaN(g) || isNaN(b)) {
+			console.log('NaN detected in color adjustment:', {
+				originalRgb: rgb,
+				adjustment: adjustment,
+				result: {r: r, g: g, b: b}
+			});
+			return color;
+		}
+		
+		return 'rgb(' + r + ',' + g + ',' + b + ')';
+	};
+
+	// Helper function to adjust color with material properties
+	Rectangle3DShape.prototype.adjustColorWithMaterial = function(color, adjustment, materialFactor) {
+		if (!color) return color;
+		
+		// Handle special color values
+		if (color === 'none' || color === 'transparent') return color;
+		
+		// Handle CSS light-dark() function
+		if (color.startsWith('light-dark(')) {
+			// Extract the light color (first parameter)
+			var lightColor = color.match(/light-dark\(([^,]+),/);
+			if (lightColor && lightColor[1]) {
+				color = lightColor[1].trim();
+			}
+		}
+		
+		// Parse the color
+		var rgb = mxUtils.parseColor(color);
+		
+		// If mxUtils.parseColor returns an object with r, g, b properties, convert it to array
+		if (rgb && typeof rgb === 'object' && 'r' in rgb && 'g' in rgb && 'b' in rgb) {
+			rgb = [rgb.r, rgb.g, rgb.b];
+		}
+		
+		// If mxUtils.parseColor fails, try to parse hex color manually
+		if (!rgb) {
+			// Check if it's a hex color
+			if (color.charAt(0) === '#') {
+				var hex = color.substring(1);
+				
+				// Handle both 3-digit and 6-digit hex colors
+				if (hex.length === 3) {
+					hex = hex.charAt(0) + hex.charAt(0) + hex.charAt(1) + hex.charAt(1) + hex.charAt(2) + hex.charAt(2);
+				}
+				
+				if (hex.length === 6) {
+					var r = parseInt(hex.substring(0, 2), 16);
+					var g = parseInt(hex.substring(2, 4), 16);
+					var b = parseInt(hex.substring(4, 6), 16);
+					rgb = [r, g, b];
+				}
+			}
+		}
+		
+		// If still no valid RGB, return original color
+		if (!rgb) {
+			console.log('Color parsing failed for:', color);
+			return color;
+		}
+		
+		// Ensure RGB values are valid numbers
+		if (typeof rgb[0] !== 'number' || typeof rgb[1] !== 'number' || typeof rgb[2] !== 'number') {
+			console.log('Invalid RGB values:', rgb);
+			return color;
+		}
+		
+		// Ensure adjustment and materialFactor are valid numbers
+		if (typeof adjustment !== 'number' || isNaN(adjustment) || 
+			typeof materialFactor !== 'number' || isNaN(materialFactor)) {
+			console.log('Invalid adjustment or materialFactor values:', {
+				adjustment: adjustment,
+				materialFactor: materialFactor
+			});
+			return color;
+		}
+		
+		// Apply adjustment based on material factor
+		// First apply material factor as a multiplier to RGB values
+		var r = Math.max(0, Math.min(255, Math.round(rgb[0] * materialFactor)));
+		var g = Math.max(0, Math.min(255, Math.round(rgb[1] * materialFactor)));
+		var b = Math.max(0, Math.min(255, Math.round(rgb[2] * materialFactor)));
+		
+		// Then apply adjustment (lighting)
+		r = Math.max(0, Math.min(255, r + adjustment));
+		g = Math.max(0, Math.min(255, g + adjustment));
+		b = Math.max(0, Math.min(255, b + adjustment));
+		
+		// Check if result values are valid numbers
+		if (isNaN(r) || isNaN(g) || isNaN(b)) {
+			console.log('NaN detected in color adjustment with material:', {
+				originalRgb: rgb,
+				adjustment: adjustment,
+				materialFactor: materialFactor,
+				intermediate: {r: Math.round(rgb[0] * materialFactor), g: Math.round(rgb[1] * materialFactor), b: Math.round(rgb[2] * materialFactor)},
+				result: {r: r, g: g, b: b}
+			});
+			return color;
+		}
+		
+		return 'rgb(' + r + ',' + g + ',' + b + ')';
+	};
+
+	// Register the 3D rectangle shape
+	mxCellRenderer.registerShape('rectangle3d', Rectangle3DShape);
+
 })();
