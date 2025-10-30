@@ -45,7 +45,7 @@ if (!mxIsElectron)
 			'https://graph.microsoft.com https://my.microsoftpersonalcontent.com https://*.sharepoint.com https://*.sharepoint.de  ' +
 			'https://*.1drv.com https://api.onedrive.com https://dl.dropboxusercontent.com https://api.openai.com ' +
 			'https://*.google.com https://fonts.gstatic.com https://fonts.googleapis.com ' +
-			'http://127.0.0.1:8089 http://localhost:8089 http://127.0.0.1 http://localhost; ' +
+			'http://127.0.0.1:8089 http://localhost:8089 http://127.0.0.1:8000 http://localhost:8000 http://127.0.0.1 http://localhost; ' +
 			// font-src about: is required for MathJax HTML-CSS output with STIX
 			'img-src * data: blob:; media-src * data:; font-src * data: about:; ' +
 			// www.draw.io required for browser data migration to app.diagrams.net and

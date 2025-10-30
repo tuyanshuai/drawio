@@ -33,7 +33,7 @@ Draw.loadPlugin(function(editorUi)
 		
 		// 缓存配置
 		cache: {
-			enabled: true,
+			enabled: false,  // 暂时禁用缓存
 			prefix: 'material_lib_',
 			expireDays: 7  // 缓存过期天数（0 表示永不过期）
 		},
@@ -434,16 +434,34 @@ Draw.loadPlugin(function(editorUi)
 				}
 			}
 			
-			var tags = (item.title || '') + ' ' + (item.tags ? item.tags.join(' ') : '');
+			// 构建 tags 字符串（用于搜索索引）
+			var tags = (item.title || '') + ' ' + (item.tags ? (Array.isArray(item.tags) ? item.tags.join(' ') : item.tags) : '');
+			tags = tags.trim();
+			
+			// 如果没有 tags，使用 title 或 id
+			if (!tags || tags === '')
+			{
+				tags = item.title || item.id || 'icon';
+			}
 			
 			var entry = {
 				data: imageData,
 				w: item.width || 100,
 				h: item.height || 100,
-				title: item.title || item.id,
-				tags: tags,
+				title: item.title || item.id || 'Icon',
+				tags: tags,  // tags 字符串用于搜索索引
 				aspect: 'fixed'
 			};
+			
+			if (window.console)
+			{
+				console.log('[Icons Library API] 创建 SVG 条目:', {
+					id: item.id,
+					title: entry.title,
+					tags: entry.tags,
+					size: entry.w + 'x' + entry.h
+				});
+			}
 			
 			if (callback)
 			{
@@ -814,8 +832,12 @@ Draw.loadPlugin(function(editorUi)
 		
 		var items = data.items;
 		
-		// 设置当前搜索库
+		// 设置当前搜索库（在整个加载过程中保持）
 		sidebar.setCurrentSearchEntryLibrary('icons', 'icons');
+		
+		// 跟踪加载完成的数量
+		var loadedCount = 0;
+		var totalCount = items.length;
 		
 		// 加载每个素材
 		for (var i = 0; i < items.length; i++)
@@ -829,7 +851,26 @@ Draw.loadPlugin(function(editorUi)
 					{
 						if (entry && entry.data)
 						{
+							// 确保搜索库设置仍然有效
+							sidebar.setCurrentSearchEntryLibrary('icons', 'icons');
+							
+							// 确保 entry 有 tags，否则 addEntries 不会添加
+							if (!entry.tags || entry.tags.trim() === '')
+							{
+								entry.tags = entry.title || item.id || 'icon';
+							}
+							
+							if (window.console)
+							{
+								console.log('[Icons Library API] 添加条目:', {
+									title: entry.title,
+									tags: entry.tags,
+									hasData: !!entry.data
+								});
+							}
+							
 							sidebar.addEntries([entry]);
+							
 							// 创建模板并添加到内容区
 							// 使用 convertDataUri 移除 data URI 中的分号（避免 style 字符串解析错误）
 							var imageData = entry.data;
@@ -894,7 +935,27 @@ Draw.loadPlugin(function(editorUi)
 								entry.title,
 								true
 							);
-							contentDiv.appendChild(template);
+							
+							if (template)
+							{
+								contentDiv.appendChild(template);
+							}
+							
+							// 更新加载计数
+							loadedCount++;
+							if (loadedCount >= totalCount)
+							{
+								// 所有项加载完成后才清除搜索库设置
+								sidebar.setCurrentSearchEntryLibrary();
+							}
+						}
+						else
+						{
+							loadedCount++;
+							if (loadedCount >= totalCount)
+							{
+								sidebar.setCurrentSearchEntryLibrary();
+							}
 						}
 					}));
 				}
@@ -907,13 +968,32 @@ Draw.loadPlugin(function(editorUi)
 						{
 							contentDiv.appendChild(template);
 						}
+						
+						// 更新加载计数
+						loadedCount++;
+						if (loadedCount >= totalCount)
+						{
+							sidebar.setCurrentSearchEntryLibrary();
+						}
 					}));
+				}
+				else
+				{
+					// 未知类型，也计数
+					loadedCount++;
+					if (loadedCount >= totalCount)
+					{
+						sidebar.setCurrentSearchEntryLibrary();
+					}
 				}
 			}))(items[i]);
 		}
 		
-		// 清除搜索库设置
-		sidebar.setCurrentSearchEntryLibrary();
+		// 如果没有需要加载的项，立即清除搜索库设置
+		if (totalCount === 0)
+		{
+			sidebar.setCurrentSearchEntryLibrary();
+		}
 	}
 	
 	// ========== 搜索功能 ==========

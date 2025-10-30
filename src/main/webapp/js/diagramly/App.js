@@ -820,7 +820,7 @@ App.main = function(callback, createUi)
 				}
 
 				// Default plugins to load if no p parameter is specified
-				var defaultPlugins = ['plugins/isocube.js', 'plugins/ai-convert.js', 'plugins/material-library.js'];
+				var defaultPlugins = ['plugins/isocube.js', 'plugins/ai-convert.js'];
 				
 				// All available plugins (when all=1 is specified)
 				var allPlugins = [
@@ -828,7 +828,6 @@ App.main = function(callback, createUi)
 					'plugins/highlight-effect.js',
 					'plugins/isocube.js',
 					'plugins/isoextrude.js',
-					'plugins/material-library.js',
 					'plugins/material-library-api.js'
 				];
 				
@@ -840,22 +839,33 @@ App.main = function(callback, createUi)
 					// Split by semicolon first, then decode each plugin separately
 					var pluginList = temp.split(';');
 					
-					// Decode each plugin name
+					// Decode each plugin name and filter out removed plugins
+					var filteredPluginList = [];
 					for (var j = 0; j < pluginList.length; j++)
 					{
 						try
 						{
-							pluginList[j] = decodeURIComponent(pluginList[j]);
+							var decodedPlugin = decodeURIComponent(pluginList[j]);
+							// Filter out removed material-library.js plugin
+							if (decodedPlugin !== 'plugins/material-library.js' && decodedPlugin.indexOf('material-library.js') === -1)
+							{
+								filteredPluginList.push(decodedPlugin);
+							}
 						}
 						catch (e)
 						{
 							// If decoding fails, try manual decoding for common cases
-							pluginList[j] = pluginList[j].replace(/%2F/gi, '/').replace(/%3B/gi, ';').replace(/%3A/gi, ':');
+							var decodedPlugin = pluginList[j].replace(/%2F/gi, '/').replace(/%3B/gi, ';').replace(/%3A/gi, ':');
+							// Filter out removed material-library.js plugin
+							if (decodedPlugin !== 'plugins/material-library.js' && decodedPlugin.indexOf('material-library.js') === -1)
+							{
+								filteredPluginList.push(decodedPlugin);
+							}
 						}
 					}
 					
 					// Mapping from key to URL in App.plugins
-					App.loadPlugins(pluginList);
+					App.loadPlugins(filteredPluginList);
 				}
 				else if (loadAll)
 				{
@@ -874,6 +884,16 @@ App.main = function(callback, createUi)
 					{
 						try
 						{
+							// Skip removed material-library.js plugin
+							if (plugins[i] && (plugins[i].indexOf('material-library.js') >= 0))
+							{
+								if (window.console != null)
+								{
+									console.warn('Skipping removed plugin:', plugins[i]);
+								}
+								continue;
+							}
+							
 							if (plugins[i].charAt(0) == '/')
 							{
 								plugins[i] = PLUGINS_BASE_PATH + plugins[i];
@@ -1453,6 +1473,16 @@ App.loadPlugins = function(plugins, useInclude)
 			try
 			{
 				var pluginId = plugins[i].trim();
+				
+				// Skip removed material-library.js plugin
+				if (pluginId === 'plugins/material-library.js' || pluginId.indexOf('material-library.js') >= 0)
+				{
+					if (window.console)
+					{
+						console.warn('Skipping removed plugin:', pluginId);
+					}
+					continue;
+				}
 				
 				// Decode URL-encoded plugin IDs/paths
 				try

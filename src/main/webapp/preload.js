@@ -37,7 +37,6 @@
 			"plugins/highlight-effect.js",
 			"plugins/isocube.js",
 			"plugins/isoextrude.js",
-			"plugins/material-library.js",
 			"plugins/material-library-api.js"
 		];
 		
@@ -49,7 +48,6 @@
 		var corePlugins = [
 			"plugins/isocube.js", 
 			"plugins/ai-convert.js", 
-			"plugins/material-library.js", 
 			"plugins/highlight-effect.js"
 		];
 		

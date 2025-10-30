@@ -22,7 +22,10 @@ Draw.loadPlugin(function(editorUi)
 		// Segment Anything API endpoint - can be configured
 		segmentApiUrl: urlParams['segmentApiUrl'] || 'http://localhost:8000/api/segment',
 		// API key if needed
-		apiKey: urlParams['segmentApiKey'] || null
+		apiKey: urlParams['segmentApiKey'] || null,
+		// Segment parameters
+		threshold: urlParams['segmentThreshold'] || 0.5,
+		minArea: urlParams['segmentMinArea'] || 100
 	};
 	
 	/**
@@ -80,7 +83,8 @@ Draw.loadPlugin(function(editorUi)
 	 */
 	function segmentImage(imageData, callback)
 	{
-		editorUi.spinner.spin(document.body, mxResources.get('loading') + '...');
+		// Update spinner message (spinner is already started by processImage)
+		editorUi.spinner.spin(document.body, mxResources.get('loading') || '正在分割图片...');
 		
 		// Prepare form data
 		var formData = new FormData();
@@ -104,11 +108,13 @@ Draw.loadPlugin(function(editorUi)
 		}
 		else
 		{
+			editorUi.spinner.stop();
 			callback(null, 'Invalid image data format');
 			return;
 		}
 		
-		formData.append('image', blob, 'image.png');
+		// Use 'file' field name as expected by the API
+		formData.append('file', blob, 'image.png');
 		
 		// Add API key if configured
 		if (config.apiKey)
@@ -116,9 +122,39 @@ Draw.loadPlugin(function(editorUi)
 			formData.append('api_key', config.apiKey);
 		}
 		
+		// Build URL with query parameters
+		var apiUrl = config.segmentApiUrl;
+		var separator = apiUrl.indexOf('?') !== -1 ? '&' : '?';
+		
+		// Add query parameters (with fallback for older browsers)
+		if (typeof URLSearchParams !== 'undefined')
+		{
+			var queryParams = new URLSearchParams();
+			queryParams.append('threshold', config.threshold.toString());
+			queryParams.append('min_area', config.minArea.toString());
+			apiUrl += separator + queryParams.toString();
+		}
+		else
+		{
+			// Fallback for older browsers
+			apiUrl += separator + 'threshold=' + encodeURIComponent(config.threshold) + 
+			          '&min_area=' + encodeURIComponent(config.minArea);
+		}
+		
+		// Log request details
+		if (window.console)
+		{
+			console.log('[AI Convert] 发送 API 请求:', apiUrl);
+			console.log('[AI Convert] 请求参数:', {
+				threshold: config.threshold,
+				min_area: config.minArea,
+				imageSize: blob.size + ' bytes'
+			});
+		}
+		
 		// Make API request
 		var xhr = new XMLHttpRequest();
-		xhr.open('POST', config.segmentApiUrl, true);
+		xhr.open('POST', apiUrl, true);
 		
 		xhr.onload = function()
 		{
@@ -129,15 +165,33 @@ Draw.loadPlugin(function(editorUi)
 				try
 				{
 					var response = JSON.parse(xhr.responseText);
+					
+					// Log API response to console
+					if (window.console)
+					{
+						console.log('[AI Convert] API 响应:', response);
+						console.log('[AI Convert] 原始响应文本:', xhr.responseText);
+					}
+					
 					callback(response, null);
 				}
 				catch (e)
 				{
+					if (window.console)
+					{
+						console.error('[AI Convert] 解析响应失败:', e);
+						console.error('[AI Convert] 原始响应文本:', xhr.responseText);
+					}
 					callback(null, 'Failed to parse API response: ' + e.message);
 				}
 			}
 			else
 			{
+				if (window.console)
+				{
+					console.error('[AI Convert] API 请求失败:', xhr.status);
+					console.error('[AI Convert] 响应文本:', xhr.responseText);
+				}
 				callback(null, 'API request failed with status: ' + xhr.status);
 			}
 		};
@@ -145,7 +199,25 @@ Draw.loadPlugin(function(editorUi)
 		xhr.onerror = function()
 		{
 			editorUi.spinner.stop();
-			callback(null, 'Network error occurred');
+			var errorMsg = 'Network error occurred';
+			
+			// Check if it's a connection refused error
+			if (config.segmentApiUrl.indexOf('localhost:8000') !== -1 || 
+			    config.segmentApiUrl.indexOf('127.0.0.1:8000') !== -1)
+			{
+				errorMsg = '无法连接到 Segment API 服务 (http://localhost:8000/api/segment)。\n\n' +
+				           '请确保：\n' +
+				           '1. Segment API 服务正在运行\n' +
+				           '2. 服务监听在端口 8000\n' +
+				           '3. 或者通过 URL 参数设置正确的 API 地址：?segmentApiUrl=http://your-server:port/api/segment';
+			}
+			
+			if (window.console)
+			{
+				console.error('[AI Convert] 网络错误:', errorMsg);
+			}
+			
+			callback(null, errorMsg);
 		};
 		
 		xhr.onabort = function()
@@ -172,6 +244,11 @@ Draw.loadPlugin(function(editorUi)
 		{
 			// Single mask format
 			masks = [segmentationData.mask];
+		}
+		
+		if (window.console)
+		{
+			console.log('[AI Convert] 开始提取轮廓，掩码数量:', masks.length);
 		}
 		
 		for (var i = 0; i < masks.length; i++)
@@ -383,7 +460,28 @@ Draw.loadPlugin(function(editorUi)
 	}
 	
 	/**
-	 * Draws contours on the canvas
+	 * Converts contour points to mxPoint array relative to bounding box
+	 */
+	function contourToPoints(contour, bbox, scale)
+	{
+		if (!contour || contour.length === 0)
+		{
+			return [];
+		}
+		
+		var points = [];
+		for (var i = 0; i < contour.length; i++)
+		{
+			var scaledX = contour[i].x * scale - bbox.x;
+			var scaledY = contour[i].y * scale - bbox.y;
+			points.push(new mxPoint(scaledX, scaledY));
+		}
+		
+		return points;
+	}
+	
+	/**
+	 * Draws contours on the canvas using polygon shapes
 	 */
 	function drawContoursOnCanvas(contours, imageWidth, imageHeight)
 	{
@@ -396,14 +494,51 @@ Draw.loadPlugin(function(editorUi)
 		try
 		{
 			var parent = graph.getDefaultParent();
-			var bounds = graph.getGraphBounds();
-			var x = bounds.x + bounds.width + 20;
-			var y = bounds.y;
+			
+			// 获取画布视图区域，将图形绘制在中心区域
+			var view = graph.view;
+			var tr = view.translate;
+			var s = view.scale;
+			var containerBounds = graph.container.getBoundingClientRect();
+			var centerX = (containerBounds.width / 2 / s) - tr.x;
+			var centerY = (containerBounds.height / 2 / s) - tr.y;
 			
 			// Scale factor to fit in reasonable size
 			var scale = Math.min(400 / imageWidth, 400 / imageHeight);
-			var scaledWidth = imageWidth * scale;
-			var scaledHeight = imageHeight * scale;
+			
+			// 计算所有轮廓的总 bounding box
+			var allMinX = Infinity, allMinY = Infinity;
+			var allMaxX = -Infinity, allMaxY = -Infinity;
+			
+			for (var i = 0; i < contours.length; i++)
+			{
+				var contour = contours[i];
+				if (contour && contour.length > 0)
+				{
+					var bbox = getPathBoundingBox(contour, scale);
+					allMinX = Math.min(allMinX, bbox.x);
+					allMinY = Math.min(allMinY, bbox.y);
+					allMaxX = Math.max(allMaxX, bbox.x + bbox.width);
+					allMaxY = Math.max(allMaxY, bbox.y + bbox.height);
+				}
+			}
+			
+			var totalWidth = allMaxX - allMinX;
+			var totalHeight = allMaxY - allMinY;
+			
+			// 起始位置：画布中心减去总宽度/高度的一半
+			var startX = centerX - totalWidth / 2;
+			var startY = centerY - totalHeight / 2;
+			
+			if (window.console)
+			{
+				console.log('[AI Convert] 开始绘制多边形，轮廓数量:', contours.length);
+				console.log('[AI Convert] 绘制区域:', {
+					中心: centerX + ',' + centerY,
+					起始位置: startX + ',' + startY,
+					总尺寸: totalWidth + 'x' + totalHeight
+				});
+			}
 			
 			for (var i = 0; i < contours.length; i++)
 			{
@@ -414,40 +549,83 @@ Draw.loadPlugin(function(editorUi)
 					continue;
 				}
 				
-				// Convert contour points to SVG path
-				var pathString = contourToSVGPath(contour, true);
+				// Calculate bounding box
+				var bbox = getPathBoundingBox(contour, scale);
 				
-				if (!pathString)
+				// Calculate position relative to start position
+				var posX = startX + (bbox.x - allMinX);
+				var posY = startY + (bbox.y - allMinY);
+				var width = Math.max(bbox.width, 10);
+				var height = Math.max(bbox.height, 10);
+				
+				// Convert contour points to relative coordinates (0-1) for polygon
+				var relativePoints = [];
+				for (var j = 0; j < contour.length; j++)
+				{
+					var relX = (contour[j].x * scale - bbox.x) / width;
+					var relY = (contour[j].y * scale - bbox.y) / height;
+					relativePoints.push([relX, relY]);
+				}
+				
+				if (relativePoints.length === 0)
 				{
 					continue;
 				}
 				
-				// Scale the path
-				var scaledPath = scalePath(pathString, scale);
-				
-				// Calculate bounding box
-				var bbox = getPathBoundingBox(contour, scale);
-				
-				// Create custom shape with path
+				// Create fill and stroke colors
 				var fillColor = brightnessToColor(contour.avgBrightness || 0.5);
 				var strokeColor = '#000000';
 				
-				// Create style with path data encoded
-				var encodedPath = encodeURIComponent(scaledPath);
-				var style = 'shape=aiPath;pathData=' + encodedPath + 
-					';fillColor=' + fillColor + 
+				// Create polygon style using mxgraph.basic.polygon format
+				// polyCoords format: [[x1,y1],[x2,y2],...] as relative coordinates (0-1)
+				var pointsStr = relativePoints.map(function(p) { 
+					return '[' + p[0] + ',' + p[1] + ']'; 
+				}).join(',');
+				
+				var style = 'shape=mxgraph.basic.polygon;polyCoords=[' + pointsStr + '];' +
+					'fillColor=' + fillColor + 
 					';strokeColor=' + strokeColor + 
-					';strokeWidth=1;';
+					';strokeWidth=1;whiteSpace=wrap;html=1;';
 				
-				// Insert vertex with custom shape
-				var vertex = graph.insertVertex(parent, null, '', 
-					x + bbox.x, y + bbox.y, 
-					Math.max(bbox.width, 10), Math.max(bbox.height, 10), 
-					style);
+				// Use insertVertex instead of addCell
+				var vertex = graph.insertVertex(parent, null, '', posX, posY, width, height, style);
 				
+				if (window.console && i < 3)
+				{
+					console.log('[AI Convert] 多边形 ' + i + ':', {
+						点数: relativePoints.length,
+						位置: posX + ',' + posY,
+						尺寸: width + 'x' + height,
+						颜色: fillColor,
+						style: style.substring(0, 100) + '...'
+					});
+				}
 			}
 			
+			// 刷新并缩放到适合所有图形
 			graph.refresh();
+			
+			// 尝试缩放到显示所有图形
+			if (contours.length > 0)
+			{
+				setTimeout(function()
+				{
+					graph.fit(20);
+				}, 100);
+			}
+			
+			if (window.console)
+			{
+				console.log('[AI Convert] 多边形绘制完成！共绘制 ' + contours.length + ' 个多边形');
+			}
+		}
+		catch (e)
+		{
+			if (window.console)
+			{
+				console.error('[AI Convert] 绘制多边形时出错:', e);
+				console.error('[AI Convert] 错误堆栈:', e.stack);
+			}
 		}
 		finally
 		{
@@ -618,6 +796,9 @@ Draw.loadPlugin(function(editorUi)
 	 */
 	function processImage(imageData)
 	{
+		// Show initial feedback
+		editorUi.spinner.spin(document.body, mxResources.get('loading') || '正在处理图片...');
+		
 		// Load image to get dimensions
 		var img = new Image();
 		img.onload = function()
@@ -630,33 +811,95 @@ Draw.loadPlugin(function(editorUi)
 			{
 				if (error)
 				{
-					editorUi.handleError({message: 'Failed to segment image: ' + error});
+					editorUi.spinner.stop();
+					if (window.console)
+					{
+						console.error('[AI Convert] 分割失败:', error);
+					}
+					editorUi.handleError({message: '图片分割失败: ' + error});
 					return;
 				}
 				
 				if (!segmentationData)
 				{
-					editorUi.handleError({message: 'No segmentation data received'});
+					editorUi.spinner.stop();
+					if (window.console)
+					{
+						console.error('[AI Convert] 未收到分割数据');
+					}
+					editorUi.handleError({message: '未收到分割数据'});
 					return;
 				}
+				
+				// Log segmentation data
+				if (window.console)
+				{
+					console.log('[AI Convert] 分割数据:', segmentationData);
+					console.log('[AI Convert] 图片尺寸:', imageWidth + 'x' + imageHeight);
+				}
+				
+				// Update status
+				editorUi.spinner.spin(document.body, mxResources.get('loading') || '正在提取轮廓...');
 				
 				// Extract contours
 				var contours = extractContours(segmentationData, imageWidth, imageHeight);
 				
 				if (!contours || contours.length === 0)
 				{
-					editorUi.handleError({message: 'No contours extracted from segmentation'});
+					editorUi.spinner.stop();
+					if (window.console)
+					{
+						console.error('[AI Convert] 未能提取轮廓');
+					}
+					editorUi.handleError({message: '未能从分割结果中提取轮廓'});
 					return;
 				}
 				
+				// Log contours data
+				if (window.console)
+				{
+					console.log('[AI Convert] 提取的轮廓数量:', contours.length);
+					console.log('[AI Convert] 轮廓数据:', contours);
+					for (var i = 0; i < Math.min(contours.length, 3); i++)
+					{
+						console.log('[AI Convert] 轮廓 ' + i + ':', {
+							points: contours[i].length,
+							avgBrightness: contours[i].avgBrightness,
+							preview: contours[i].slice(0, 5) + '...'
+						});
+					}
+				}
+				
+				// Update status
+				editorUi.spinner.spin(document.body, mxResources.get('loading') || '正在绘制图形...');
+				
 				// Draw contours on canvas
 				drawContoursOnCanvas(contours, imageWidth, imageHeight);
+				
+				// Stop spinner after drawing
+				editorUi.spinner.stop();
+				
+				// Log final result
+				if (window.console)
+				{
+					console.log('[AI Convert] 处理完成！');
+					console.log('[AI Convert] 处理摘要:', {
+						图片尺寸: imageWidth + 'x' + imageHeight,
+						分割区域数: (segmentationData.masks || segmentationData.segments || []).length,
+						提取轮廓数: contours.length,
+						已绘制图形: true
+					});
+				}
+				
+				// Show success message
+				editorUi.editor.setStatus(mxResources.get('done') || '完成');
 			});
 		};
 		
 		img.onerror = function()
 		{
-			editorUi.handleError({message: 'Failed to load image'});
+			editorUi.spinner.stop();
+			editorUi.handleError({message: '加载图片失败'});
 		};
 		
 		img.src = imageData;
