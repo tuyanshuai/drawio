@@ -626,6 +626,12 @@ Draw.loadPlugin(function(editorUi)
     {
         if (sb != null)
         {
+            // Remove existing palette if it exists to avoid duplicates
+            if (sb.palettes['isometric'])
+            {
+                sb.removePalette('isometric');
+            }
+            
             sb.addPalette('isometric', '3D 形状', true, function(content)
             {
                 (function(){
@@ -644,7 +650,11 @@ Draw.loadPlugin(function(editorUi)
             });
         }
     };
+    
+    // Add palette immediately
     addIsoPalette();
+    
+    // Handles reload of sidebar after dark mode change or reinit
     if (sb != null)
     {
         var sbInit = sb.init;

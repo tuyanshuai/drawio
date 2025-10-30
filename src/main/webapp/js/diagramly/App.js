@@ -298,7 +298,9 @@ App.pluginRegistry = {'4xAKTrabTpTzahoLthkwPNUn': 'plugins/explore.js',
 	'tr': 'plugins/trello.js', 'f5': 'plugins/rackF5.js',
 	'webcola': 'plugins/webcola/webcola.js', 'rnd': 'plugins/random.js',
 	'page': 'plugins/page.js', 'gd': 'plugins/googledrive.js',
-	'tags': 'plugins/tags.js'};
+	'tags': 'plugins/tags.js',
+	'aiConvert': 'plugins/ai-convert.js', 'aic': 'plugins/ai-convert.js',
+	'materialLibrary': 'plugins/material-library.js', 'ml': 'plugins/material-library.js'};
 
 App.publicPlugin = [
 	'ex',
@@ -797,10 +799,35 @@ App.main = function(callback, createUi)
 				var temp = urlParams['p'];
 				App.initPluginCallback();
 
+				// Default plugins to load if no p parameter is specified
+				var defaultPlugins = ['plugins/isocube.js', 'plugins/ai-convert.js', 'plugins/material-library.js'];
+				
 				if (temp != null)
 				{
+					// Split by semicolon first, then decode each plugin separately
+					var pluginList = temp.split(';');
+					
+					// Decode each plugin name
+					for (var j = 0; j < pluginList.length; j++)
+					{
+						try
+						{
+							pluginList[j] = decodeURIComponent(pluginList[j]);
+						}
+						catch (e)
+						{
+							// If decoding fails, try manual decoding for common cases
+							pluginList[j] = pluginList[j].replace(/%2F/gi, '/').replace(/%3B/gi, ';').replace(/%3A/gi, ':');
+						}
+					}
+					
 					// Mapping from key to URL in App.plugins
-					App.loadPlugins(temp.split(';'));
+					App.loadPlugins(pluginList);
+				}
+				else
+				{
+					// Load default plugins if no p parameter
+					App.loadPlugins(defaultPlugins);
 				}
 				
 				if (plugins != null && plugins.length > 0 && urlParams['plugins'] != '0')
@@ -1387,42 +1414,97 @@ App.loadPlugins = function(plugins, useInclude)
 		{
 			try
 			{
-				if (App.pluginRegistry[plugins[i]] != null)
+				var pluginId = plugins[i].trim();
+				
+				// Decode URL-encoded plugin IDs/paths
+				try
 				{
-					var url = PLUGINS_BASE_PATH + App.pluginRegistry[plugins[i]];
-					
-					if (App.pluginsLoaded[url] == null)
+					pluginId = decodeURIComponent(pluginId);
+				}
+				catch (e)
+				{
+					// If decoding fails, try to decode manually for common cases
+					pluginId = pluginId.replace(/%2F/gi, '/').replace(/%3B/gi, ';').replace(/%3A/gi, ':');
+				}
+				
+				var url = null;
+				
+				// Check if it's a registered plugin ID
+				if (App.pluginRegistry[pluginId] != null)
+				{
+					url = PLUGINS_BASE_PATH + App.pluginRegistry[pluginId];
+				}
+				// Check if it's a direct file path (starts with plugins/ or ./plugins/)
+				else if (pluginId.indexOf('plugins/') === 0 || pluginId.indexOf('./plugins/') === 0)
+				{
+					// Use the path directly
+					if (pluginId.indexOf('./') === 0)
 					{
-						App.pluginsLoaded[url] = true;
-						App.embedModePluginsCount++;
-						
-						if (typeof window.drawDevUrl === 'undefined')
+						url = pluginId;
+					}
+					else
+					{
+						// Ensure we have the correct path prefix
+						if (typeof PLUGINS_BASE_PATH !== 'undefined' && PLUGINS_BASE_PATH)
 						{
-							if (useInclude)
-							{
-								mxinclude(url);
-							}
-							else
-							{
-								mxscript(url);
-							}
+							url = PLUGINS_BASE_PATH + pluginId;
 						}
 						else
 						{
-							if (useInclude)
-							{
-								mxinclude(url);
-							}
-							else
-							{
-								mxscript(drawDevUrl + url);
-							}
+							url = './' + pluginId;
 						}
 					}
 				}
-				else if (window.console != null)
+				// Check if ALLOW_CUSTOM_PLUGINS is enabled and it's a valid plugin path
+				else if (window.ALLOW_CUSTOM_PLUGINS && pluginId.indexOf('plugins/') >= 0)
 				{
-					console.log('Unknown plugin:', plugins[i]);
+					var startIdx = pluginId.indexOf('plugins/');
+					if (typeof PLUGINS_BASE_PATH !== 'undefined' && PLUGINS_BASE_PATH)
+					{
+						url = PLUGINS_BASE_PATH + pluginId.substring(startIdx);
+					}
+					else
+					{
+						url = './' + pluginId.substring(startIdx);
+					}
+				}
+				
+				if (url != null && App.pluginsLoaded[url] == null)
+				{
+					if (window.console)
+					{
+						console.log('Loading plugin:', pluginId, '->', url);
+					}
+					
+					App.pluginsLoaded[url] = true;
+					App.embedModePluginsCount++;
+					
+					if (typeof window.drawDevUrl === 'undefined')
+					{
+						if (useInclude)
+						{
+							mxinclude(url);
+						}
+						else
+						{
+							mxscript(url);
+						}
+					}
+					else
+					{
+						if (useInclude)
+						{
+							mxinclude(url);
+						}
+						else
+						{
+							mxscript(drawDevUrl + url);
+						}
+					}
+				}
+				else if (url == null && window.console != null)
+				{
+					console.log('Unknown plugin:', plugins[i], '(decoded:', pluginId + ')');
 				}
 			}
 			catch (e)

@@ -33,7 +33,20 @@ var urlParams = (function()
         
         if (idx > 0)
         {
-            result[params[i].substring(0, idx)] = params[i].substring(idx + 1);
+            var key = params[i].substring(0, idx);
+            var value = params[i].substring(idx + 1);
+            
+            // Decode URL-encoded values
+            try
+            {
+                value = decodeURIComponent(value);
+            }
+            catch (e)
+            {
+                // If decoding fails, use as-is
+            }
+            
+            result[key] = value;
         }
     }
     
