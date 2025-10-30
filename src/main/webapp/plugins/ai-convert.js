@@ -258,10 +258,52 @@ Draw.loadPlugin(function(editorUi)
 			
 			if (contour && contour.length > 0)
 			{
-				// Calculate average brightness
-				var avgBrightness = calculateAverageBrightness(mask, width, height);
-				contour.avgBrightness = avgBrightness;
-				contours.push(contour);
+				// Validate contour points
+				var isValid = true;
+				for (var j = 0; j < contour.length; j++)
+				{
+					if (!contour[j] || typeof contour[j].x !== 'number' || typeof contour[j].y !== 'number' ||
+					    isNaN(contour[j].x) || isNaN(contour[j].y))
+					{
+						isValid = false;
+						if (window.console)
+						{
+							console.error('[AI Convert] 轮廓 ' + i + ' 包含无效点:', contour[j]);
+						}
+						break;
+					}
+				}
+				
+				if (isValid)
+				{
+					// Calculate average brightness from fill color if available
+					var avgBrightness = 0.5; // default
+					if (mask.fill && mask.fill.rgb && Array.isArray(mask.fill.rgb))
+					{
+						// Calculate brightness from RGB: (R*0.299 + G*0.587 + B*0.114) / 255
+						var r = mask.fill.rgb[0] || 128;
+						var g = mask.fill.rgb[1] || 128;
+						var b = mask.fill.rgb[2] || 128;
+						avgBrightness = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
+					}
+					else
+					{
+						avgBrightness = calculateAverageBrightness(mask, width, height);
+					}
+					
+					contour.avgBrightness = avgBrightness;
+					contours.push(contour);
+					
+					if (window.console && i < 3)
+					{
+						console.log('[AI Convert] 轮廓 ' + i + ' 提取成功:', {
+							点数: contour.length,
+							第一个点: contour[0],
+							最后一个点: contour[contour.length - 1],
+							亮度: avgBrightness
+						});
+					}
+				}
 			}
 		}
 		
@@ -278,8 +320,21 @@ Draw.loadPlugin(function(editorUi)
 		// Handle different mask formats
 		if (mask.points && Array.isArray(mask.points))
 		{
-			// Already in point format
-			contour = mask.points;
+			// Convert points to {x, y} format if needed
+			for (var i = 0; i < mask.points.length; i++)
+			{
+				var point = mask.points[i];
+				if (Array.isArray(point) && point.length >= 2)
+				{
+					// Format: [x, y]
+					contour.push({x: point[0], y: point[1]});
+				}
+				else if (point && typeof point.x === 'number' && typeof point.y === 'number')
+				{
+					// Format: {x, y}
+					contour.push({x: point.x, y: point.y});
+				}
+			}
 		}
 		else if (mask.path && typeof mask.path === 'string')
 		{
@@ -292,7 +347,7 @@ Draw.loadPlugin(function(editorUi)
 			contour = maskToContour(mask, width, height);
 		}
 		
-		// Smooth the contour
+		// Smooth the contour (only if we have valid points)
 		if (contour.length > 0)
 		{
 			contour = smoothContour(contour);
@@ -339,6 +394,19 @@ Draw.loadPlugin(function(editorUi)
 			return contour;
 		}
 		
+		// Validate contour points format
+		for (var k = 0; k < contour.length; k++)
+		{
+			if (!contour[k] || typeof contour[k].x !== 'number' || typeof contour[k].y !== 'number')
+			{
+				if (window.console)
+				{
+					console.error('[AI Convert] 无效的轮廓点格式:', contour[k]);
+				}
+				return contour; // Return original if invalid
+			}
+		}
+		
 		epsilon = epsilon || 2.0;
 		
 		// Simplified smoothing - can be enhanced
@@ -351,13 +419,24 @@ Draw.loadPlugin(function(editorUi)
 			var curr = contour[i];
 			var next = contour[(i + 1) % contour.length];
 			
-			// Simple moving average
-			var smoothedPoint = {
-				x: (prev.x + curr.x + next.x) / 3,
-				y: (prev.y + curr.y + next.y) / 3
-			};
-			
-			smoothed.push(smoothedPoint);
+			// Validate points before smoothing
+			if (typeof prev.x === 'number' && typeof prev.y === 'number' &&
+			    typeof curr.x === 'number' && typeof curr.y === 'number' &&
+			    typeof next.x === 'number' && typeof next.y === 'number')
+			{
+				// Simple moving average
+				var smoothedPoint = {
+					x: (prev.x + curr.x + next.x) / 3,
+					y: (prev.y + curr.y + next.y) / 3
+				};
+				
+				smoothed.push(smoothedPoint);
+			}
+			else
+			{
+				// If invalid, use original point
+				smoothed.push(curr);
+			}
 		}
 		
 		return smoothed;
@@ -481,6 +560,56 @@ Draw.loadPlugin(function(editorUi)
 	}
 	
 	/**
+	 * Custom polygon shape for AI converted contours
+	 */
+	function AIConvertedPolygonShape()
+	{
+		mxActor.call(this);
+	};
+	
+	mxUtils.extend(AIConvertedPolygonShape, mxActor);
+	
+	AIConvertedPolygonShape.prototype.redrawPath = function(c, x, y, w, h)
+	{
+		var polyCoords = this.getPolyCoords();
+		
+		if (polyCoords && polyCoords.length > 0)
+		{
+			c.begin();
+			c.moveTo(x + polyCoords[0][0] * w, y + polyCoords[0][1] * h);
+			
+			for (var i = 1; i < polyCoords.length; i++)
+			{
+				c.lineTo(x + polyCoords[i][0] * w, y + polyCoords[i][1] * h);
+			}
+			
+			c.close();
+			c.end();
+			c.fillAndStroke();
+		}
+	};
+	
+	AIConvertedPolygonShape.prototype.getPolyCoords = function()
+	{
+		try
+		{
+			var coordsStr = mxUtils.getValue(this.style, 'polyCoords', '[]');
+			return JSON.parse(coordsStr);
+		}
+		catch (e)
+		{
+			if (window.console)
+			{
+				console.error('[AI Convert] 解析 polyCoords 失败:', e);
+			}
+			return [];
+		}
+	};
+	
+	// Register the custom shape
+	mxCellRenderer.registerShape('aiConvertedPolygon', AIConvertedPolygonShape);
+	
+	/**
 	 * Draws contours on the canvas using polygon shapes
 	 */
 	function drawContoursOnCanvas(contours, imageWidth, imageHeight)
@@ -495,18 +624,15 @@ Draw.loadPlugin(function(editorUi)
 		{
 			var parent = graph.getDefaultParent();
 			
-			// 获取画布视图区域，将图形绘制在中心区域
-			var view = graph.view;
-			var tr = view.translate;
-			var s = view.scale;
-			var containerBounds = graph.container.getBoundingClientRect();
-			var centerX = (containerBounds.width / 2 / s) - tr.x;
-			var centerY = (containerBounds.height / 2 / s) - tr.y;
-			
-			// Scale factor to fit in reasonable size
+			// Scale factor to fit in reasonable size (use actual image dimensions from API)
 			var scale = Math.min(400 / imageWidth, 400 / imageHeight);
 			
-			// 计算所有轮廓的总 bounding box
+			if (window.console)
+			{
+				console.log('[AI Convert] 图片尺寸:', imageWidth + 'x' + imageHeight, '缩放比例:', scale);
+			}
+			
+			// 计算所有轮廓的总 bounding box（使用原始坐标，不缩放）
 			var allMinX = Infinity, allMinY = Infinity;
 			var allMaxX = -Infinity, allMaxY = -Infinity;
 			
@@ -515,16 +641,38 @@ Draw.loadPlugin(function(editorUi)
 				var contour = contours[i];
 				if (contour && contour.length > 0)
 				{
-					var bbox = getPathBoundingBox(contour, scale);
-					allMinX = Math.min(allMinX, bbox.x);
-					allMinY = Math.min(allMinY, bbox.y);
-					allMaxX = Math.max(allMaxX, bbox.x + bbox.width);
-					allMaxY = Math.max(allMaxY, bbox.y + bbox.height);
+					// First get bounding box without scale
+					var bboxUnscaled = getPathBoundingBox(contour, 1);
+					
+					if (bboxUnscaled.width > 0 && bboxUnscaled.height > 0)
+					{
+						allMinX = Math.min(allMinX, bboxUnscaled.x);
+						allMinY = Math.min(allMinY, bboxUnscaled.y);
+						allMaxX = Math.max(allMaxX, bboxUnscaled.x + bboxUnscaled.width);
+						allMaxY = Math.max(allMaxY, bboxUnscaled.y + bboxUnscaled.height);
+					}
 				}
 			}
 			
-			var totalWidth = allMaxX - allMinX;
-			var totalHeight = allMaxY - allMinY;
+			// 如果无法计算 bounding box，使用默认值
+			if (allMinX === Infinity || allMinY === Infinity || allMaxX === -Infinity || allMaxY === -Infinity)
+			{
+				allMinX = 0;
+				allMinY = 0;
+				allMaxX = imageWidth;
+				allMaxY = imageHeight;
+			}
+			
+			var totalWidth = (allMaxX - allMinX) * scale;
+			var totalHeight = (allMaxY - allMinY) * scale;
+			
+			// 获取画布视图区域，将图形绘制在中心区域
+			var view = graph.view;
+			var tr = view.translate;
+			var s = view.scale;
+			var containerBounds = graph.container ? graph.container.getBoundingClientRect() : {width: 800, height: 600};
+			var centerX = (containerBounds.width / 2 / s) - tr.x;
+			var centerY = (containerBounds.height / 2 / s) - tr.y;
 			
 			// 起始位置：画布中心减去总宽度/高度的一半
 			var startX = centerX - totalWidth / 2;
@@ -549,12 +697,24 @@ Draw.loadPlugin(function(editorUi)
 					continue;
 				}
 				
-				// Calculate bounding box
+				// Calculate bounding box (unscaled first to get relative position)
+				var bboxUnscaled = getPathBoundingBox(contour, 1);
 				var bbox = getPathBoundingBox(contour, scale);
 				
+				// Validate bounding box
+				if (isNaN(bbox.x) || isNaN(bbox.y) || isNaN(bbox.width) || isNaN(bbox.height) ||
+				    bbox.width <= 0 || bbox.height <= 0)
+				{
+					if (window.console)
+					{
+						console.error('[AI Convert] 多边形 ' + i + ' 的边界框无效:', bbox);
+					}
+					continue;
+				}
+				
 				// Calculate position relative to start position
-				var posX = startX + (bbox.x - allMinX);
-				var posY = startY + (bbox.y - allMinY);
+				var posX = startX + (bboxUnscaled.x - allMinX) * scale;
+				var posY = startY + (bboxUnscaled.y - allMinY) * scale;
 				var width = Math.max(bbox.width, 10);
 				var height = Math.max(bbox.height, 10);
 				
@@ -562,9 +722,38 @@ Draw.loadPlugin(function(editorUi)
 				var relativePoints = [];
 				for (var j = 0; j < contour.length; j++)
 				{
-					var relX = (contour[j].x * scale - bbox.x) / width;
-					var relY = (contour[j].y * scale - bbox.y) / height;
-					relativePoints.push([relX, relY]);
+					var point = contour[j];
+					
+					// Ensure point is in {x, y} format
+					var px, py;
+					if (Array.isArray(point))
+					{
+						px = point[0];
+						py = point[1];
+					}
+					else if (point && typeof point.x === 'number' && typeof point.y === 'number')
+					{
+						px = point.x;
+						py = point.y;
+					}
+					else
+					{
+						if (window.console)
+						{
+							console.error('[AI Convert] 无效的点格式:', point);
+						}
+						continue;
+					}
+					
+					// Convert to relative coordinates (0-1) within the bounding box
+					var relX = (px * scale - bbox.x) / width;
+					var relY = (py * scale - bbox.y) / height;
+					
+					// Validate relative coordinates
+					if (!isNaN(relX) && !isNaN(relY) && isFinite(relX) && isFinite(relY))
+					{
+						relativePoints.push([relX, relY]);
+					}
 				}
 				
 				if (relativePoints.length === 0)
@@ -576,18 +765,17 @@ Draw.loadPlugin(function(editorUi)
 				var fillColor = brightnessToColor(contour.avgBrightness || 0.5);
 				var strokeColor = '#000000';
 				
-				// Create polygon style using mxgraph.basic.polygon format
-				// polyCoords format: [[x1,y1],[x2,y2],...] as relative coordinates (0-1)
-				var pointsStr = relativePoints.map(function(p) { 
-					return '[' + p[0] + ',' + p[1] + ']'; 
-				}).join(',');
-				
-				var style = 'shape=mxgraph.basic.polygon;polyCoords=[' + pointsStr + '];' +
+				// Create style for filled polygon using custom shape
+				var polyCoordsJson = JSON.stringify(relativePoints);
+				var style = 'shape=aiConvertedPolygon;' +
+					'polyCoords=' + polyCoordsJson + ';' +
 					'fillColor=' + fillColor + 
 					';strokeColor=' + strokeColor + 
-					';strokeWidth=1;whiteSpace=wrap;html=1;';
+					';strokeWidth=1;' +
+					'whiteSpace=wrap;' +
+					'html=1;';
 				
-				// Use insertVertex instead of addCell
+				// Create vertex with custom polygon shape
 				var vertex = graph.insertVertex(parent, null, '', posX, posY, width, height, style);
 				
 				if (window.console && i < 3)
@@ -597,7 +785,7 @@ Draw.loadPlugin(function(editorUi)
 						位置: posX + ',' + posY,
 						尺寸: width + 'x' + height,
 						颜色: fillColor,
-						style: style.substring(0, 100) + '...'
+						polyCoords: polyCoordsJson.substring(0, 80) + '...'
 					});
 				}
 			}
@@ -772,15 +960,40 @@ Draw.loadPlugin(function(editorUi)
 		var minX = Infinity, minY = Infinity;
 		var maxX = -Infinity, maxY = -Infinity;
 		
+		scale = scale || 1;
+		
 		for (var i = 0; i < contour.length; i++)
 		{
-			var scaledX = contour[i].x * scale;
-			var scaledY = contour[i].y * scale;
+			var point = contour[i];
+			
+			// Validate point format
+			if (!point || typeof point.x !== 'number' || typeof point.y !== 'number' ||
+			    isNaN(point.x) || isNaN(point.y))
+			{
+				if (window.console)
+				{
+					console.error('[AI Convert] getPathBoundingBox: 无效的点:', point, '索引:', i);
+				}
+				continue;
+			}
+			
+			var scaledX = point.x * scale;
+			var scaledY = point.y * scale;
 			
 			minX = Math.min(minX, scaledX);
 			minY = Math.min(minY, scaledY);
 			maxX = Math.max(maxX, scaledX);
 			maxY = Math.max(maxY, scaledY);
+		}
+		
+		// Validate results
+		if (minX === Infinity || minY === Infinity || maxX === -Infinity || maxY === -Infinity)
+		{
+			if (window.console)
+			{
+				console.error('[AI Convert] getPathBoundingBox: 无法计算边界框');
+			}
+			return {x: 0, y: 0, width: 100, height: 100};
 		}
 		
 		return {
