@@ -1786,7 +1786,6 @@ Sidebar.prototype.addGeneralPalette = function(expand)
 	 	this.createVertexTemplateEntry('triangle;whiteSpace=wrap;html=1;', 60, 80, '', 'Triangle', null, null, 'triangle logic inverter buffer'),
 	 	
 	 	// Add polygon shape to general palette - click to start manual drawing
-	 	// Use a hexagon (6-sided polygon) for better visual representation
 	 	this.addEntry('polygon shape custom', mxUtils.bind(this, function()
 	 	{
 	 		var clickFn = mxUtils.bind(this, function(evt)
@@ -1809,18 +1808,7 @@ Sidebar.prototype.addGeneralPalette = function(expand)
 	 			}
 	 		});
 	 		
-	 		// Hexagon coordinates: more recognizable as a polygon
-	 		// Center at (0.5, 0.5), radius ~0.4, starting from top
-	 		var hexCoords = [
-	 			[0.5, 0.1],      // Top
-	 			[0.85, 0.25],    // Top-right
-	 			[0.85, 0.75],    // Bottom-right
-	 			[0.5, 0.9],      // Bottom
-	 			[0.15, 0.75],    // Bottom-left
-	 			[0.15, 0.25]     // Top-left
-	 		];
-	 		
-	 		return this.createVertexTemplate('shape=manualPolygon;polyCoords=' + JSON.stringify(hexCoords) + ';whiteSpace=wrap;html=1;', 100, 100, '', 'Polygon', null, null, null, null, clickFn);
+	 		return this.createVertexTemplate('shape=manualPolygon;polyCoords=[[0.25,0],[0.75,0],[1,0.25],[1,0.75],[0.75,1],[0.25,1],[0,0.75],[0,0.25]];whiteSpace=wrap;html=1;', 100, 100, '', 'Polygon', null, null, null, null, clickFn);
 	 	})),
 	 	
 	 	 

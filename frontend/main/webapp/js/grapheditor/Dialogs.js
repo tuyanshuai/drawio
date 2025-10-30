@@ -2589,10 +2589,10 @@ var EditDataDialog = function(ui, cell)
 		'content': mxResources.get('content') || '内容',
 		'data': mxResources.get('data') || '数据',
 		'placeholder': mxResources.get('placeholder') || '占位符',
-		'isorx': '旋转X',
-		'isory': '旋转Y',
-		'isorz': '旋转Z',
-		'isoz': '深度'
+		'isorx': mxResources.get('rotationX') || '旋转X',
+		'isory': mxResources.get('rotationY') || '旋转Y',
+		'isorz': mxResources.get('rotationZ') || '旋转Z',
+		'isoz': mxResources.get('depth') || '深度'
 	};
 	
 	// Function to get translated property name
@@ -2695,37 +2695,6 @@ var EditDataDialog = function(ui, cell)
 	var temp = [];
 	var isLayer = graph.getModel().getParent(cell) == graph.getModel().getRoot();
 	var style = graph.getCellStyle(cell);
-	
-	// Check if this is a 3D shape and add rotation/depth properties
-	var shapeType = style ? style[mxConstants.STYLE_SHAPE] : null;
-	var is3DShape = (shapeType === 'isoCube' || shapeType === 'isoCylinder' || shapeType === 'isoExtrude');
-	
-	// Add 3D properties if this is a 3D shape
-	if (is3DShape)
-	{
-		// Check if properties already exist in attributes, if not add from style
-		var isoRx = value.getAttribute('isoRx');
-		var isoRy = value.getAttribute('isoRy');
-		var isoRz = value.getAttribute('isoRz');
-		var isoZ = value.getAttribute('isoZ');
-		
-		if (!isoRx && style['isoRx'] != null)
-		{
-			value.setAttribute('isoRx', style['isoRx']);
-		}
-		if (!isoRy && style['isoRy'] != null)
-		{
-			value.setAttribute('isoRy', style['isoRy']);
-		}
-		if (!isoRz && style['isoRz'] != null)
-		{
-			value.setAttribute('isoRz', style['isoRz']);
-		}
-		if (!isoZ && style['isoZ'] != null)
-		{
-			value.setAttribute('isoZ', style['isoZ']);
-		}
-	}
 
 	for (var i = 0; i < attrs.length; i++)
 	{
@@ -2983,38 +2952,17 @@ var EditDataDialog = function(ui, cell)
 			value = value.cloneNode(true);
 			var removeLabel = false;
 			
-			// Track if we need to update 3D style properties
-			var is3DShape = false;
-			var shapeType = null;
-			var style = graph.getCellStyle(cell);
-			if (style)
-			{
-				shapeType = style[mxConstants.STYLE_SHAPE];
-				is3DShape = (shapeType === 'isoCube' || shapeType === 'isoCylinder' || shapeType === 'isoExtrude');
-			}
-			
 			for (var i = 0; i < names.length; i++)
 			{
 				if (texts[i] == null)
 				{
 					value.removeAttribute(names[i]);
-					// Also remove from style if it's a 3D property
-					if (is3DShape && (names[i] === 'isoRx' || names[i] === 'isoRy' || names[i] === 'isoRz' || names[i] === 'isoZ'))
-					{
-						graph.setCellStyles(names[i], null, [cell]);
-					}
 				}
 				else
 				{
 					value.setAttribute(names[i], texts[i].value);
 					removeLabel = removeLabel || (names[i] == 'placeholder' &&
 						value.getAttribute('placeholders') == '1');
-					
-					// Update style if it's a 3D property
-					if (is3DShape && (names[i] === 'isoRx' || names[i] === 'isoRy' || names[i] === 'isoRz' || names[i] === 'isoZ'))
-					{
-						graph.setCellStyles(names[i], texts[i].value, [cell]);
-					}
 				}
 			}
 			
@@ -3026,12 +2974,6 @@ var EditDataDialog = function(ui, cell)
 			
 			// Updates the value of the cell (undoable)
 			graph.getModel().setValue(cell, value);
-			
-			// Refresh the cell to update 3D rendering
-			if (is3DShape)
-			{
-				graph.refresh(cell);
-			}
 		}
 		catch (e)
 		{

@@ -244,33 +244,10 @@ Draw.loadPlugin(function(editorUi)
             {
                 try
                 {
-                    // Handle escaped semicolons and other special characters
-                    if (typeof polyCoordsStr === 'string')
-                    {
-                        polyCoordsStr = polyCoordsStr.replace(/\\;/g, ';');
-                    }
-                    
-                    // Handle both string and already parsed JSON
-                    var polyCoords = null;
-                    if (typeof polyCoordsStr === 'string')
-                    {
-                        // Try to parse as JSON
-                        polyCoords = JSON.parse(polyCoordsStr);
-                    }
-                    else if (Array.isArray(polyCoordsStr))
-                    {
-                        polyCoords = polyCoordsStr;
-                    }
-                    
+                    var polyCoords = JSON.parse(polyCoordsStr);
                     if (Array.isArray(polyCoords) && polyCoords.length >= 2)
                     {
-                        // Clear points array to ensure we start fresh
-                        points = [];
-                        
-                        // Convert relative coordinates (0-1) to centered coordinates (-sx to sx, -sy to sy)
-                        // In ManualPolygonShape, coordinates are relative to the bounding box (0-1)
-                        // We need to convert to centered coordinates for 3D extrusion
-                        // CRITICAL: Process ALL vertices from polyCoords to match the original polygon
+                        // Convert relative coordinates (0-1) to absolute coordinates (-sx to sx, -sy to sy)
                         for (var i = 0; i < polyCoords.length; i++)
                         {
                             if (Array.isArray(polyCoords[i]) && polyCoords[i].length >= 2)
@@ -279,10 +256,7 @@ Draw.loadPlugin(function(editorUi)
                                 var relY = parseFloat(polyCoords[i][1]);
                                 if (!isNaN(relX) && !isNaN(relY))
                                 {
-                                    // Convert from relative (0-1) to centered coordinates
-                                    // relX=0 -> x=-sx, relX=0.5 -> x=0, relX=1 -> x=sx
-                                    // Same for Y: relY=0 -> y=-sy, relY=0.5 -> y=0, relY=1 -> y=sy
-                                    // Formula: x = (relX - 0.5) * w, y = (relY - 0.5) * h
+                                    // Convert from relative (0-1) to centered coordinates (-sx to sx, -sy to sy)
                                     points.push({
                                         x: (relX - 0.5) * w,
                                         y: (relY - 0.5) * h
@@ -290,22 +264,9 @@ Draw.loadPlugin(function(editorUi)
                                 }
                             }
                         }
-                        
-                        // Return points if we successfully parsed them (need at least 3 for a polygon)
-                        // Ensure we return ALL vertices to match the original polygon exactly
-                        if (points.length >= 3)
+                        // Return points if we successfully parsed them
+                        if (points.length >= 2)
                         {
-                            // Debug: log if vertex count doesn't match
-                            if (window.console && points.length !== polyCoords.length)
-                            {
-                                console.warn('[IsoExtrude] Vertex count mismatch: polyCoords=' + polyCoords.length + ', points=' + points.length);
-                            }
-                            return points;
-                        }
-                        else if (points.length >= 2)
-                        {
-                            // If only 2 points, duplicate the last point to make it a valid polygon
-                            points.push({x: points[points.length - 1].x, y: points[points.length - 1].y});
                             return points;
                         }
                     }
@@ -314,7 +275,7 @@ Draw.loadPlugin(function(editorUi)
                 {
                     if (window.console)
                     {
-                        console.error('[IsoExtrude] Failed to parse polyCoords:', e, polyCoordsStr);
+                        console.error('[IsoExtrude] Failed to parse polyCoords:', e);
                     }
                 }
             }
@@ -386,62 +347,57 @@ Draw.loadPlugin(function(editorUi)
 
         // Get base shape path points based on original shape type
         var basePoints = getOutlinePoints(originalShape, x, y, w, h, style);
-        
-        // For polygon shapes, use the actual vertex count (same as cylinder uses numSamples)
-        // This ensures the number of vertices matches the original polygon exactly
-        var numPoints = basePoints.length;
-        
-        // Create top and bottom faces (similar to cylinder's topCircle and bottomCircle)
-        // But using actual polygon vertices instead of circle samples
-        var topFace = [];
-        var bottomFace = [];
-        
-        for (var i = 0; i < numPoints; i++)
+
+        // Create front and back faces
+        var frontFace = [];
+        var backFace = [];
+        for (var i = 0; i < basePoints.length; i++)
         {
-            // Top face at z = sz (like cylinder's topCircle)
-            topFace.push({x: basePoints[i].x, y: basePoints[i].y, z: sz});
-            // Bottom face at z = -sz (like cylinder's bottomCircle)
-            bottomFace.push({x: basePoints[i].x, y: basePoints[i].y, z: -sz});
+            frontFace.push({x: basePoints[i].x, y: basePoints[i].y, z: sz});
+            backFace.push({x: basePoints[i].x, y: basePoints[i].y, z: -sz});
         }
 
-        // Rotate and project all vertices (same as cylinder)
-        var allVertices = topFace.concat(bottomFace);
+        // Rotate all vertices
+        var allVertices = frontFace.concat(backFace);
         var rotatedVertices = [];
-        var projectedVertices = [];
-        
         for (var i = 0; i < allVertices.length; i++)
         {
-            var rotated = rotate(allVertices[i]);
-            rotatedVertices.push(rotated);
-            projectedVertices.push(project(rotated));
+            rotatedVertices.push(rotate(allVertices[i]));
         }
 
-        // Create faces: top face, bottom face, and side faces (same structure as cylinder)
+        var projectedVertices = [];
+        for (var i = 0; i < rotatedVertices.length; i++)
+        {
+            projectedVertices.push(project(rotatedVertices[i]));
+        }
+
+        // Create faces (front, back, and sides)
         var faces = [];
+        var numPoints = basePoints.length;
         
-        // Top face (CCW, same as cylinder's topFaceIndices)
-        var topFaceIndices = [];
+        // Front face
+        var frontFaceIndices = [];
         for (var i = 0; i < numPoints; i++)
         {
-            topFaceIndices.push(i);
+            frontFaceIndices.push(i);
         }
-        faces.push({indices: topFaceIndices, isTop: true});
+        faces.push({indices: frontFaceIndices, isFront: true});
 
-        // Bottom face (CW for correct normal, same as cylinder's bottomFaceIndices)
-        var bottomFaceIndices = [];
+        // Back face (reversed winding)
+        var backFaceIndices = [];
         for (var i = numPoints - 1; i >= 0; i--)
         {
-            bottomFaceIndices.push(i + numPoints);
+            backFaceIndices.push(i + numPoints);
         }
-        faces.push({indices: bottomFaceIndices, isBottom: true});
+        faces.push({indices: backFaceIndices, isFront: false});
 
-        // Side faces (connecting top and bottom vertices, same as cylinder's side faces)
+        // Side faces
         for (var i = 0; i < numPoints; i++)
         {
             var next = (i + 1) % numPoints;
             faces.push({
                 indices: [i, next, next + numPoints, i + numPoints],
-                isSide: true
+                isFront: null
             });
         }
 
@@ -852,28 +808,7 @@ Draw.loadPlugin(function(editorUi)
                     var polyCoords = mxUtils.getValue(style, 'polyCoords', null);
                     if (polyCoords)
                     {
-                        // Ensure polyCoords is a JSON string
-                        var polyCoordsStr = polyCoords;
-                        if (typeof polyCoords !== 'string')
-                        {
-                            try
-                            {
-                                polyCoordsStr = JSON.stringify(polyCoords);
-                            }
-                            catch (e)
-                            {
-                                if (window.console)
-                                {
-                                    console.error('[IsoExtrude] Failed to stringify polyCoords:', e);
-                                }
-                                polyCoordsStr = null;
-                            }
-                        }
-                        if (polyCoordsStr)
-                        {
-                            // Escape semicolons and other special characters that might break the style string
-                            newStyle += 'polyCoords=' + polyCoordsStr.replace(/;/g, '\\;') + ';';
-                        }
+                        newStyle += 'polyCoords=' + polyCoords + ';';
                     }
                 }
 
@@ -905,6 +840,23 @@ Draw.loadPlugin(function(editorUi)
                 newStyle += 'rounded=' + rounded + ';';
 
                 graph.setCellStyle(newStyle, [cell]);
+                
+                // Set rotation and depth as attributes in the cell value (for property panel)
+                var cellValue = graph.getModel().getValue(cell);
+                if (!mxUtils.isNode(cellValue))
+                {
+                    var doc = mxUtils.createXmlDocument();
+                    var obj = doc.createElement('object');
+                    obj.setAttribute('label', cellValue || '');
+                    cellValue = obj;
+                    graph.getModel().setValue(cell, cellValue);
+                }
+                
+                // Set attributes for property panel
+                cellValue.setAttribute('isoRx', '35');
+                cellValue.setAttribute('isoRy', '35');
+                cellValue.setAttribute('isoRz', '0');
+                cellValue.setAttribute('isoZ', String(defaultDepth));
             }
             
             graph.refresh();
@@ -958,135 +910,82 @@ Draw.loadPlugin(function(editorUi)
         window._isoExtrudeMenuHandlerAdded = true;
     }
 
-    // --- Format panel integration (similar to isoCube) ---
-    function renderIsoExtrudeFormatPanel()
+    // --- Sync attributes from property panel to style ---
+    // Listen for cell value changes to sync property panel attributes to style
+    var originalSetValue = graph.getModel().setValue;
+    graph.getModel().setValue = function(cell, value)
     {
-        var fmt = editorUi.format;
-        if (!fmt || !fmt.container) return;
+        originalSetValue.apply(this, arguments);
         
-        var old = document.getElementById('isoExtrude-format-panel');
-        if (old && old.parentNode) old.parentNode.removeChild(old);
-
-        var cell = graph.getSelectionCell();
-        var style = (cell != null) ? graph.getCurrentCellStyle(cell) : null;
-        if (!style || style['shape'] !== 'isoExtrude') return;
-
-        var panel = document.createElement('div');
-        panel.id = 'isoExtrude-format-panel';
-        panel.className = 'geStyleOptions';
-        panel.style.padding = '8px 12px';
-        panel.style.borderTop = '1px solid var(--gePrimaryBorderColor, #e0e0e0)';
-
-        var isoRx = parseFloat(mxUtils.getValue(style, 'isoRx', 35));
-        var isoRy = parseFloat(mxUtils.getValue(style, 'isoRy', 35));
-        var isoRz = parseFloat(mxUtils.getValue(style, 'isoRz', 0));
-        var isoZ = parseFloat(mxUtils.getValue(style, 'isoZ', 50));
-
-        function updateValue(key, value)
+        // Sync isoRx, isoRy, isoRz, isoZ from attributes to style if cell is isoExtrude
+        if (cell && graph.getModel().isVertex(cell))
         {
-            graph.getModel().beginUpdate();
-            try
+            var style = graph.getCurrentCellStyle(cell);
+            if (style && style[mxConstants.STYLE_SHAPE] === 'isoExtrude')
             {
-                graph.setCellStyles(key, value, [cell]);
-                graph.refresh();
-            }
-            finally
-            {
-                graph.getModel().endUpdate();
+                if (mxUtils.isNode(value))
+                {
+                    var isoRx = value.getAttribute('isoRx');
+                    var isoRy = value.getAttribute('isoRy');
+                    var isoRz = value.getAttribute('isoRz');
+                    var isoZ = value.getAttribute('isoZ');
+                    
+                    graph.getModel().beginUpdate();
+                    try
+                    {
+                        if (isoRx != null) graph.setCellStyles('isoRx', isoRx, [cell]);
+                        if (isoRy != null) graph.setCellStyles('isoRy', isoRy, [cell]);
+                        if (isoRz != null) graph.setCellStyles('isoRz', isoRz, [cell]);
+                        if (isoZ != null) graph.setCellStyles('isoZ', isoZ, [cell]);
+                        graph.refresh(cell);
+                    }
+                    finally
+                    {
+                        graph.getModel().endUpdate();
+                    }
+                }
             }
         }
-
-        var row1 = document.createElement('div');
-        row1.style.display = 'flex';
-        row1.style.marginBottom = '8px';
-        row1.style.alignItems = 'center';
-
-        var label1 = document.createElement('div');
-        label1.style.width = '80px';
-        label1.style.fontSize = '12px';
-        label1.textContent = 'Rotation X:';
-        row1.appendChild(label1);
-
-        var input1 = document.createElement('input');
-        input1.type = 'number';
-        input1.value = isoRx;
-        input1.style.width = '60px';
-        input1.style.marginRight = '8px';
-        input1.onchange = function() { updateValue('isoRx', this.value); };
-        row1.appendChild(input1);
-
-        var label2 = document.createElement('div');
-        label2.style.width = '80px';
-        label2.style.fontSize = '12px';
-        label2.textContent = 'Rotation Y:';
-        row1.appendChild(label2);
-
-        var input2 = document.createElement('input');
-        input2.type = 'number';
-        input2.value = isoRy;
-        input2.style.width = '60px';
-        input2.onchange = function() { updateValue('isoRy', this.value); };
-        row1.appendChild(input2);
-
-        panel.appendChild(row1);
-
-        var row2 = document.createElement('div');
-        row2.style.display = 'flex';
-        row2.style.marginBottom = '8px';
-        row2.style.alignItems = 'center';
-
-        var label3 = document.createElement('div');
-        label3.style.width = '80px';
-        label3.style.fontSize = '12px';
-        label3.textContent = 'Rotation Z:';
-        row2.appendChild(label3);
-
-        var input3 = document.createElement('input');
-        input3.type = 'number';
-        input3.value = isoRz;
-        input3.style.width = '60px';
-        input3.style.marginRight = '8px';
-        input3.onchange = function() { updateValue('isoRz', this.value); };
-        row2.appendChild(input3);
-
-        var label4 = document.createElement('div');
-        label4.style.width = '80px';
-        label4.style.fontSize = '12px';
-        label4.textContent = 'Depth:';
-        row2.appendChild(label4);
-
-        var input4 = document.createElement('input');
-        input4.type = 'number';
-        input4.value = isoZ;
-        input4.style.width = '60px';
-        input4.onchange = function() { updateValue('isoZ', this.value); };
-        row2.appendChild(input4);
-
-        panel.appendChild(row2);
-
-        // Insert at the top of format container
-        if (fmt.container.firstChild)
-        {
-            fmt.container.insertBefore(panel, fmt.container.firstChild);
-        }
-        else
-        {
-            fmt.container.appendChild(panel);
-        }
-    }
-
-    // Update format panel when selection changes
-    graph.addListener(mxEvent.CHANGE, function()
+    };
+    
+    // When loading existing isoExtrude shapes, ensure attributes are set
+    graph.addListener(mxEvent.CELLS_ADDED, function(sender, evt)
     {
-        renderIsoExtrudeFormatPanel();
+        var cells = evt.getProperty('cells');
+        if (cells)
+        {
+            for (var i = 0; i < cells.length; i++)
+            {
+                var cell = cells[i];
+                if (graph.getModel().isVertex(cell))
+                {
+                    var style = graph.getCurrentCellStyle(cell);
+                    if (style && style[mxConstants.STYLE_SHAPE] === 'isoExtrude')
+                    {
+                        var cellValue = graph.getModel().getValue(cell);
+                        if (!mxUtils.isNode(cellValue))
+                        {
+                            var doc = mxUtils.createXmlDocument();
+                            var obj = doc.createElement('object');
+                            obj.setAttribute('label', cellValue || '');
+                            cellValue = obj;
+                            graph.getModel().setValue(cell, cellValue);
+                        }
+                        
+                        // Sync style values to attributes if not already set
+                        var isoRx = mxUtils.getValue(style, 'isoRx', 35);
+                        var isoRy = mxUtils.getValue(style, 'isoRy', 35);
+                        var isoRz = mxUtils.getValue(style, 'isoRz', 0);
+                        var isoZ = mxUtils.getValue(style, 'isoZ', 50);
+                        
+                        if (!cellValue.getAttribute('isoRx')) cellValue.setAttribute('isoRx', String(isoRx));
+                        if (!cellValue.getAttribute('isoRy')) cellValue.setAttribute('isoRy', String(isoRy));
+                        if (!cellValue.getAttribute('isoRz')) cellValue.setAttribute('isoRz', String(isoRz));
+                        if (!cellValue.getAttribute('isoZ')) cellValue.setAttribute('isoZ', String(isoZ));
+                    }
+                }
+            }
+        }
     });
-
-    graph.addListener(mxEvent.CELLS_SELECTED, function()
-    {
-        renderIsoExtrudeFormatPanel();
-    });
-
-    // Initial render
-    setTimeout(renderIsoExtrudeFormatPanel, 100);
 });
 
