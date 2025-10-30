@@ -185,7 +185,7 @@ Draw.loadPlugin(function(editorUi)
         if (fillOpacity > 1) fillOpacity = fillOpacity / 100; // accept 0..100 style values
         c.setFillAlpha(Math.max(0, Math.min(1, fillOpacity)));
         var strokeEnabled = !strokeColorNone && strokeOpacity > 0 && strokeWidth > 0;
-        console.log('strokeColor:', strokeColor, 'strokeColorNone:', strokeColorNone, 'strokeWidth:', strokeWidth, 'strokeOpacity:', strokeOpacity, 'strokeEnabled:', strokeEnabled);
+        // console.log('strokeColor:', strokeColor, 'strokeColorNone:', strokeColorNone, 'strokeWidth:', strokeWidth, 'strokeOpacity:', strokeOpacity, 'strokeEnabled:', strokeEnabled);
         // Only set stroke properties when actually enabled
         if (strokeEnabled)
         {
