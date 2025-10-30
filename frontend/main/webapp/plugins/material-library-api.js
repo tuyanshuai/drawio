@@ -21,7 +21,7 @@ Draw.loadPlugin(function(editorUi)
 	// ========== 配置 ==========
 	var config = {
 		// API 基础 URL - 可以通过 window.MATERIAL_LIBRARY_API_URL 覆盖
-		apiBaseUrl: window.MATERIAL_LIBRARY_API_URL || 'http://localhost:8089/api',
+		apiBaseUrl: window.MATERIAL_LIBRARY_API_URL || 'http://localhost:8082/api',
 		
 		// 认证配置
 		auth: {

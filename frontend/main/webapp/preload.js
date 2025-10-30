@@ -14,8 +14,8 @@
 		if (apiUrl) {
 			window.MATERIAL_LIBRARY_API_URL = decodeURIComponent(apiUrl);
 		} else if (!window.MATERIAL_LIBRARY_API_URL) {
-			// Default to local test server if not set
-			window.MATERIAL_LIBRARY_API_URL = window.location.origin + "/api";
+			// Default to iconlibrary service on port 8082
+			window.MATERIAL_LIBRARY_API_URL = 'http://localhost:8082/api';
 		}
 		
 		// Configure Material Library API Token/Key from URL parameter

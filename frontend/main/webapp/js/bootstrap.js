@@ -223,7 +223,7 @@ function mxinclude(src)
     {
         mxmeta(null, 'default-src \'self\'; script-src \'self\' \'sha256-6g514VrT/cZFZltSaKxIVNFF46+MFaTSDTPB8WfYK+c=\' ' +
             (urlParams['dev'] != '1' ? '' : ' \'unsafe-eval\'') + '; ' +
-            'connect-src \'self\' https://*.draw.io https://*.diagrams.net https://fonts.googleapis.com https://fonts.gstatic.com http://127.0.0.1:8089 http://localhost:8089 http://127.0.0.1:8000 http://localhost:8000 http://127.0.0.1 http://localhost; ' +
+            'connect-src \'self\' https://*.draw.io https://*.diagrams.net https://fonts.googleapis.com https://fonts.gstatic.com http://127.0.0.1:8082 http://localhost:8082 http://127.0.0.1:8081 http://localhost:8081 http://127.0.0.1:8000 http://localhost:8000 http://127.0.0.1 http://localhost; ' +
             'img-src * data:; media-src *; font-src *; frame-src \'none\'; style-src \'self\' \'unsafe-inline\' ' +
             'https://fonts.googleapis.com; base-uri \'none\';child-src \'self\';object-src \'none\';', 'Content-Security-Policy');
     }

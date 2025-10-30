@@ -18,43 +18,43 @@
 通过 URL 参数设置 API 基础地址：
 
 ```
-http://localhost:8089/?materialApiUrl=http://127.0.0.1:8089/api
+http://localhost:8080/?materialApiUrl=http://127.0.0.1:8082/api
 ```
 
 或使用简写：
 
 ```
-http://localhost:8089/?apiUrl=http://127.0.0.1:8089/api
+http://localhost:8080/?apiUrl=http://127.0.0.1:8082/api
 ```
 
 ### 配置认证 Token
 
 ```
-http://localhost:8089/?materialApiToken=your-token-here
+http://localhost:8080/?materialApiToken=your-token-here
 ```
 
 或使用简写：
 
 ```
-http://localhost:8089/?apiToken=your-token-here
+http://localhost:8080/?apiToken=your-token-here
 ```
 
 ### 配置 API Key
 
 ```
-http://localhost:8089/?materialApiKey=your-api-key-here
+http://localhost:8080/?materialApiKey=your-api-key-here
 ```
 
 或使用简写：
 
 ```
-http://localhost:8089/?apiKey=your-api-key-here
+http://localhost:8080/?apiKey=your-api-key-here
 ```
 
 ### 组合使用
 
 ```
-http://localhost:8089/?all=1&materialApiUrl=http://127.0.0.1:8089/api&materialApiToken=your-token
+http://localhost:8080/?all=1&materialApiUrl=http://127.0.0.1:8082/api&materialApiToken=your-token
 ```
 
 ## 浏览器控制台配置
@@ -63,7 +63,7 @@ http://localhost:8089/?all=1&materialApiUrl=http://127.0.0.1:8089/api&materialAp
 
 ```javascript
 // 设置 API URL
-window.MATERIAL_LIBRARY_API_URL = 'http://127.0.0.1:8089/api';
+window.MATERIAL_LIBRARY_API_URL = 'http://127.0.0.1:8082/api';
 
 // 设置 Token
 window.MATERIAL_LIBRARY_API_TOKEN = 'your-token';
@@ -79,21 +79,21 @@ window.location.reload();
 
 如果不设置任何参数，插件会使用以下默认值：
 
-- **API URL**: `window.location.origin + "/api"`
-  - 例如：`http://localhost:8089/api`
+- **API URL**: `http://localhost:8082/api`（默认值）
+  - 例如：`http://localhost:8082/api`
 
 ## 测试示例
 
 ### 使用本地测试服务器
 
 ```
-http://localhost:8089/?all=1&materialApiUrl=http://127.0.0.1:8089/api
+http://localhost:8080/?all=1&materialApiUrl=http://127.0.0.1:8082/api
 ```
 
 ### 使用生产环境
 
 ```
-http://localhost:8089/?all=1&materialApiUrl=https://api.example.com/api&materialApiToken=production-token
+http://localhost:8080/?all=1&materialApiUrl=https://api.example.com/api&materialApiToken=production-token
 ```
 
 ## 注意事项

@@ -20,7 +20,7 @@ Draw.loadPlugin(function(editorUi)
 	// Configuration - can be overridden
 	var config = {
 		// Segment Anything API endpoint - can be configured
-		segmentApiUrl: urlParams['segmentApiUrl'] || 'http://localhost:8000/api/segment',
+		segmentApiUrl: urlParams['segmentApiUrl'] || 'http://localhost:8081/api/segment',
 		// API key if needed
 		apiKey: urlParams['segmentApiKey'] || null,
 		// Segment parameters
@@ -202,13 +202,13 @@ Draw.loadPlugin(function(editorUi)
 			var errorMsg = 'Network error occurred';
 			
 			// Check if it's a connection refused error
-			if (config.segmentApiUrl.indexOf('localhost:8000') !== -1 || 
-			    config.segmentApiUrl.indexOf('127.0.0.1:8000') !== -1)
+			if (config.segmentApiUrl.indexOf('localhost:8081') !== -1 || 
+			    config.segmentApiUrl.indexOf('127.0.0.1:8081') !== -1)
 			{
-				errorMsg = '无法连接到 Segment API 服务 (http://localhost:8000/api/segment)。\n\n' +
+				errorMsg = '无法连接到 Segment API 服务 (http://localhost:8081/api/segment)。\n\n' +
 				           '请确保：\n' +
 				           '1. Segment API 服务正在运行\n' +
-				           '2. 服务监听在端口 8000\n' +
+				           '2. 服务监听在端口 8081\n' +
 				           '3. 或者通过 URL 参数设置正确的 API 地址：?segmentApiUrl=http://your-server:port/api/segment';
 			}
 			
