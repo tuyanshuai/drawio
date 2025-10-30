@@ -32,12 +32,12 @@ Draw.loadPlugin(function(editorUi)
 		
 		if (polyCoords && polyCoords.length >= 2)
 		{
-			c.begin();
-			c.moveTo(x + polyCoords[0][0] * w, y + polyCoords[0][1] * h);
+			// 注意：此时 canvas 已经被 translate(x, y)，所以使用相对于 (0,0) 的坐标
+			c.moveTo(polyCoords[0][0] * w, polyCoords[0][1] * h);
 			
 			for (var i = 1; i < polyCoords.length; i++)
 			{
-				c.lineTo(x + polyCoords[i][0] * w, y + polyCoords[i][1] * h);
+				c.lineTo(polyCoords[i][0] * w, polyCoords[i][1] * h);
 			}
 			
 			// 至少需要3个点才能闭合路径
@@ -45,9 +45,6 @@ Draw.loadPlugin(function(editorUi)
 			{
 				c.close();
 			}
-			
-			c.end();
-			c.fillAndStroke();
 		}
 	};
 	
@@ -86,6 +83,7 @@ Draw.loadPlugin(function(editorUi)
 		this.mouseHandler = null;
 		this.escapeHandler = null;
 		this.keyDownHandler = null;
+		this.viewChangeHandler = null;
 	}
 	
 	/**
@@ -144,7 +142,15 @@ Draw.loadPlugin(function(editorUi)
 				}
 				
 				// 获取图形模型坐标中的点（使用 getPointForEvent 转换为模型坐标）
+				// false 表示不添加网格偏移的一半，获得精确位置
 				var pt = graph.getPointForEvent(e, false);
+				
+				if (window.console)
+				{
+					console.log('[Polygon Draw] 鼠标点击 - 屏幕坐标:', mxEvent.getClientX(e), mxEvent.getClientY(e));
+					console.log('[Polygon Draw] 模型坐标:', pt.x, pt.y);
+					console.log('[Polygon Draw] me.getGraphX/Y:', me.getGraphX(), me.getGraphY());
+				}
 				
 				// 检查双击完成
 				if (me.getEvent().detail === 2)
@@ -185,6 +191,19 @@ Draw.loadPlugin(function(editorUi)
 		};
 		
 		this.graph.addMouseListener(this.mouseHandler);
+		
+		// 监听视图变化，更新点句柄位置
+		this.viewChangeHandler = mxUtils.bind(this, function()
+		{
+			if (this.enabled && this.pointHandles.length > 0)
+			{
+				this.updatePointHandles();
+			}
+		});
+		
+		this.graph.view.addListener(mxEvent.SCALE, this.viewChangeHandler);
+		this.graph.view.addListener(mxEvent.SCALE_AND_TRANSLATE, this.viewChangeHandler);
+		this.graph.view.addListener(mxEvent.TRANSLATE, this.viewChangeHandler);
 		
 		// 监听 ESC 键
 		this.escapeHandler = mxUtils.bind(this, function(sender, evt)
@@ -259,6 +278,13 @@ Draw.loadPlugin(function(editorUi)
 			this.keyDownHandler = null;
 		}
 		
+		// 移除视图变化监听器
+		if (this.viewChangeHandler)
+		{
+			this.graph.view.removeListener(this.viewChangeHandler);
+			this.viewChangeHandler = null;
+		}
+		
 		if (window.console)
 		{
 			console.log('[Polygon Draw] 停止绘制');
@@ -305,24 +331,43 @@ Draw.loadPlugin(function(editorUi)
 		handle.className = 'polygon-point-handle';
 		handle.setAttribute('data-index', index);
 		
-		// 将模型坐标转换为屏幕坐标
-		// x, y 是模型坐标，需要转换为屏幕坐标
-		var view = this.graph.view;
-		var scale = view.scale;
-		var tr = view.translate;
-		var screenX = (x + tr.x) * scale;
-		var screenY = (y + tr.y) * scale;
-		
-		// 获取容器偏移和滚动位置
-		var offset = mxUtils.getOffset(this.graph.container);
-		var scrollOrigin = mxUtils.getScrollOrigin(this.graph.container);
-		
-		handle.style.left = (offset.x + screenX - scrollOrigin.x - 4) + 'px';
-		handle.style.top = (offset.y + screenY - scrollOrigin.y - 4) + 'px';
+		// 更新位置
+		this.updateHandlePosition(handle, x, y);
 		
 		// 添加到 document.body 以确保正确的定位
 		document.body.appendChild(handle);
 		this.pointHandles.push(handle);
+	};
+	
+	/**
+	 * 更新点句柄位置
+	 */
+	PolygonDrawingTool.prototype.updateHandlePosition = function(handle, x, y)
+	{
+		// x, y 是模型坐标，需要转换为绝对屏幕坐标
+		var view = this.graph.view;
+		var scale = view.scale;
+		var tr = view.translate;
+		
+		// 模型坐标转视图坐标（相对于容器内部）
+		var viewX = (x + tr.x) * scale;
+		var viewY = (y + tr.y) * scale;
+		
+		// 获取容器在页面中的位置
+		var offset = mxUtils.getOffset(this.graph.container);
+		var scrollOrigin = mxUtils.getScrollOrigin(this.graph.container);
+		
+		// 计算绝对屏幕坐标
+		var screenX = offset.x + viewX - scrollOrigin.x;
+		var screenY = offset.y + viewY - scrollOrigin.y;
+		
+		handle.style.left = (screenX - 4) + 'px';
+		handle.style.top = (screenY - 4) + 'px';
+		
+		if (window.console && this.points.length <= 2)
+		{
+			console.log('[Polygon Draw] 更新句柄位置 - 模型坐标:', x, y, '屏幕坐标:', screenX, screenY);
+		}
 	};
 	
 	/**
@@ -429,24 +474,14 @@ Draw.loadPlugin(function(editorUi)
 	};
 	
 	/**
-	 * 更新点句柄位置
+	 * 更新所有点句柄位置
 	 */
 	PolygonDrawingTool.prototype.updatePointHandles = function()
 	{
-		var view = this.graph.view;
-		var scale = view.scale;
-		var tr = view.translate;
-		var offset = mxUtils.getOffset(this.graph.container);
-		var scrollOrigin = mxUtils.getScrollOrigin(this.graph.container);
-		
 		for (var i = 0; i < this.pointHandles.length && i < this.points.length; i++)
 		{
 			var point = this.points[i];
-			var screenX = (point.x + tr.x) * scale;
-			var screenY = (point.y + tr.y) * scale;
-			
-			this.pointHandles[i].style.left = (offset.x + screenX - scrollOrigin.x - 4) + 'px';
-			this.pointHandles[i].style.top = (offset.y + screenY - scrollOrigin.y - 4) + 'px';
+			this.updateHandlePosition(this.pointHandles[i], point.x, point.y);
 		}
 	};
 	
@@ -497,12 +532,28 @@ Draw.loadPlugin(function(editorUi)
 		var fillColor = mxUtils.getValue(this.graph.currentVertexStyle, mxConstants.STYLE_FILLCOLOR, '#ffffff');
 		var strokeColor = mxUtils.getValue(this.graph.currentVertexStyle, mxConstants.STYLE_STROKECOLOR, '#000000');
 		
+		// 确保有默认颜色（如果没有设置）
+		if (!fillColor || fillColor === 'none' || fillColor === '')
+		{
+			fillColor = '#ffffff';
+		}
+		if (!strokeColor || strokeColor === 'none' || strokeColor === '')
+		{
+			strokeColor = '#000000';
+		}
+		
 		var style = 'shape=manualPolygon;' +
 			'polyCoords=' + JSON.stringify(relativePoints) + ';' +
 			'fillColor=' + fillColor + 
 			';strokeColor=' + strokeColor + 
 			';strokeWidth=2;' +
 			'whiteSpace=wrap;';
+		
+		if (window.console)
+		{
+			console.log('[Polygon Draw] 准备创建多边形 - 填充色:', fillColor, '描边色:', strokeColor);
+			console.log('[Polygon Draw] 边界框:', minX, minY, width, height);
+		}
 		
 		this.graph.getModel().beginUpdate();
 		try
@@ -527,7 +578,6 @@ Draw.loadPlugin(function(editorUi)
 			// 确保顶点可见且可选择
 			this.graph.setCellsVisible([vertex], true);
 			this.graph.setCellsLocked([vertex], false);
-			this.graph.setSelectionCell(vertex);
 			
 			// 强制刷新视图
 			this.graph.view.validate();
@@ -535,6 +585,9 @@ Draw.loadPlugin(function(editorUi)
 			
 			// 滚动以使新多边形可见
 			this.graph.scrollCellToVisible(vertex);
+			
+			// 选择新创建的多边形
+			this.graph.setSelectionCell(vertex);
 		}
 		finally
 		{
@@ -546,7 +599,7 @@ Draw.loadPlugin(function(editorUi)
 			console.log('[Polygon Draw] 完成多边形，共', this.points.length, '个点');
 		}
 		
-		// 停止绘制
+		// 停止绘制（这会清除预览和点句柄）
 		this.stopDrawing();
 	};
 	
