@@ -72,9 +72,10 @@ Draw.loadPlugin(function(editorUi)
         var sy = h / 2;
         var points = [];
         
-        if (!shapeType || shapeType === '')
+        // Default to rectangle if no shape type specified
+        if (!shapeType || shapeType === '' || shapeType === null)
         {
-            // Default rectangle
+            // Default rectangle - use 4 vertices
             return [
                 {x: -sx, y: -sy},
                 {x: sx, y: -sy},
@@ -83,7 +84,7 @@ Draw.loadPlugin(function(editorUi)
             ];
         }
         
-        var shape = shapeType.toLowerCase();
+        var shape = String(shapeType).toLowerCase();
         
         // Polygon shapes - use vertex points
         if (shape.indexOf('rectangle') >= 0 || shape.indexOf('rounded') >= 0)
@@ -237,14 +238,14 @@ Draw.loadPlugin(function(editorUi)
         }
         else
         {
-            // Unknown shape - use uniform sampling around bounding box
-            var numSamples = 512; // Increased to 512 for ultra-smooth curves (no visible edges)
-            for (var i = 0; i < numSamples; i++)
-            {
-                var angle = (i / numSamples) * 2 * Math.PI;
-                // Sample around ellipse that fits the bounding box
-                points.push({x: sx * Math.cos(angle), y: sy * Math.sin(angle)});
-            }
+            // Unknown shape - for safety, default to rectangle vertices instead of curve sampling
+            // This prevents rectangles from being incorrectly rendered as circles
+            return [
+                {x: -sx, y: -sy},
+                {x: sx, y: -sy},
+                {x: sx, y: sy},
+                {x: -sx, y: sy}
+            ];
         }
         
         return points;
@@ -529,6 +530,7 @@ Draw.loadPlugin(function(editorUi)
                 c.setFillColor(faceFill);
                 c.begin();
                 
+                // Use standard lineTo for all shapes (no quadTo)
                 // With 512 samples for curves, lineTo should be very smooth
                 // Ensure we close the path properly
                 c.moveTo(points[0].x, points[0].y);
@@ -539,34 +541,13 @@ Draw.loadPlugin(function(editorUi)
                 // Explicitly close the path to ensure smooth connection
                 c.close();
                 
-                // For side faces without stroke, render with anti-aliasing enabled
-                // This helps eliminate visible seams between adjacent faces
-                var isSideFace = (fi >= 2); // First 2 faces are front and back
-                
                 if (strokeEnabled) 
                 { 
                     c.fillAndStroke(); 
                 } 
                 else 
                 { 
-                    // Double fill for side faces to eliminate any visible seams
-                    if (isSideFace)
-                    {
-                        c.fill();
-                        // Fill again with slight alpha blend to smooth edges
-                        c.begin();
-                        c.moveTo(points[0].x, points[0].y);
-                        for (var k = 1; k < points.length; k++)
-                        {
-                            c.lineTo(points[k].x, points[k].y);
-                        }
-                        c.close();
-                        c.fill();
-                    }
-                    else
-                    {
-                        c.fill();
-                    }
+                    c.fill();
                 }
             }
         }
