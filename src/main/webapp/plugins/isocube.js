@@ -387,8 +387,9 @@ Draw.loadPlugin(function(editorUi)
         var sbInit = sb.init;
         sb.init = function()
         {
-            sbInit.apply(this, arguments);
+            // Add Isometric palette BEFORE General palette
             addIsoPalette();
+            sbInit.apply(this, arguments);
         };
     }
 
