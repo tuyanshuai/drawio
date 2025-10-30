@@ -37,7 +37,8 @@
 			"plugins/highlight-effect.js",
 			"plugins/isocube.js",
 			"plugins/isoextrude.js",
-			"plugins/material-library-api.js"
+			"plugins/material-library-api.js",
+			"plugins/polygon-draw.js"
 		];
 		
 		// Check if 'minimal=1' parameter is set to load only core plugins
@@ -48,7 +49,8 @@
 		var corePlugins = [
 			"plugins/isocube.js", 
 			"plugins/ai-convert.js", 
-			"plugins/highlight-effect.js"
+			"plugins/highlight-effect.js",
+			"plugins/polygon-draw.js"
 		];
 		
 		// Determine which plugins to load

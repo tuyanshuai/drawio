@@ -1785,8 +1785,31 @@ Sidebar.prototype.addGeneralPalette = function(expand)
 	 	
 	 	this.createVertexTemplateEntry('triangle;whiteSpace=wrap;html=1;', 60, 80, '', 'Triangle', null, null, 'triangle logic inverter buffer'),
 	 	
-	 	// Add polygon shape to general palette
-	 	this.createVertexTemplateEntry('shape=manualPolygon;polyCoords=[[0.25,0],[0.75,0],[1,0.25],[1,0.75],[0.75,1],[0.25,1],[0,0.75],[0,0.25]];whiteSpace=wrap;html=1;', 100, 100, '', 'Polygon', null, null, 'polygon shape custom'),
+	 	// Add polygon shape to general palette - click to start manual drawing
+	 	this.addEntry('polygon shape custom', mxUtils.bind(this, function()
+	 	{
+	 		var clickFn = mxUtils.bind(this, function(evt)
+	 		{
+	 			// Try to get the drawPolygon action
+	 			var drawPolygonAction = this.editorUi.actions.get('drawPolygon');
+	 			if (drawPolygonAction && drawPolygonAction.funct)
+	 			{
+	 				drawPolygonAction.funct(evt);
+	 				mxEvent.consume(evt);
+	 			}
+	 			else
+	 			{
+	 				// Fallback: try to access polygonTool directly if action not available
+	 				if (window.polygonTool && typeof window.polygonTool.startDrawing === 'function')
+	 				{
+	 					window.polygonTool.startDrawing();
+	 					mxEvent.consume(evt);
+	 				}
+	 			}
+	 		});
+	 		
+	 		return this.createVertexTemplate('shape=manualPolygon;polyCoords=[[0.25,0],[0.75,0],[1,0.25],[1,0.75],[0.75,1],[0.25,1],[0,0.75],[0,0.25]];whiteSpace=wrap;html=1;', 100, 100, '', 'Polygon', null, null, null, null, clickFn);
+	 	})),
 	 	
 	 	 
 	  
