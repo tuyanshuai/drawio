@@ -288,7 +288,7 @@ Draw.loadPlugin(function(editorUi)
 
         var faceVisible = visibleByIndex;
         // Render edges only if line is enabled in style
-        console.log('strokeEnabled:', strokeEnabled);
+       
         if (strokeEnabled)
         {
             for (var ei = 0; ei < edges.length; ei++)
