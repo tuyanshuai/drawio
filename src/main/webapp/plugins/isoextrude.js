@@ -581,7 +581,111 @@ Draw.loadPlugin(function(editorUi)
     ];
 
     // --- Right-click menu integration ---
+    // Add multilingual support for "Add 3D Effect"
+    // Default English translation
     mxResources.parse('add3dEffect=Add 3D Effect');
+    
+    // Add translations for common languages
+    // Get language code (handle both 'zh-cn' and 'zh' formats)
+    var lang = mxClient.language || '';
+    var langCode = lang.toLowerCase();
+    
+    // Handle language codes with region (e.g., 'zh-cn', 'zh-tw')
+    if (langCode.indexOf('zh') === 0)
+    {
+        if (langCode.indexOf('tw') >= 0 || langCode.indexOf('hant') >= 0)
+        {
+            mxResources.parse('add3dEffect=新增3D效果'); // Traditional Chinese
+        }
+        else
+        {
+            mxResources.parse('add3dEffect=添加3D效果'); // Simplified Chinese
+        }
+    }
+    else if (langCode.indexOf('de') === 0)
+    {
+        mxResources.parse('add3dEffect=3D-Effekt hinzufügen');
+    }
+    else if (langCode.indexOf('fr') === 0)
+    {
+        mxResources.parse('add3dEffect=Ajouter effet 3D');
+    }
+    else if (langCode.indexOf('es') === 0)
+    {
+        mxResources.parse('add3dEffect=Añadir efecto 3D');
+    }
+    else if (langCode.indexOf('ja') === 0)
+    {
+        mxResources.parse('add3dEffect=3D効果を追加');
+    }
+    else if (langCode.indexOf('ko') === 0)
+    {
+        mxResources.parse('add3dEffect=3D 효과 추가');
+    }
+    else if (langCode.indexOf('pt') === 0)
+    {
+        mxResources.parse('add3dEffect=Adicionar efeito 3D');
+    }
+    else if (langCode.indexOf('ru') === 0)
+    {
+        mxResources.parse('add3dEffect=Добавить 3D эффект');
+    }
+    else if (langCode.indexOf('it') === 0)
+    {
+        mxResources.parse('add3dEffect=Aggiungi effetto 3D');
+    }
+    else if (langCode.indexOf('nl') === 0)
+    {
+        mxResources.parse('add3dEffect=3D-effect toevoegen');
+    }
+    else if (langCode.indexOf('pl') === 0)
+    {
+        mxResources.parse('add3dEffect=Dodaj efekt 3D');
+    }
+    else if (langCode.indexOf('sv') === 0)
+    {
+        mxResources.parse('add3dEffect=Lägg till 3D-effekt');
+    }
+    else if (langCode.indexOf('tr') === 0)
+    {
+        mxResources.parse('add3dEffect=3D efekti ekle');
+    }
+    else if (langCode.indexOf('cs') === 0)
+    {
+        mxResources.parse('add3dEffect=Přidat 3D efekt');
+    }
+    else if (langCode.indexOf('da') === 0)
+    {
+        mxResources.parse('add3dEffect=Tilføj 3D-effekt');
+    }
+    else if (langCode.indexOf('fi') === 0)
+    {
+        mxResources.parse('add3dEffect=Lisää 3D-efekti');
+    }
+    else if (langCode.indexOf('no') === 0)
+    {
+        mxResources.parse('add3dEffect=Legg til 3D-effekt');
+    }
+    else if (langCode.indexOf('vi') === 0)
+    {
+        mxResources.parse('add3dEffect=Thêm hiệu ứng 3D');
+    }
+    else if (langCode.indexOf('th') === 0)
+    {
+        mxResources.parse('add3dEffect=เพิ่มเอฟเฟกต์ 3D');
+    }
+    else if (langCode.indexOf('id') === 0)
+    {
+        mxResources.parse('add3dEffect=Tambahkan efek 3D');
+    }
+    else if (langCode.indexOf('hi') === 0)
+    {
+        mxResources.parse('add3dEffect=3D प्रभाव जोड़ें');
+    }
+    else if (langCode.indexOf('ar') === 0)
+    {
+        mxResources.parse('add3dEffect=إضافة تأثير ثلاثي الأبعاد');
+    }
 
     editorUi.actions.addAction('add3dEffect', function()
     {
