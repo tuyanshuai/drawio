@@ -770,26 +770,35 @@ Draw.loadPlugin(function(editorUi)
         
         return false;
     };
-
-    // Add to context menu
-    var addPopupMenuCellItems = editorUi.menus.addPopupMenuCellItems;
-    editorUi.menus.addPopupMenuCellItems = function(menu, cell, evt)
+    
+    // Add to context menu - use a simple flag to prevent duplicate registration
+    if (editorUi.menus && editorUi.menus.addPopupMenuCellItems && !window._isoExtrudeMenuHandlerAdded)
     {
-        addPopupMenuCellItems.apply(this, arguments);
+        var addPopupMenuCellItems = editorUi.menus.addPopupMenuCellItems;
         
-        if (cell != null && graph.getSelectionCount() == 1 && graph.getModel().isVertex(cell))
+        editorUi.menus.addPopupMenuCellItems = function(menu, cell, evt)
         {
-            var style = graph.getCurrentCellStyle(cell);
-            var shape = mxUtils.getValue(style, mxConstants.STYLE_SHAPE, null);
+            addPopupMenuCellItems.apply(this, arguments);
             
-            // Only show for non-3D shapes and closed shapes
-            if (shape != 'isoCube' && shape != 'isoExtrude' && isClosedShape(cell))
+            if (cell != null && graph.getSelectionCount() == 1 && graph.getModel().isVertex(cell))
             {
-                menu.addSeparator();
-                editorUi.menus.addMenuItem(menu, 'add3dEffect', null, evt);
+                var style = graph.getCurrentCellStyle(cell);
+                var shape = mxUtils.getValue(style, mxConstants.STYLE_SHAPE, null);
+                
+                // Only show for non-3D shapes and closed shapes
+                if (shape != 'isoCube' && shape != 'isoExtrude' && isClosedShape(cell))
+                {
+                    // Simple check: if action exists and is enabled, menu item should already be there
+                    // But we add it anyway since addMenuItem will handle duplicates
+                    menu.addSeparator();
+                    editorUi.menus.addMenuItem(menu, 'add3dEffect', null, evt);
+                }
             }
-        }
-    };
+        };
+        
+        // Mark as registered
+        window._isoExtrudeMenuHandlerAdded = true;
+    }
 
     // --- Format panel integration (similar to isoCube) ---
     function renderIsoExtrudeFormatPanel()
