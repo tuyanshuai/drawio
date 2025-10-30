@@ -1738,16 +1738,8 @@ Menus.prototype.addPopupMenuCellItems = function(menu, cell, evt)
 			graph.getSelectionCount() == 1 &&
 			graph.isCellEditable(cell))
 		{
-			// Add 3D effect option for shapes
-			if (graph.getModel().isVertex(cell)) {
-				var style = graph.getCurrentCellStyle(cell);
-				var shape = mxUtils.getValue(style, mxConstants.STYLE_SHAPE, null);
-				
-				// Only show 3D effect option for non-3D shapes
-				if (shape != 'generic3d' && shape != 'rectangle3d' && shape != 'ellipse3d' && shape != 'triangle3d') {
-					this.addMenuItem(menu, 'add3dEffect', null, evt);
-				}
-			}
+			// Add 3D effect option is handled by isoextrude.js plugin
+			// Removed duplicate menu item here to avoid duplication
 			
 			this.addPopupMenuCellEditItems(menu, cell, evt);
 		}

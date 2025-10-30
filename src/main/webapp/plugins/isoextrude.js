@@ -499,6 +499,21 @@ Draw.loadPlugin(function(editorUi)
         
         if (!fillEnabled && !strokeEnabled) return;
 
+        // Check if this is a curve shape (ellipse/circle) - for curves, don't draw side face lines
+        var originalShape = mxUtils.getValue(style, 'isoOriginalShape', null);
+        var isCurveShape = false;
+        if (originalShape)
+        {
+            var shapeLower = originalShape.toLowerCase();
+            isCurveShape = (shapeLower.indexOf('ellipse') >= 0 || shapeLower.indexOf('circle') >= 0);
+        }
+        // Also check if basePoints count indicates a curve (high sample count = curve)
+        // Curves typically have 512 samples, polygons have much fewer (3-8 vertices)
+        if (!isCurveShape && basePoints.length > 100)
+        {
+            isCurveShape = true;
+        }
+
         // Render faces
         for (var fi = 0; fi < faceInfo.length; fi++)
         {
@@ -541,7 +556,12 @@ Draw.loadPlugin(function(editorUi)
                 // Explicitly close the path to ensure smooth connection
                 c.close();
                 
-                if (strokeEnabled) 
+                // For curve shapes, don't draw lines on side faces (fi >= 2)
+                // Only draw lines on front/back faces (fi < 2)
+                var isSideFace = (fi >= 2);
+                var shouldDrawStroke = strokeEnabled && (!isCurveShape || !isSideFace);
+                
+                if (shouldDrawStroke) 
                 { 
                     c.fillAndStroke(); 
                 } 

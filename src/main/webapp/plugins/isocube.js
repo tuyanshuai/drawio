@@ -329,6 +329,297 @@ Draw.loadPlugin(function(editorUi)
 
     mxCellRenderer.registerShape('isoCube', IsoCubeShape);
 
+    // --- IsoCylinder Shape ---
+    function IsoCylinderShape(bounds, fill, stroke, strokewidth)
+    {
+        mxShape.call(this);
+        this.bounds = bounds;
+        this.fill = fill;
+        this.stroke = stroke;
+        this.strokewidth = (strokewidth != null) ? strokewidth : 1;
+    };
+
+    mxUtils.extend(IsoCylinderShape, mxShape);
+
+    IsoCylinderShape.prototype.paintVertexShape = function(c, x, y, w, h)
+    {
+        var style = this.style || {};
+        var d = parseFloat(mxUtils.getValue(style, 'isoZ', Math.min(w, h) * 0.6));
+        var rx = mxUtils.toRadians(parseFloat(mxUtils.getValue(style, 'isoRx', 35)));
+        var ry = mxUtils.toRadians(parseFloat(mxUtils.getValue(style, 'isoRy', 35)));
+        var rz = mxUtils.toRadians(parseFloat(mxUtils.getValue(style, 'isoRz', 0)));
+
+        var cx = x + w / 2;
+        var cy = y + h / 2;
+        var sx = w / 2;
+        var sy = h / 2;
+        var sz = d / 2;
+
+        function rotX(p)
+        {
+            var s = Math.sin(rx), c = Math.cos(rx);
+            return {x: p.x, y: p.y * c - p.z * s, z: p.y * s + p.z * c};
+        };
+
+        function rotY(p)
+        {
+            var s = Math.sin(ry), c = Math.cos(ry);
+            return {x: p.x * c + p.z * s, y: p.y, z: -p.x * s + p.z * c};
+        };
+
+        function rotZ(p)
+        {
+            var s = Math.sin(rz), c = Math.cos(rz);
+            return {x: p.x * c - p.y * s, y: p.x * s + p.y * c, z: p.z};
+        };
+
+        function rotate(p)
+        {
+            return rotZ(rotY(rotX(p)));
+        };
+
+        function project(p)
+        {
+            return {x: cx + p.x, y: cy + p.y, z: p.z};
+        };
+
+        // Create cylinder: top circle, bottom circle, and side surface
+        // Use 64 samples for smooth circular top and bottom
+        var numSamples = 64;
+        var topCircle = [];
+        var bottomCircle = [];
+        
+        for (var i = 0; i < numSamples; i++)
+        {
+            var angle = (i / numSamples) * 2 * Math.PI;
+            var px = sx * Math.cos(angle);
+            var py = sy * Math.sin(angle);
+            
+            // Top circle at z = sz
+            topCircle.push({x: px, y: py, z: sz});
+            // Bottom circle at z = -sz
+            bottomCircle.push({x: px, y: py, z: -sz});
+        }
+
+        // Rotate and project all vertices
+        var allVertices = topCircle.concat(bottomCircle);
+        var rotatedVertices = [];
+        var projectedVertices = [];
+        
+        for (var i = 0; i < allVertices.length; i++)
+        {
+            var rotated = rotate(allVertices[i]);
+            rotatedVertices.push(rotated);
+            projectedVertices.push(project(rotated));
+        }
+
+        // Create faces: top circle, bottom circle, and side surface
+        var faces = [];
+        
+        // Top face (CCW)
+        var topFaceIndices = [];
+        for (var i = 0; i < numSamples; i++)
+        {
+            topFaceIndices.push(i);
+        }
+        faces.push({indices: topFaceIndices, isTop: true});
+        
+        // Bottom face (CW for correct normal)
+        var bottomFaceIndices = [];
+        for (var i = numSamples - 1; i >= 0; i--)
+        {
+            bottomFaceIndices.push(i + numSamples);
+        }
+        faces.push({indices: bottomFaceIndices, isBottom: true});
+        
+        // Side faces (connecting top and bottom circles)
+        for (var i = 0; i < numSamples; i++)
+        {
+            var next = (i + 1) % numSamples;
+            faces.push({
+                indices: [i, next, next + numSamples, i + numSamples],
+                isSide: true
+            });
+        }
+
+        // Calculate face normals and visibility
+        var viewDir = {x: 0, y: 0, z: -1};
+        var faceInfo = [];
+        
+        for (var fi = 0; fi < faces.length; fi++)
+        {
+            var face = faces[fi];
+            var idx = face.indices;
+            
+            // Calculate normal
+            var p0 = rotatedVertices[idx[0]];
+            var p1 = rotatedVertices[idx[1]];
+            var p2 = rotatedVertices[idx[2]];
+            
+            var ux = p1.x - p0.x, uy = p1.y - p0.y, uz = p1.z - p0.z;
+            var vx = p2.x - p0.x, vy = p2.y - p0.y, vz = p2.z - p0.z;
+            
+            var nx = uy * vz - uz * vy;
+            var ny = uz * vx - ux * vz;
+            var nz = ux * vy - uy * vx;
+            
+            var len = Math.sqrt(nx*nx + ny*ny + nz*nz) || 1;
+            nx /= len; ny /= len; nz /= len;
+            
+            // Average z for depth sorting
+            var avgZ = 0;
+            for (var k = 0; k < idx.length; k++)
+            {
+                avgZ += rotatedVertices[idx[k]].z;
+            }
+            avgZ /= idx.length;
+            
+            // Visibility
+            var vis = (nx*viewDir.x + ny*viewDir.y + nz*viewDir.z) < 0;
+            
+            faceInfo.push({
+                id: fi,
+                indices: idx,
+                normal: {x: nx, y: ny, z: nz},
+                z: avgZ,
+                visible: vis
+            });
+        }
+
+        // Sort back-to-front
+        faceInfo.sort(function(a, b){ return a.z - b.z; });
+
+        // Get base fill color - use third style color as default (#182E3E)
+        var baseFill = mxUtils.getValue(style, mxConstants.STYLE_FILLCOLOR, '#182E3E');
+        
+        // Lighting for 3D effect
+        var light = {x: 0.35, y: -0.5, z: -0.8};
+        var lmag = Math.sqrt(light.x*light.x + light.y*light.y + light.z*light.z) || 1;
+        light.x /= lmag; light.y /= lmag; light.z /= lmag;
+
+        function shade(hex, factor)
+        {
+            function clamp(v){ return Math.max(0, Math.min(255, v)); }
+            if (hex.charAt(0) == '#') hex = hex.substring(1);
+            if (hex.length === 3) hex = hex.split('').map(function(c){return c+c;}).join('');
+            var r = parseInt(hex.substring(0,2), 16);
+            var g = parseInt(hex.substring(2,4), 16);
+            var b = parseInt(hex.substring(4,6), 16);
+            r = clamp(Math.round(r * factor));
+            g = clamp(Math.round(g * factor));
+            b = clamp(Math.round(b * factor));
+            return '#' + ('0' + r.toString(16)).slice(-2) + ('0' + g.toString(16)).slice(-2) + ('0' + b.toString(16)).slice(-2);
+        }
+
+        function isNoneColor(col)
+        {
+            if (col == null) return true;
+            var s = String(col).toLowerCase();
+            if (s === 'none' || s === 'transparent' || s === '') return true;
+            if (s.indexOf('rgba(') === 0)
+            {
+                var m = s.match(/rgba\([^,]+,[^,]+,[^,]+,\s*([0-9.]+)\)/);
+                if (m && parseFloat(m[1]) === 0) return true;
+            }
+            if (s.length === 9 && s.startsWith('#') && s.substring(7) === '00') return true;
+            return false;
+        }
+        
+        // Stroke color handling - same as isoCube
+        var strokeColor = mxUtils.getValue(style, mxConstants.STYLE_STROKECOLOR, null);
+        var strokeColorNone = isNoneColor(strokeColor);
+        
+        // Check strokeWidth - if line is disabled, it should be 0 or not set
+        var strokeWidthRaw = mxUtils.getValue(style, mxConstants.STYLE_STROKEWIDTH, null);
+        var strokeWidth = parseFloat(strokeWidthRaw);
+        // Default strokeWidth if not set or invalid
+        if (strokeWidthRaw == null || strokeWidthRaw === '' || isNaN(strokeWidth))
+        {
+            strokeWidth = strokeColorNone ? 0 : this.strokewidth;
+        }
+        
+        var strokeOpacity = parseFloat(mxUtils.getValue(style, 'strokeOpacity', 1));
+        // If strokeColor is none, force strokeWidth and strokeOpacity to 0
+        if (strokeColorNone)
+        {
+            strokeWidth = 0;
+            strokeOpacity = 0;
+        }
+        else
+        {
+            if (isNaN(strokeOpacity)) strokeOpacity = 1;
+            if (strokeOpacity > 1) strokeOpacity = strokeOpacity / 100;
+        }
+        
+        // Honor style-provided opacities for fill
+        var fillOpacity = parseFloat(mxUtils.getValue(style, 'fillOpacity', 1));
+        if (isNaN(fillOpacity)) fillOpacity = 1;
+        if (fillOpacity > 1) fillOpacity = fillOpacity / 100;
+        c.setFillAlpha(Math.max(0, Math.min(1, fillOpacity)));
+        
+        var strokeEnabled = !strokeColorNone && strokeOpacity > 0 && strokeWidth > 0;
+        
+        // Only set stroke properties when actually enabled
+        if (strokeEnabled)
+        {
+            c.setStrokeColor(strokeColor);
+            c.setStrokeWidth(strokeWidth);
+            c.setStrokeAlpha(Math.max(0, Math.min(1, strokeOpacity)));
+        }
+        
+        function isNoneFill(col)
+        {
+            if (col == null) return true;
+            var s = String(col).toLowerCase();
+            if (s === 'none' || s === 'transparent' || s === '') return true;
+            if (s.indexOf('rgba(') === 0)
+            {
+                var m = s.match(/rgba\([^,]+,[^,]+,[^,]+,\s*([0-9.]+)\)/);
+                if (m && parseFloat(m[1]) === 0) return true;
+            }
+            if (s.length === 9 && s.startsWith('#') && s.substring(7) === '00') return true;
+            return false;
+        }
+        
+        var fillEnabled = !isNoneFill(baseFill) && fillOpacity > 0;
+        
+        if (!fillEnabled && !strokeEnabled) return;
+
+        // Render faces
+        for (var fi2 = 0; fi2 < faceInfo.length; fi2++)
+        {
+            var f = faceInfo[fi2];
+            // Normalize normal
+            var n = f.normal; var nmag = Math.sqrt(n.x*n.x+n.y*n.y+n.z*n.z) || 1;
+            var nx=n.x/nmag, ny=n.y/nmag, nz=n.z/nmag;
+            var ndotl = Math.max(0, -(nx*light.x + ny*light.y + nz*light.z));
+            if (fillEnabled)
+            {
+                // Always apply shading for better 3D appearance
+                var tint = shade(baseFill, 0.55 + 0.45 * ndotl);
+                c.begin();
+                c.moveTo(projectedVertices[f.indices[0]].x, projectedVertices[f.indices[0]].y);
+                for (var j = 1; j < f.indices.length; j++) 
+                {
+                    c.lineTo(projectedVertices[f.indices[j]].x, projectedVertices[f.indices[j]].y);
+                }
+                c.close();
+                c.setFillColor(tint);
+                if (strokeEnabled) { c.fillAndStroke(); } else { c.fill(); }
+            }
+        }
+    };
+
+    IsoCylinderShape.prototype.constraints = [
+        new mxConnectionConstraint(new mxPoint(0.5, 0.5), false),
+        new mxConnectionConstraint(new mxPoint(0.5, 0), true),
+        new mxConnectionConstraint(new mxPoint(0.5, 1), true),
+        new mxConnectionConstraint(new mxPoint(0, 0.5), true),
+        new mxConnectionConstraint(new mxPoint(1, 0.5), true)
+    ];
+
+    mxCellRenderer.registerShape('isoCylinder', IsoCylinderShape);
+
     // --- Insert menu item ---
     // Try to add into Insert menu if present
     var insertMenu = editorUi.menus.get('insert');
@@ -373,10 +664,17 @@ Draw.loadPlugin(function(editorUi)
             sb.addPalette('isometric', 'Isometric', false, function(content)
             {
                 (function(){
+                    // Cube
                     var cell = new mxCell('', new mxGeometry(0, 0, 120, 120),
                         'shape=isoCube;isoZ=100;isoRx=35;isoRy=35;isoRz=0;fillColor=#26a0da;strokeColor=#1e78b7;rounded=0;');
                     cell.vertex = true;
                     content.appendChild(sb.createVertexTemplateFromCells([cell], 120, 120, 'Cube'));
+                    
+                    // Cylinder
+                    var cell2 = new mxCell('', new mxGeometry(0, 0, 120, 120),
+                        'shape=isoCylinder;isoZ=100;isoRx=35;isoRy=35;isoRz=0;fillColor=#26a0da;strokeColor=#1e78b7;rounded=0;');
+                    cell2.vertex = true;
+                    content.appendChild(sb.createVertexTemplateFromCells([cell2], 120, 120, 'Cylinder'));
                 })();
             });
         }
@@ -398,16 +696,19 @@ Draw.loadPlugin(function(editorUi)
     {
         var fmt = editorUi.format;
         if (!fmt || !fmt.container) return;
-        // Remove previous
+        // Remove previous panels
         var old = document.getElementById('isoCube-format-panel');
         if (old && old.parentNode) old.parentNode.removeChild(old);
+        var old2 = document.getElementById('isoCylinder-format-panel');
+        if (old2 && old2.parentNode) old2.parentNode.removeChild(old2);
 
         var cell = graph.getSelectionCell();
         var style = (cell != null) ? graph.getCurrentCellStyle(cell) : null;
-        if (!style || style['shape'] !== 'isoCube') return;
+        var shapeType = (style != null) ? style['shape'] : null;
+        if (!style || (shapeType !== 'isoCube' && shapeType !== 'isoCylinder')) return;
 
         var panel = document.createElement('div');
-        panel.id = 'isoCube-format-panel';
+        panel.id = (shapeType === 'isoCylinder') ? 'isoCylinder-format-panel' : 'isoCube-format-panel';
         panel.className = 'geStyleOptions';
         panel.style.padding = '8px 12px';
         panel.style.borderTop = '1px solid var(--gePrimaryBorderColor, #e0e0e0)';
@@ -438,7 +739,9 @@ Draw.loadPlugin(function(editorUi)
             mxEvent.addListener(input, 'change', function()
             {
                 var cur = graph.getSelectionCell();
-                if (cur && graph.getModel().isVertex(cur) && graph.getCurrentCellStyle(cur)['shape'] === 'isoCube')
+                var curStyle = (cur != null) ? graph.getCurrentCellStyle(cur) : null;
+                var curShape = (curStyle != null) ? curStyle['shape'] : null;
+                if (cur && graph.getModel().isVertex(cur) && (curShape === 'isoCube' || curShape === 'isoCylinder'))
                 {
                     graph.getModel().beginUpdate();
                     try
