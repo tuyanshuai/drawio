@@ -32,13 +32,14 @@
 		var p = params.get("p") || "";
 		
 		// All available plugins - default to load all plugins
+		// 注意：polygon-draw.js 必须在 ai-convert.js 之前加载，因为 ai-convert 依赖 manualPolygon 形状
 		var allPlugins = [
+			"plugins/polygon-draw.js",
 			"plugins/ai-convert.js",
 			"plugins/highlight-effect.js",
 			"plugins/isocube.js",
 			"plugins/isoextrude.js",
-			"plugins/material-library-api.js",
-			"plugins/polygon-draw.js"
+			"plugins/material-library-api.js"
 		];
 		
 		// Check if 'minimal=1' parameter is set to load only core plugins
@@ -46,11 +47,12 @@
 		var loadAll = params.get("all") === "1";
 		
 		// Core plugins (only loaded if minimal=1)
+		// 注意：polygon-draw.js 必须在 ai-convert.js 之前加载
 		var corePlugins = [
+			"plugins/polygon-draw.js",
 			"plugins/isocube.js", 
 			"plugins/ai-convert.js", 
-			"plugins/highlight-effect.js",
-			"plugins/polygon-draw.js"
+			"plugins/highlight-effect.js"
 		];
 		
 		// Determine which plugins to load

@@ -276,22 +276,49 @@ Draw.loadPlugin(function(editorUi)
 				
 				if (isValid)
 				{
-					// Calculate average brightness from fill color if available
-					var avgBrightness = 0.5; // default
-					if (mask.fill && mask.fill.rgb && Array.isArray(mask.fill.rgb))
+					// 保存填充颜色信息（优先使用 hex，然后是 rgb，最后是计算的亮度）
+					if (mask.fill)
 					{
-						// Calculate brightness from RGB: (R*0.299 + G*0.587 + B*0.114) / 255
-						var r = mask.fill.rgb[0] || 128;
-						var g = mask.fill.rgb[1] || 128;
-						var b = mask.fill.rgb[2] || 128;
-						avgBrightness = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
-					}
-					else
-					{
-						avgBrightness = calculateAverageBrightness(mask, width, height);
+						// 优先使用 hex 颜色
+						if (mask.fill.hex)
+						{
+							contour.fillColor = mask.fill.hex;
+						}
+						// 其次使用 rgb 数组转换为 hex
+						else if (mask.fill.rgb && Array.isArray(mask.fill.rgb))
+						{
+							var r = Math.round(mask.fill.rgb[0] || 128);
+							var g = Math.round(mask.fill.rgb[1] || 128);
+							var b = Math.round(mask.fill.rgb[2] || 128);
+							contour.fillColor = rgbToHex(r, g, b);
+						}
+						// 使用 color 字符串（格式如 "rgb(255, 0, 0)"）
+						else if (mask.fill.color)
+						{
+							contour.fillColor = parseColorString(mask.fill.color);
+						}
 					}
 					
-					contour.avgBrightness = avgBrightness;
+					// 如果没有颜色信息，计算平均亮度用于灰度填充
+					if (!contour.fillColor)
+					{
+						var avgBrightness = 0.5; // default
+						if (mask.fill && mask.fill.rgb && Array.isArray(mask.fill.rgb))
+						{
+							// Calculate brightness from RGB: (R*0.299 + G*0.587 + B*0.114) / 255
+							var r = mask.fill.rgb[0] || 128;
+							var g = mask.fill.rgb[1] || 128;
+							var b = mask.fill.rgb[2] || 128;
+							avgBrightness = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
+						}
+						else
+						{
+							avgBrightness = calculateAverageBrightness(mask, width, height);
+						}
+						contour.avgBrightness = avgBrightness;
+						contour.fillColor = brightnessToColor(avgBrightness);
+					}
+					
 					contours.push(contour);
 					
 					if (window.console && i < 3)
@@ -300,7 +327,12 @@ Draw.loadPlugin(function(editorUi)
 							点数: contour.length,
 							第一个点: contour[0],
 							最后一个点: contour[contour.length - 1],
-							亮度: avgBrightness
+							填充颜色: contour.fillColor || '未设置',
+							maskFill: mask.fill ? {
+								hex: mask.fill.hex,
+								rgb: mask.fill.rgb,
+								color: mask.fill.color
+							} : '无'
 						});
 					}
 				}
@@ -539,6 +571,46 @@ Draw.loadPlugin(function(editorUi)
 	}
 	
 	/**
+	 * Converts RGB values to hex color string
+	 */
+	function rgbToHex(r, g, b)
+	{
+		var toHex = function(n)
+		{
+			n = Math.max(0, Math.min(255, Math.round(n)));
+			var hex = n.toString(16);
+			return hex.length === 1 ? '0' + hex : hex;
+		};
+		return '#' + toHex(r) + toHex(g) + toHex(b);
+	}
+	
+	/**
+	 * Parses color string (e.g., "rgb(255, 0, 0)" or "rgba(255, 0, 0, 0.5)") to hex
+	 */
+	function parseColorString(colorStr)
+	{
+		if (!colorStr) return null;
+		
+		// 如果已经是 hex 格式
+		if (colorStr.match(/^#[0-9A-Fa-f]{6}$/))
+		{
+			return colorStr;
+		}
+		
+		// 解析 rgb/rgba 格式
+		var rgbMatch = colorStr.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+		if (rgbMatch)
+		{
+			var r = parseInt(rgbMatch[1], 10);
+			var g = parseInt(rgbMatch[2], 10);
+			var b = parseInt(rgbMatch[3], 10);
+			return rgbToHex(r, g, b);
+		}
+		
+		return null;
+	}
+	
+	/**
 	 * Converts contour points to mxPoint array relative to bounding box
 	 */
 	function contourToPoints(contour, bbox, scale)
@@ -559,60 +631,8 @@ Draw.loadPlugin(function(editorUi)
 		return points;
 	}
 	
-	/**
-	 * Custom polygon shape for AI converted contours
-	 */
-	function AIConvertedPolygonShape()
-	{
-		mxActor.call(this);
-	};
-	
-	mxUtils.extend(AIConvertedPolygonShape, mxActor);
-	
-	AIConvertedPolygonShape.prototype.redrawPath = function(c, x, y, w, h)
-	{
-		var polyCoords = this.getPolyCoords();
-		
-		if (polyCoords && polyCoords.length >= 2)
-		{
-			c.begin();
-			c.moveTo(x + polyCoords[0][0] * w, y + polyCoords[0][1] * h);
-			
-			for (var i = 1; i < polyCoords.length; i++)
-			{
-				c.lineTo(x + polyCoords[i][0] * w, y + polyCoords[i][1] * h);
-			}
-			
-			// Close the path if there are at least 3 points
-			if (polyCoords.length >= 3)
-			{
-				c.close();
-			}
-			
-			c.end();
-			c.fillAndStroke();
-		}
-	};
-	
-	AIConvertedPolygonShape.prototype.getPolyCoords = function()
-	{
-		try
-		{
-			var coordsStr = mxUtils.getValue(this.style, 'polyCoords', '[]');
-			return JSON.parse(coordsStr);
-		}
-		catch (e)
-		{
-			if (window.console)
-			{
-				console.error('[AI Convert] 解析 polyCoords 失败:', e);
-			}
-			return [];
-		}
-	};
-	
-	// Register the custom shape
-	mxCellRenderer.registerShape('aiConvertedPolygon', AIConvertedPolygonShape);
+	// 注意：AI 转换功能现在使用 polygon-draw.js 插件中的 manualPolygon 形状
+	// 这样可以保持代码一致性，两个功能共享同一个形状实现
 	
 	
 	/**
@@ -767,19 +787,18 @@ Draw.loadPlugin(function(editorUi)
 					continue;
 				}
 				
-				// Create fill and stroke colors
-				var fillColor = brightnessToColor(contour.avgBrightness || 0.5);
+				// 使用保存的填充颜色，如果没有则使用默认颜色
+				var fillColor = contour.fillColor || brightnessToColor(contour.avgBrightness || 0.5);
 				var strokeColor = '#000000';
 				
-				// Create style for filled polygon using custom shape
+				// Create style for filled polygon using manualPolygon shape from polygon-draw plugin
 				var polyCoordsJson = JSON.stringify(relativePoints);
-				var style = 'shape=aiConvertedPolygon;' +
+				var style = 'shape=manualPolygon;' +
 					'polyCoords=' + polyCoordsJson + ';' +
 					'fillColor=' + fillColor + 
 					';strokeColor=' + strokeColor + 
-					';strokeWidth=1;' +
-					'whiteSpace=wrap;' +
-					'html=1;';
+					';strokeWidth=0.5;' +
+					'whiteSpace=wrap;';
 				
 				// Create vertex with custom polygon shape
 				var vertex = graph.insertVertex(parent, null, '', posX, posY, width, height, style);
@@ -950,7 +969,7 @@ Draw.loadPlugin(function(editorUi)
 		var encodedPath = encodeURIComponent(pathString);
 		
 		// Use custom shape with path data stored in style
-		return 'shape=aiPath;pathData=' + encodedPath + ';fillColor=' + fillColor + ';strokeColor=' + strokeColor + ';strokeWidth=1;';
+		return 'shape=aiPath;pathData=' + encodedPath + ';fillColor=' + fillColor + ';strokeColor=' + strokeColor + ';strokeWidth=0.5;';
 	}
 	
 	/**
