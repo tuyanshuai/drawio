@@ -236,6 +236,90 @@ Draw.loadPlugin(function(editorUi)
                 points.push({x: sx * Math.cos(angle), y: sy * Math.sin(angle)});
             }
         }
+        else if (shape.indexOf('manualpolygon') >= 0 || shape.indexOf('polygon') >= 0)
+        {
+            // ManualPolygon shape - get coordinates from polyCoords style property
+            var polyCoordsStr = mxUtils.getValue(style, 'polyCoords', null);
+            if (polyCoordsStr)
+            {
+                try
+                {
+                    // Handle escaped semicolons and other special characters
+                    if (typeof polyCoordsStr === 'string')
+                    {
+                        polyCoordsStr = polyCoordsStr.replace(/\\;/g, ';');
+                    }
+                    
+                    // Handle both string and already parsed JSON
+                    var polyCoords = null;
+                    if (typeof polyCoordsStr === 'string')
+                    {
+                        // Try to parse as JSON
+                        polyCoords = JSON.parse(polyCoordsStr);
+                    }
+                    else if (Array.isArray(polyCoordsStr))
+                    {
+                        polyCoords = polyCoordsStr;
+                    }
+                    
+                    if (Array.isArray(polyCoords) && polyCoords.length >= 2)
+                    {
+                        // Clear points array to ensure we start fresh
+                        points = [];
+                        
+                        // Convert relative coordinates (0-1) to centered coordinates (-sx to sx, -sy to sy)
+                        // In ManualPolygonShape, coordinates are relative to the bounding box (0-1)
+                        // We need to convert to centered coordinates for 3D extrusion
+                        // CRITICAL: Process ALL vertices from polyCoords to match the original polygon
+                        for (var i = 0; i < polyCoords.length; i++)
+                        {
+                            if (Array.isArray(polyCoords[i]) && polyCoords[i].length >= 2)
+                            {
+                                var relX = parseFloat(polyCoords[i][0]);
+                                var relY = parseFloat(polyCoords[i][1]);
+                                if (!isNaN(relX) && !isNaN(relY))
+                                {
+                                    // Convert from relative (0-1) to centered coordinates
+                                    // relX=0 -> x=-sx, relX=0.5 -> x=0, relX=1 -> x=sx
+                                    // Same for Y: relY=0 -> y=-sy, relY=0.5 -> y=0, relY=1 -> y=sy
+                                    // Formula: x = (relX - 0.5) * w, y = (relY - 0.5) * h
+                                    points.push({
+                                        x: (relX - 0.5) * w,
+                                        y: (relY - 0.5) * h
+                                    });
+                                }
+                            }
+                        }
+                        
+                        // Return points if we successfully parsed them (need at least 3 for a polygon)
+                        // Ensure we return ALL vertices to match the original polygon exactly
+                        if (points.length >= 3)
+                        {
+                            // Debug: log if vertex count doesn't match
+                            if (window.console && points.length !== polyCoords.length)
+                            {
+                                console.warn('[IsoExtrude] Vertex count mismatch: polyCoords=' + polyCoords.length + ', points=' + points.length);
+                            }
+                            return points;
+                        }
+                        else if (points.length >= 2)
+                        {
+                            // If only 2 points, duplicate the last point to make it a valid polygon
+                            points.push({x: points[points.length - 1].x, y: points[points.length - 1].y});
+                            return points;
+                        }
+                    }
+                }
+                catch (e)
+                {
+                    if (window.console)
+                    {
+                        console.error('[IsoExtrude] Failed to parse polyCoords:', e, polyCoordsStr);
+                    }
+                }
+            }
+            // If polyCoords parsing failed, fall through to default rectangle
+        }
         else
         {
             // Unknown shape - for safety, default to rectangle vertices instead of curve sampling
@@ -302,57 +386,62 @@ Draw.loadPlugin(function(editorUi)
 
         // Get base shape path points based on original shape type
         var basePoints = getOutlinePoints(originalShape, x, y, w, h, style);
-
-        // Create front and back faces
-        var frontFace = [];
-        var backFace = [];
-        for (var i = 0; i < basePoints.length; i++)
-        {
-            frontFace.push({x: basePoints[i].x, y: basePoints[i].y, z: sz});
-            backFace.push({x: basePoints[i].x, y: basePoints[i].y, z: -sz});
-        }
-
-        // Rotate all vertices
-        var allVertices = frontFace.concat(backFace);
-        var rotatedVertices = [];
-        for (var i = 0; i < allVertices.length; i++)
-        {
-            rotatedVertices.push(rotate(allVertices[i]));
-        }
-
-        var projectedVertices = [];
-        for (var i = 0; i < rotatedVertices.length; i++)
-        {
-            projectedVertices.push(project(rotatedVertices[i]));
-        }
-
-        // Create faces (front, back, and sides)
-        var faces = [];
+        
+        // For polygon shapes, use the actual vertex count (same as cylinder uses numSamples)
+        // This ensures the number of vertices matches the original polygon exactly
         var numPoints = basePoints.length;
         
-        // Front face
-        var frontFaceIndices = [];
+        // Create top and bottom faces (similar to cylinder's topCircle and bottomCircle)
+        // But using actual polygon vertices instead of circle samples
+        var topFace = [];
+        var bottomFace = [];
+        
         for (var i = 0; i < numPoints; i++)
         {
-            frontFaceIndices.push(i);
+            // Top face at z = sz (like cylinder's topCircle)
+            topFace.push({x: basePoints[i].x, y: basePoints[i].y, z: sz});
+            // Bottom face at z = -sz (like cylinder's bottomCircle)
+            bottomFace.push({x: basePoints[i].x, y: basePoints[i].y, z: -sz});
         }
-        faces.push({indices: frontFaceIndices, isFront: true});
 
-        // Back face (reversed winding)
-        var backFaceIndices = [];
+        // Rotate and project all vertices (same as cylinder)
+        var allVertices = topFace.concat(bottomFace);
+        var rotatedVertices = [];
+        var projectedVertices = [];
+        
+        for (var i = 0; i < allVertices.length; i++)
+        {
+            var rotated = rotate(allVertices[i]);
+            rotatedVertices.push(rotated);
+            projectedVertices.push(project(rotated));
+        }
+
+        // Create faces: top face, bottom face, and side faces (same structure as cylinder)
+        var faces = [];
+        
+        // Top face (CCW, same as cylinder's topFaceIndices)
+        var topFaceIndices = [];
+        for (var i = 0; i < numPoints; i++)
+        {
+            topFaceIndices.push(i);
+        }
+        faces.push({indices: topFaceIndices, isTop: true});
+
+        // Bottom face (CW for correct normal, same as cylinder's bottomFaceIndices)
+        var bottomFaceIndices = [];
         for (var i = numPoints - 1; i >= 0; i--)
         {
-            backFaceIndices.push(i + numPoints);
+            bottomFaceIndices.push(i + numPoints);
         }
-        faces.push({indices: backFaceIndices, isFront: false});
+        faces.push({indices: bottomFaceIndices, isBottom: true});
 
-        // Side faces
+        // Side faces (connecting top and bottom vertices, same as cylinder's side faces)
         for (var i = 0; i < numPoints; i++)
         {
             var next = (i + 1) % numPoints;
             faces.push({
                 indices: [i, next, next + numPoints, i + numPoints],
-                isFront: null
+                isSide: true
             });
         }
 
@@ -756,6 +845,37 @@ Draw.loadPlugin(function(editorUi)
                 
                 // Save original shape type for outline generation
                 if (originalShape) newStyle += 'isoOriginalShape=' + originalShape + ';';
+                
+                // If original shape is manualPolygon, preserve polyCoords
+                if (originalShape === 'manualPolygon' || originalShape === 'polygon')
+                {
+                    var polyCoords = mxUtils.getValue(style, 'polyCoords', null);
+                    if (polyCoords)
+                    {
+                        // Ensure polyCoords is a JSON string
+                        var polyCoordsStr = polyCoords;
+                        if (typeof polyCoords !== 'string')
+                        {
+                            try
+                            {
+                                polyCoordsStr = JSON.stringify(polyCoords);
+                            }
+                            catch (e)
+                            {
+                                if (window.console)
+                                {
+                                    console.error('[IsoExtrude] Failed to stringify polyCoords:', e);
+                                }
+                                polyCoordsStr = null;
+                            }
+                        }
+                        if (polyCoordsStr)
+                        {
+                            // Escape semicolons and other special characters that might break the style string
+                            newStyle += 'polyCoords=' + polyCoordsStr.replace(/;/g, '\\;') + ';';
+                        }
+                    }
+                }
 
                 // Copy fill color - use default blue if not set or is black
                 var fillColor = mxUtils.getValue(style, mxConstants.STYLE_FILLCOLOR, null);
