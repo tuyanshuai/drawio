@@ -120,7 +120,15 @@ Draw.loadPlugin(function(editorUi)
         faceInfo.sort(function(a, b){ return a.z - b.z; });
 
         // Fill with shading based on a fixed light direction in view space
+        // Default fill color to blue if not set or is 'none' (avoid black)
         var baseFill = mxUtils.getValue(style, mxConstants.STYLE_FILLCOLOR, null);
+        // If fillColor is null, empty, or 'none', use default blue color
+        if (baseFill == null || baseFill === '' || baseFill === 'none' || baseFill === 'transparent')
+        {
+            baseFill = '#1e78b7';
+        }
+        // Debug: log the fill color to console (can be removed later)
+        // console.log('IsoCube baseFill:', baseFill, 'style fillColor:', mxUtils.getValue(style, mxConstants.STYLE_FILLCOLOR, null));
         // Check if strokeColor is explicitly set, if not default to none (line disabled)
         var strokeColor = mxUtils.getValue(style, mxConstants.STYLE_STROKECOLOR, null);
         if (strokeColor == null || strokeColor === '') strokeColor = 'none';
@@ -131,11 +139,27 @@ Draw.loadPlugin(function(editorUi)
         function shade(hex, factor)
         {
             function clamp(v){ return Math.max(0, Math.min(255, v)); }
+            // Ensure we have a valid hex color, fallback to default blue if invalid
+            if (!hex || typeof hex !== 'string' || (hex.toLowerCase() === 'none' || hex.toLowerCase() === 'transparent'))
+            {
+                hex = '#1e78b7';
+            }
             if (hex.charAt(0) == '#') hex = hex.substring(1);
+            // Handle 3-digit hex colors
             if (hex.length === 3) hex = hex.split('').map(function(c){return c+c;}).join('');
+            // Validate hex length (should be 6 digits)
+            if (hex.length !== 6)
+            {
+                hex = '1e78b7'; // Default blue without #
+            }
             var r = parseInt(hex.substring(0,2), 16);
             var g = parseInt(hex.substring(2,4), 16);
             var b = parseInt(hex.substring(4,6), 16);
+            // Validate parsed values - if NaN, use default blue
+            if (isNaN(r) || isNaN(g) || isNaN(b))
+            {
+                r = 30; g = 120; b = 183; // Default blue RGB (1e78b7)
+            }
             r = clamp(Math.round(r * factor));
             g = clamp(Math.round(g * factor));
             b = clamp(Math.round(b * factor));
@@ -206,7 +230,17 @@ Draw.loadPlugin(function(editorUi)
             if (s.length === 9 && s.startsWith('#') && s.substring(7) === '00') return true;
             return false;
         }
+        // Ensure baseFill is valid - force default if still invalid
+        if (isNoneFill(baseFill))
+        {
+            baseFill = '#1e78b7';
+        }
         var fillEnabled = !isNoneFill(baseFill) && fillOpacity > 0;
+        // Force fillEnabled to true if we have a valid color (always fill 3D shapes)
+        if (baseFill && baseFill !== 'none' && baseFill !== 'transparent' && fillOpacity > 0)
+        {
+            fillEnabled = true;
+        }
         if (!fillEnabled && !strokeEnabled)
         {
             // Nothing to render at all when both fill and line are disabled
@@ -224,12 +258,28 @@ Draw.loadPlugin(function(editorUi)
             {
                 // Always apply shading for better 3D appearance
                 var tint = shade(baseFill, 0.55 + 0.45 * ndotl);
+                // Ensure tint is valid before using
+                if (!tint || tint === 'none' || tint === 'transparent' || tint.length < 4)
+                {
+                    tint = '#1e78b7';
+                }
                 c.begin();
                 c.moveTo(v[f.idx[0]].x, v[f.idx[0]].y);
                 for (var j = 1; j < f.idx.length; j++) c.lineTo(v[f.idx[j]].x, v[f.idx[j]].y);
                 c.close();
                 c.setFillColor(tint);
+                // Ensure fill alpha is set before filling
+                c.setFillAlpha(Math.max(0, Math.min(1, fillOpacity)));
                 if (strokeEnabled) { c.fillAndStroke(); } else { c.fill(); }
+            }
+            else if (strokeEnabled)
+            {
+                // Only stroke, no fill
+                c.begin();
+                c.moveTo(v[f.idx[0]].x, v[f.idx[0]].y);
+                for (var j = 1; j < f.idx.length; j++) c.lineTo(v[f.idx[j]].x, v[f.idx[j]].y);
+                c.close();
+                c.stroke();
             }
         }
 
@@ -489,8 +539,15 @@ Draw.loadPlugin(function(editorUi)
         // Sort back-to-front
         faceInfo.sort(function(a, b){ return a.z - b.z; });
 
-        // Get base fill color - use third style color as default (#182E3E)
-        var baseFill = mxUtils.getValue(style, mxConstants.STYLE_FILLCOLOR, '#182E3E');
+        // Get base fill color - Default to blue if not set or is 'none' (avoid black)
+        var baseFill = mxUtils.getValue(style, mxConstants.STYLE_FILLCOLOR, null);
+        // If fillColor is null, empty, or 'none', use default blue color
+        if (baseFill == null || baseFill === '' || baseFill === 'none' || baseFill === 'transparent')
+        {
+            baseFill = '#1e78b7';
+        }
+        // Debug: log the fill color to console (can be removed later)
+        // console.log('IsoCylinder baseFill:', baseFill, 'style fillColor:', mxUtils.getValue(style, mxConstants.STYLE_FILLCOLOR, null));
         
         // Lighting for 3D effect
         var light = {x: 0.35, y: -0.5, z: -0.8};
@@ -500,11 +557,27 @@ Draw.loadPlugin(function(editorUi)
         function shade(hex, factor)
         {
             function clamp(v){ return Math.max(0, Math.min(255, v)); }
+            // Ensure we have a valid hex color, fallback to default blue if invalid
+            if (!hex || typeof hex !== 'string' || (hex.toLowerCase() === 'none' || hex.toLowerCase() === 'transparent'))
+            {
+                hex = '#1e78b7';
+            }
             if (hex.charAt(0) == '#') hex = hex.substring(1);
+            // Handle 3-digit hex colors
             if (hex.length === 3) hex = hex.split('').map(function(c){return c+c;}).join('');
+            // Validate hex length (should be 6 digits)
+            if (hex.length !== 6)
+            {
+                hex = '1e78b7'; // Default blue without #
+            }
             var r = parseInt(hex.substring(0,2), 16);
             var g = parseInt(hex.substring(2,4), 16);
             var b = parseInt(hex.substring(4,6), 16);
+            // Validate parsed values - if NaN, use default blue
+            if (isNaN(r) || isNaN(g) || isNaN(b))
+            {
+                r = 30; g = 120; b = 183; // Default blue RGB (1e78b7)
+            }
             r = clamp(Math.round(r * factor));
             g = clamp(Math.round(g * factor));
             b = clamp(Math.round(b * factor));
@@ -581,7 +654,17 @@ Draw.loadPlugin(function(editorUi)
             return false;
         }
         
+        // Ensure baseFill is valid - force default if still invalid
+        if (isNoneFill(baseFill))
+        {
+            baseFill = '#1e78b7';
+        }
         var fillEnabled = !isNoneFill(baseFill) && fillOpacity > 0;
+        // Force fillEnabled to true if we have a valid color (always fill 3D shapes)
+        if (baseFill && baseFill !== 'none' && baseFill !== 'transparent' && fillOpacity > 0)
+        {
+            fillEnabled = true;
+        }
         
         if (!fillEnabled && !strokeEnabled) return;
 
@@ -597,6 +680,11 @@ Draw.loadPlugin(function(editorUi)
             {
                 // Always apply shading for better 3D appearance
                 var tint = shade(baseFill, 0.55 + 0.45 * ndotl);
+                // Ensure tint is valid before using
+                if (!tint || tint === 'none' || tint === 'transparent' || tint.length < 4)
+                {
+                    tint = '#1e78b7';
+                }
                 c.begin();
                 c.moveTo(projectedVertices[f.indices[0]].x, projectedVertices[f.indices[0]].y);
                 for (var j = 1; j < f.indices.length; j++) 
@@ -605,7 +693,21 @@ Draw.loadPlugin(function(editorUi)
                 }
                 c.close();
                 c.setFillColor(tint);
+                // Ensure fill alpha is set before filling
+                c.setFillAlpha(Math.max(0, Math.min(1, fillOpacity)));
                 if (strokeEnabled) { c.fillAndStroke(); } else { c.fill(); }
+            }
+            else if (strokeEnabled)
+            {
+                // Only stroke, no fill
+                c.begin();
+                c.moveTo(projectedVertices[f.indices[0]].x, projectedVertices[f.indices[0]].y);
+                for (var j = 1; j < f.indices.length; j++) 
+                {
+                    c.lineTo(projectedVertices[f.indices[j]].x, projectedVertices[f.indices[j]].y);
+                }
+                c.close();
+                c.stroke();
             }
         }
     };
@@ -626,10 +728,37 @@ Draw.loadPlugin(function(editorUi)
     {
         if (sb != null)
         {
-            // Remove existing palette if it exists to avoid duplicates
-            if (sb.palettes['isometric'])
+            // Remove existing palettes to control order
+            // Check if palettes exist and are valid before removing
+            var aiConvertExists = sb.palettes && sb.palettes['aiConvert'] != null && sb.palettes['aiConvert'][1] != null;
+            var isometricExists = sb.palettes && sb.palettes['isometric'] != null && sb.palettes['isometric'][1] != null;
+            
+            if (isometricExists)
             {
-                sb.removePalette('isometric');
+                try
+                {
+                    sb.removePalette('isometric');
+                }
+                catch (e)
+                {
+                    // Ignore error if palette doesn't exist or already removed
+                    console.warn('Failed to remove isometric palette:', e);
+                }
+            }
+            
+            // Temporarily remove AI convert palette if it exists
+            // so that 3D shape palette can be added first
+            if (aiConvertExists)
+            {
+                try
+                {
+                    sb.removePalette('aiConvert');
+                }
+                catch (e)
+                {
+                    // Ignore error if palette doesn't exist or already removed
+                    console.warn('Failed to remove aiConvert palette:', e);
+                }
             }
             
             sb.addPalette('isometric', '3D 形状', true, function(content)
@@ -637,13 +766,13 @@ Draw.loadPlugin(function(editorUi)
                 (function(){
                     // Cube
                     var cell = new mxCell('', new mxGeometry(0, 0, 250, 250),
-                        'shape=isoCube;isoZ=70;isoRx=35;isoRy=35;isoRz=0;fillColor=none;strokeColor=#1e78b7;rounded=0;');
+                        'shape=isoCube;isoZ=70;isoRx=35;isoRy=35;isoRz=0;fillColor=#1e78b7;strokeColor=#1e78b7;rounded=0;');
                     cell.vertex = true;
                     content.appendChild(sb.createVertexTemplateFromCells([cell], 120, 120, 'Cube'));
                     
                     // Cylinder
                     var cell2 = new mxCell('', new mxGeometry(0, 0, 250, 250),
-                        'shape=isoCylinder;isoZ=70;isoRx=35;isoRy=35;isoRz=0;fillColor=none;strokeColor=#1e78b7;rounded=0;');
+                        'shape=isoCylinder;isoZ=70;isoRx=35;isoRy=35;isoRz=0;fillColor=#1e78b7;strokeColor=#1e78b7;rounded=0;');
                     cell2.vertex = true;
                     content.appendChild(sb.createVertexTemplateFromCells([cell2], 120, 120, 'Cylinder'));
                 })();
@@ -663,6 +792,69 @@ Draw.loadPlugin(function(editorUi)
             // Add Isometric palette BEFORE General palette
             addIsoPalette();
             sbInit.apply(this, arguments);
+        };
+    }
+
+    // --- Add right-click menu item to convert shapes to 3D ---
+    if (editorUi.menus && editorUi.menus.createPopupMenu)
+    {
+        var originalCreatePopupMenu = editorUi.menus.createPopupMenu;
+        editorUi.menus.createPopupMenu = function(menu, cell, evt)
+        {
+            originalCreatePopupMenu.apply(this, arguments);
+            
+            // Only show menu item for vertex cells that are not already 3D shapes
+            if (cell && graph.getModel().isVertex(cell))
+            {
+                var style = graph.getCurrentCellStyle(cell);
+                var shapeType = style ? style[mxConstants.STYLE_SHAPE] : null;
+                
+                // Only show if not already a 3D shape
+                if (shapeType !== 'isoCube' && shapeType !== 'isoCylinder')
+                {
+                    menu.addSeparator();
+                    menu.addItem('添加3D效果', null, function()
+                    {
+                        graph.getModel().beginUpdate();
+                        try
+                        {
+                            var currentStyle = graph.getCurrentCellStyle(cell);
+                            var fillColor = mxUtils.getValue(currentStyle, mxConstants.STYLE_FILLCOLOR, '#1e78b7');
+                            
+                            // Ensure fillColor is not black or none
+                            if (!fillColor || fillColor === '#000000' || fillColor === '#000' || 
+                                fillColor === 'black' || fillColor === 'none' || fillColor === 'transparent')
+                            {
+                                fillColor = '#1e78b7';
+                            }
+                            
+                            // Convert to isoCube shape with 3D effect
+                            var newStyle = {
+                                shape: 'isoCube',
+                                fillColor: fillColor,
+                                fillOpacity: '0.2',
+                                isoZ: '70',
+                                isoRx: '35',
+                                isoRy: '35',
+                                isoRz: '0'
+                            };
+                            
+                            // Preserve other style properties
+                            var keys = Object.keys(newStyle);
+                            for (var i = 0; i < keys.length; i++)
+                            {
+                                graph.setCellStyles(keys[i], newStyle[keys[i]], [cell]);
+                            }
+                            
+                            graph.refresh(cell);
+                        }
+                        finally
+                        {
+                            graph.getModel().endUpdate();
+                        }
+                    });
+                }
+            }
         };
     }
 
@@ -688,10 +880,9 @@ Draw.loadPlugin(function(editorUi)
         panel.style.padding = '8px 12px';
         panel.style.borderTop = '1px solid var(--gePrimaryBorderColor, #e0e0e0)';
 
-        // Insert rows directly into the existing format container without separate section title
-        var first = fmt.container.firstChild;
-        if (first) fmt.container.insertBefore(panel, first.nextSibling);
-        else fmt.container.appendChild(panel);
+        // Insert panel at the bottom (after sketch section)
+        // Find the last child or append to end
+        fmt.container.appendChild(panel);
 
         function addNumber(labelText, key, min, max, step)
         {

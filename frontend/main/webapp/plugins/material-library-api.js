@@ -1047,7 +1047,7 @@ Draw.loadPlugin(function(editorUi)
 		}
 		
 		// 创建调色板
-		sidebar.addPalette('icons', '图标库', false, function(content)
+		sidebar.addPalette('icons', '图标库', true, function(content)
 		{
 			// 添加搜索框
 			var searchDiv = document.createElement('div');

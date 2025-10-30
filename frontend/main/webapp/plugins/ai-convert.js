@@ -1030,6 +1030,102 @@ Draw.loadPlugin(function(editorUi)
 	}
 	
 	/**
+	 * Shows image preview dialog before processing
+	 */
+	function showImagePreviewDialog(imageData, callback, reselectCallback)
+	{
+		var div = document.createElement('div');
+		div.style.padding = '10px';
+		div.style.textAlign = 'center';
+		
+		// Title
+		var title = document.createElement('div');
+		title.style.fontSize = '16px';
+		title.style.fontWeight = 'bold';
+		title.style.marginBottom = '15px';
+		title.textContent = '图片预览';
+		div.appendChild(title);
+		
+		// Image preview container
+		var imgContainer = document.createElement('div');
+		imgContainer.style.marginBottom = '15px';
+		imgContainer.style.maxHeight = '400px';
+		imgContainer.style.maxWidth = '600px';
+		imgContainer.style.overflow = 'auto';
+		imgContainer.style.border = '1px solid #ccc';
+		imgContainer.style.borderRadius = '4px';
+		imgContainer.style.padding = '10px';
+		imgContainer.style.backgroundColor = '#f5f5f5';
+		imgContainer.style.display = 'inline-block';
+		
+		// Image element
+		var img = document.createElement('img');
+		img.src = imageData;
+		img.style.maxWidth = '100%';
+		img.style.maxHeight = '400px';
+		img.style.display = 'block';
+		img.style.margin = '0 auto';
+		
+		img.onload = function()
+		{
+			// Show image dimensions
+			var info = document.createElement('div');
+			info.style.fontSize = '12px';
+			info.style.color = '#666';
+			info.style.marginTop = '10px';
+			info.textContent = '尺寸: ' + img.naturalWidth + ' × ' + img.naturalHeight + ' 像素';
+			imgContainer.appendChild(info);
+		};
+		
+		imgContainer.appendChild(img);
+		div.appendChild(imgContainer);
+		
+		// Buttons container
+		var btns = document.createElement('div');
+		btns.style.marginTop = '15px';
+		btns.style.textAlign = 'center';
+		
+		// Reselect button
+		var reselectBtn = mxUtils.button('重新选择', function()
+		{
+			editorUi.hideDialog();
+			if (reselectCallback)
+			{
+				reselectCallback();
+			}
+		});
+		reselectBtn.className = 'geBtn';
+		reselectBtn.style.marginRight = '10px';
+		
+		// Cancel button
+		var cancelBtn = mxUtils.button(mxResources.get('cancel') || '取消', function()
+		{
+			editorUi.hideDialog();
+		});
+		cancelBtn.className = 'geBtn';
+		cancelBtn.style.marginRight = '10px';
+		
+		// Start processing button
+		var startBtn = mxUtils.button('开始处理', function()
+		{
+			editorUi.hideDialog();
+			if (callback)
+			{
+				callback();
+			}
+		});
+		startBtn.className = 'geBtn gePrimaryBtn';
+		
+		btns.appendChild(reselectBtn);
+		btns.appendChild(cancelBtn);
+		btns.appendChild(startBtn);
+		div.appendChild(btns);
+		
+		// Show dialog
+		editorUi.showDialog(div, 640, 500, true, true);
+	}
+	
+	/**
 	 * Main processing function
 	 */
 	function processImage(imageData)
@@ -1159,7 +1255,7 @@ Draw.loadPlugin(function(editorUi)
 			console.log('[AI Convert Plugin] Creating palette');
 		}
 		
-		sidebar.addPalette('aiConvert', 'AI 图片转化', false, function(content)
+		sidebar.addPalette('aiConvert', 'AI 图片转化', true, function(content)
 		{
 			var div = document.createElement('div');
 			div.style.padding = '10px';
@@ -1182,7 +1278,7 @@ Draw.loadPlugin(function(editorUi)
 			uploadBtn.style.marginBottom = '10px';
 			
 			// File input handler
-			mxEvent.addListener(fileInput, 'change', function(evt)
+			var handleFileSelect = function(evt)
 			{
 				if (fileInput.files && fileInput.files.length > 0)
 				{
@@ -1192,6 +1288,10 @@ Draw.loadPlugin(function(editorUi)
 					if (file.type.substring(0, 6) !== 'image/')
 					{
 						editorUi.handleError({message: '请选择图片文件（JPG或PNG）'});
+						// Reset input
+						fileInput.type = '';
+						fileInput.type = 'file';
+						fileInput.value = '';
 						return;
 					}
 					
@@ -1200,20 +1300,30 @@ Draw.loadPlugin(function(editorUi)
 					{
 						if (dataURL)
 						{
-							processImage(dataURL);
+							// Show preview dialog first
+							showImagePreviewDialog(dataURL, function()
+							{
+								// User clicked "开始处理", process the image
+								processImage(dataURL);
+							}, function()
+							{
+								// User clicked "重新选择", reopen file selector
+								fileInput.click();
+							});
 						}
 						else
 						{
 							editorUi.handleError({message: '读取文件失败'});
+							// Reset input
+							fileInput.type = '';
+							fileInput.type = 'file';
+							fileInput.value = '';
 						}
 					});
-					
-					// Reset input
-					fileInput.type = '';
-					fileInput.type = 'file';
-					fileInput.value = '';
 				}
-			});
+			};
+			
+			mxEvent.addListener(fileInput, 'change', handleFileSelect);
 			
 			// Info text
 			var infoText = document.createElement('div');

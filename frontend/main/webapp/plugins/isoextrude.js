@@ -405,7 +405,19 @@ Draw.loadPlugin(function(editorUi)
         faceInfo.sort(function(a, b){ return a.z - b.z; });
 
         // Get base fill color - use third style color as default (#182E3E)
-        var baseFill = mxUtils.getValue(style, mxConstants.STYLE_FILLCOLOR, '#182E3E');
+        // Default fill color to blue if not set or is 'none' (avoid black)
+        var baseFill = mxUtils.getValue(style, mxConstants.STYLE_FILLCOLOR, null);
+        // Force default blue color - always use it if fillColor is invalid
+        if (!baseFill || baseFill === '' || baseFill === 'none' || baseFill === 'transparent' || 
+            baseFill === '#000000' || baseFill === '#000' || baseFill.toLowerCase() === 'black')
+        {
+            baseFill = '#1e78b7';
+        }
+        // Ensure baseFill is always a valid hex color
+        if (!baseFill.startsWith('#'))
+        {
+            baseFill = '#1e78b7';
+        }
         
         // Lighting for 3D effect
         var light = {x: 0.35, y: -0.5, z: -0.8};
@@ -467,8 +479,9 @@ Draw.loadPlugin(function(editorUi)
         }
         
         // Honor style-provided opacities for fill
-        var fillOpacity = parseFloat(mxUtils.getValue(style, 'fillOpacity', 1));
-        if (isNaN(fillOpacity)) fillOpacity = 1;
+        // Default opacity to 20% (0.2) for 3D effect if not set
+        var fillOpacity = parseFloat(mxUtils.getValue(style, 'fillOpacity', 0.2));
+        if (isNaN(fillOpacity)) fillOpacity = 0.2; // Default 20% opacity for 3D effect
         if (fillOpacity > 1) fillOpacity = fillOpacity / 100; // accept 0..100 style values
         c.setFillAlpha(Math.max(0, Math.min(1, fillOpacity)));
         
@@ -577,6 +590,29 @@ Draw.loadPlugin(function(editorUi)
 
     // Register the shape
     mxCellRenderer.registerShape('isoExtrude', IsoExtrudeShape);
+    
+    // Override getCellStyle to set default fill color and opacity for 3D extrude shapes
+    var originalGetCellStyle = graph.getCellStyle;
+    graph.getCellStyle = function(cell, edgeStyle, applyDefaultStyle)
+    {
+        var style = originalGetCellStyle.apply(this, arguments);
+        if (style && style[mxConstants.STYLE_SHAPE] === 'isoExtrude')
+        {
+            // Set default fill color to blue if not set or is black
+            var fillColor = style[mxConstants.STYLE_FILLCOLOR];
+            if (!fillColor || fillColor === '#000000' || fillColor === '#000' || 
+                fillColor === 'black' || fillColor === 'none' || fillColor === 'transparent' || fillColor === null)
+            {
+                style[mxConstants.STYLE_FILLCOLOR] = '#1e78b7';
+            }
+            // Set default opacity to 20% (0.2) for 3D effect if not set
+            if (!style['fillOpacity'] || style['fillOpacity'] === null || style['fillOpacity'] === undefined)
+            {
+                style['fillOpacity'] = '0.2';
+            }
+        }
+        return style;
+    };
 
     // Connection points (center of front face)
     IsoExtrudeShape.prototype.constraints = [
@@ -721,11 +757,12 @@ Draw.loadPlugin(function(editorUi)
                 // Save original shape type for outline generation
                 if (originalShape) newStyle += 'isoOriginalShape=' + originalShape + ';';
 
-                // Copy fill color - use third style color as default if not set
+                // Copy fill color - use default blue if not set or is black
                 var fillColor = mxUtils.getValue(style, mxConstants.STYLE_FILLCOLOR, null);
-                if (!fillColor || fillColor === 'none' || fillColor === 'transparent' || fillColor === '')
+                if (!fillColor || fillColor === 'none' || fillColor === 'transparent' || fillColor === '' ||
+                    fillColor === '#000000' || fillColor === '#000' || fillColor.toLowerCase() === 'black')
                 {
-                    fillColor = '#182E3E'; // Third style color
+                    fillColor = '#1e78b7'; // Default blue color
                 }
                 newStyle += 'fillColor=' + fillColor + ';';
 
@@ -736,7 +773,8 @@ Draw.loadPlugin(function(editorUi)
                 var strokeWidth = mxUtils.getValue(style, mxConstants.STYLE_STROKEWIDTH, null);
                 if (strokeWidth != null) newStyle += 'strokeWidth=' + strokeWidth + ';';
 
-                var fillOpacity = mxUtils.getValue(style, mxConstants.STYLE_FILLOPACITY, 100);
+                // Set default opacity to 20% (0.2) for 3D effect
+                var fillOpacity = mxUtils.getValue(style, mxConstants.STYLE_FILLOPACITY, 20);
                 newStyle += 'fillOpacity=' + fillOpacity + ';';
 
                 var strokeOpacity = mxUtils.getValue(style, mxConstants.STYLE_STROKEOPACITY, 100);

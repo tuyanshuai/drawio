@@ -2565,6 +2565,44 @@ var EditDataDialog = function(ui, cell)
 	var form = new mxForm('properties');
 	form.table.style.width = '100%';
 
+	// Property name translation map
+	var propertyNameTranslations = {
+		'name': mxResources.get('name') || '名称',
+		'value': mxResources.get('value') || '值',
+		'label': mxResources.get('label') || '标签',
+		'id': mxResources.get('id') || 'ID',
+		'title': mxResources.get('title') || '标题',
+		'description': mxResources.get('description') || '描述',
+		'type': mxResources.get('type') || '类型',
+		'class': mxResources.get('class') || '类',
+		'style': mxResources.get('style') || '样式',
+		'href': mxResources.get('href') || '链接',
+		'src': mxResources.get('src') || '源',
+		'alt': mxResources.get('alt') || '替代文本',
+		'width': mxResources.get('width') || '宽度',
+		'height': mxResources.get('height') || '高度',
+		'color': mxResources.get('color') || '颜色',
+		'size': mxResources.get('size') || '大小',
+		'url': mxResources.get('url') || '网址',
+		'link': mxResources.get('link') || '链接',
+		'text': mxResources.get('text') || '文本',
+		'content': mxResources.get('content') || '内容',
+		'data': mxResources.get('data') || '数据',
+		'placeholder': mxResources.get('placeholder') || '占位符'
+	};
+	
+	// Function to get translated property name
+	var getTranslatedPropertyName = function(name)
+	{
+		var lowerName = name.toLowerCase();
+		if (propertyNameTranslations[lowerName])
+		{
+			return propertyNameTranslations[lowerName];
+		}
+		// Return original name if no translation found
+		return name;
+	};
+
 	var attrs = value.attributes;
 	var names = [];
 	var texts = [];
@@ -2633,7 +2671,8 @@ var EditDataDialog = function(ui, cell)
 	var addTextArea = function(index, name, value)
 	{
 		names[index] = name;
-		texts[index] = form.addTextarea(names[count] + ':', value, 2);
+		var translatedName = getTranslatedPropertyName(name);
+		texts[index] = form.addTextarea(translatedName + ':', value, 2);
 		texts[index].style.width = '100%';
 		
 		if (value.indexOf('\n') > 0)
@@ -2822,7 +2861,8 @@ var EditDataDialog = function(ui, cell)
 					}
 
 					names.push(name);
-					var text = form.addTextarea(name + ':', '', 2);
+					var translatedName = getTranslatedPropertyName(name);
+					var text = form.addTextarea(translatedName + ':', '', 2);
 					text.style.width = '100%';
 					texts.push(text);
 					addRemoveButton(text, name);
