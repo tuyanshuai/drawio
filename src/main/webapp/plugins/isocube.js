@@ -50,16 +50,16 @@ Draw.loadPlugin(function(editorUi)
             return {x: p.x * c - p.y * s, y: p.x * s + p.y * c, z: p.z};
         };
 
-        function project(p)
+        function rotate(p)
         {
-            // Orthographic projection to 2D
-            return {x: cx + p.x, y: cy + p.y, z: p.z};
+            // Apply rotations in X->Y->Z order (3D)
+            return rotZ(rotY(rotX(p)));
         };
 
-        function transform(p)
+        function project(p)
         {
-            // Apply rotations in X->Y->Z order
-            return project(rotZ(rotY(rotX(p))));
+            // Orthographic projection to 2D (keeps z for depth tests)
+            return {x: cx + p.x, y: cy + p.y, z: p.z};
         };
 
         // 8 vertices in a fixed, well-known order:
@@ -74,22 +74,26 @@ Draw.loadPlugin(function(editorUi)
             {x:-sx, y: sy, z: sz},
             {x: sx, y: sy, z: sz}
         ];
+        // Rotate (3D) first, then project for drawing
+        var vr = [];
+        for (var i = 0; i < 8; i++) vr[i] = rotate(v3[i]);
         var v = [];
-        for (var i = 0; i < 8; i++) v[i] = transform(v3[i]);
+        for (var i = 0; i < 8; i++) v[i] = project(vr[i]);
 
-        // Faces defined by indices into v (consistent winding)
+        // Faces with consistent CCW winding so normals point outward
         var faces = [
-            [0,1,3,2], // back (-Z)
+            [0,2,3,1], // back (-Z)
             [4,5,7,6], // front (+Z)
-            [0,2,6,4], // left (-X)
+            [0,4,6,2], // left (-X)
             [1,3,7,5], // right (+X)
             [0,1,5,4], // bottom (-Y)
-            [2,3,7,6]  // top (+Y)
+            [2,6,7,3]  // top (+Y)
         ];
 
         function faceNormal(idx)
         {
-            var a = v[idx[0]], b = v[idx[1]], cpt = v[idx[2]];
+            // Compute normal in rotated 3D space for correct lighting/visibility
+            var a = vr[idx[0]], b = vr[idx[1]], cpt = vr[idx[2]];
             var ux = b.x - a.x, uy = b.y - a.y, uz = b.z - a.z;
             var vx = cpt.x - a.x, vy = cpt.y - a.y, vz = cpt.z - a.z;
             return {x: uy * vz - uz * vy, y: uz * vx - ux * vz, z: ux * vy - uy * vx};
@@ -97,21 +101,30 @@ Draw.loadPlugin(function(editorUi)
 
         // Determine face visibility (toward viewer if normal.z < 0) and avg depth
         var faceInfo = [];
+        var visibleByIndex = new Array(faces.length);
+        // View direction for orthographic camera looking along -Z
+        var viewDir = {x: 0, y: 0, z: -1};
         for (var fi = 0; fi < faces.length; fi++)
         {
             var idx = faces[fi];
             var n = faceNormal(idx);
             var az = 0;
-            for (var k = 0; k < idx.length; k++) az += v[idx[k]].z;
-            faceInfo.push({idx: idx, normal: n, z: az / idx.length, visible: n.z < 0});
+            for (var k = 0; k < idx.length; k++) az += vr[idx[k]].z;
+            // Front-facing if dot(normal, viewDir) < 0
+            var vis = (n.x*viewDir.x + n.y*viewDir.y + n.z*viewDir.z) < 0;
+            visibleByIndex[fi] = vis;
+            faceInfo.push({id: fi, idx: idx, normal: n, z: az / idx.length, visible: vis});
         }
 
         // Sort back-to-front by average z
         faceInfo.sort(function(a, b){ return a.z - b.z; });
 
-        // Fill with shading based on facing
+        // Fill with shading based on a fixed light direction in view space
         var baseFill = mxUtils.getValue(style, mxConstants.STYLE_FILLCOLOR, '#26a0da');
         var strokeColor = mxUtils.getValue(style, mxConstants.STYLE_STROKECOLOR, '#1e78b7');
+        var light = {x: 0.35, y: -0.5, z: -0.8};
+        var lmag = Math.sqrt(light.x*light.x + light.y*light.y + light.z*light.z) || 1;
+        light.x/=lmag; light.y/=lmag; light.z/=lmag;
 
         function shade(hex, factor)
         {
@@ -129,19 +142,61 @@ Draw.loadPlugin(function(editorUi)
 
         c.setStrokeColor(strokeColor);
         c.setStrokeWidth(this.strokewidth);
+        // Honor style-provided opacities; default to fully opaque
+        var fillOpacity = parseFloat(mxUtils.getValue(style, 'fillOpacity', 1));
+        if (isNaN(fillOpacity)) fillOpacity = 1;
+        var strokeOpacity = parseFloat(mxUtils.getValue(style, 'strokeOpacity', 1));
+        if (isNaN(strokeOpacity)) strokeOpacity = 1;
+        c.setFillAlpha(Math.max(0, Math.min(1, fillOpacity)));
+        c.setStrokeAlpha(Math.max(0, Math.min(1, strokeOpacity)));
 
         for (var fi2 = 0; fi2 < faceInfo.length; fi2++)
         {
             var f = faceInfo[fi2];
-            if (!f.visible) continue; // only fill visible faces
-            var facing = Math.max(0, Math.min(1, -f.normal.z));
-            var tint = shade(baseFill, 0.65 + 0.35 * facing);
+            // Normalize normal
+            var n = f.normal; var nmag = Math.sqrt(n.x*n.x+n.y*n.y+n.z*n.z) || 1;
+            var nx=n.x/nmag, ny=n.y/nmag, nz=n.z/nmag;
+            var ndotl = Math.max(0, -(nx*light.x + ny*light.y + nz*light.z));
+            var tint = shade(baseFill, 0.55 + 0.45 * ndotl);
             c.begin();
             c.moveTo(v[f.idx[0]].x, v[f.idx[0]].y);
             for (var j = 1; j < f.idx.length; j++) c.lineTo(v[f.idx[j]].x, v[f.idx[j]].y);
             c.close();
             c.setFillColor(tint);
             c.fillAndStroke();
+        }
+
+        // Debug: draw face normals only when enabled via style
+        var debugNormals = String(mxUtils.getValue(style, 'isoDebugNormals', '0')) === '1';
+        if (debugNormals)
+        {
+            var normalLen = Math.min(w, h) * 0.2;
+            for (var fi3 = 0; fi3 < faces.length; fi3++)
+            {
+                var idx = faces[fi3];
+                // centroid in rotated 3D
+                var cx3 = 0, cy3 = 0, cz3 = 0;
+                for (var k = 0; k < idx.length; k++)
+                {
+                    cx3 += vr[idx[k]].x; cy3 += vr[idx[k]].y; cz3 += vr[idx[k]].z;
+                }
+                cx3 /= idx.length; cy3 /= idx.length; cz3 /= idx.length;
+                // normal
+                var n3 = faceNormal(idx);
+                var nlen = Math.sqrt(n3.x*n3.x + n3.y*n3.y + n3.z*n3.z) || 1;
+                n3.x/=nlen; n3.y/=nlen; n3.z/=nlen;
+                var start2 = project({x: cx3, y: cy3, z: cz3});
+                var end2 = project({x: cx3 + n3.x * normalLen, y: cy3 + n3.y * normalLen, z: cz3 + n3.z * normalLen});
+                var vis = visibleByIndex[fi3];
+                c.setDashed(!vis);
+                c.setStrokeColor(vis ? '#00aa00' : '#aa0000');
+                c.begin();
+                c.moveTo(start2.x, start2.y);
+                c.lineTo(end2.x, end2.y);
+                c.stroke();
+            }
+            c.setDashed(false);
+            c.setStrokeColor(strokeColor);
         }
 
         // Draw all 12 edges: solid if both adjacent faces visible, dashed otherwise
@@ -164,23 +219,23 @@ Draw.loadPlugin(function(editorUi)
             return result;
         }
 
-        var faceVisible = faceInfo.map(function(f){ return f.visible; });
+        var faceVisible = visibleByIndex;
         for (var ei = 0; ei < edges.length; ei++)
         {
             var e = edges[ei];
             var adj = edgeFaces(e[0], e[1]);
-            var visibleEdge = true;
-            if (adj.length === 2) visibleEdge = faceVisible[adj[0]] && faceVisible[adj[1]];
-            if (!visibleEdge)
+            // Edge style policy (engineering drawing style):
+            // - Any adjacent face front-facing -> solid (visible outline or seam)
+            // - Both adjacent faces back-facing -> dashed (hidden edge)
+            var dashed = false;
+            if (adj.length === 2)
             {
-                c.setDashed(true);
-                c.setStrokeColor(mxUtils.hexToRgba(strokeColor, 0.5));
+                var f0 = faceVisible[adj[0]];
+                var f1 = faceVisible[adj[1]];
+                dashed = (!f0 && !f1);
             }
-            else
-            {
-                c.setDashed(false);
-                c.setStrokeColor(strokeColor);
-            }
+            c.setDashed(dashed);
+            c.setStrokeColor(strokeColor);
             c.begin();
             c.moveTo(v[e[0]].x, v[e[0]].y);
             c.lineTo(v[e[1]].x, v[e[1]].y);
@@ -304,6 +359,8 @@ Draw.loadPlugin(function(editorUi)
                     try
                     {
                         graph.setCellStyles(key, val, [cell]);
+                        // Force immediate repaint so visibility is recomputed after rotation/depth changes
+                        graph.refresh(cell);
                     }
                     finally
                     {
