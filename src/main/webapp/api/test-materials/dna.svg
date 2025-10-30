@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="150" height="200" viewBox="0 0 150 200">
+  <!-- DNA 双螺旋结构 -->
+  <defs>
+    <linearGradient id="dnaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4A90E2;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2E5C8A;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- 左侧螺旋 -->
+  <path d="M 30 20 Q 25 60, 30 100 Q 25 140, 30 180" 
+        fill="none" stroke="url(#dnaGradient)" stroke-width="8" stroke-linecap="round"/>
+  
+  <!-- 右侧螺旋 -->
+  <path d="M 120 20 Q 125 60, 120 100 Q 125 140, 120 180" 
+        fill="none" stroke="url(#dnaGradient)" stroke-width="8" stroke-linecap="round"/>
+  
+  <!-- 连接线 -->
+  <line x1="30" y1="40" x2="120" y2="40" stroke="#000000" stroke-width="2"/>
+  <line x1="30" y1="60" x2="120" y2="60" stroke="#000000" stroke-width="2"/>
+  <line x1="30" y1="80" x2="120" y2="80" stroke="#000000" stroke-width="2"/>
+  <line x1="30" y1="100" x2="120" y2="100" stroke="#000000" stroke-width="2"/>
+  <line x1="30" y1="120" x2="120" y2="120" stroke="#000000" stroke-width="2"/>
+  <line x1="30" y1="140" x2="120" y2="140" stroke="#000000" stroke-width="2"/>
+  <line x1="30" y1="160" x2="120" y2="160" stroke="#000000" stroke-width="2"/>
+  <line x1="30" y1="180" x2="120" y2="180" stroke="#000000" stroke-width="2"/>
+  
+  <!-- 碱基对标记 -->
+  <circle cx="75" cy="40" r="3" fill="#E94B3C"/>
+  <circle cx="75" cy="60" r="3" fill="#E94B3C"/>
+  <circle cx="75" cy="80" r="3" fill="#E94B3C"/>
+  <circle cx="75" cy="100" r="3" fill="#E94B3C"/>
+  <circle cx="75" cy="120" r="3" fill="#E94B3C"/>
+  <circle cx="75" cy="140" r="3" fill="#E94B3C"/>
+  <circle cx="75" cy="160" r="3" fill="#E94B3C"/>
+  <circle cx="75" cy="180" r="3" fill="#E94B3C"/>
+</svg>
+

@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shapes>
+  <!-- 三角形 -->
+  <shape name="triangle" w="100" h="100">
+    <background>
+      <rect x="0" y="0" w="100" h="100"/>
+    </background>
+    <foreground>
+      <strokecolor color="#000000"/>
+      <fillcolor color="#4A90E2"/>
+      <strokewidth width="2"/>
+      <path>
+        <move x="50" y="10"/>
+        <line x="90" y="90"/>
+        <line x="10" y="90"/>
+        <close/>
+      </path>
+      <fillstroke/>
+    </foreground>
+  </shape>
+  
+  <!-- 六边形 -->
+  <shape name="hexagon" w="100" h="100">
+    <background>
+      <rect x="0" y="0" w="100" h="100"/>
+    </background>
+    <foreground>
+      <strokecolor color="#000000"/>
+      <fillcolor color="#E94B3C"/>
+      <strokewidth width="2"/>
+      <path>
+        <move x="50" y="10"/>
+        <line x="90" y="30"/>
+        <line x="90" y="70"/>
+        <line x="50" y="90"/>
+        <line x="10" y="70"/>
+        <line x="10" y="30"/>
+        <close/>
+      </path>
+      <fillstroke/>
+    </foreground>
+  </shape>
+  
+  <!-- 五角星 -->
+  <shape name="star" w="100" h="100">
+    <background>
+      <rect x="0" y="0" w="100" h="100"/>
+    </background>
+    <foreground>
+      <strokecolor color="#000000"/>
+      <fillcolor color="#F5A623"/>
+      <strokewidth width="2"/>
+      <path>
+        <move x="50" y="10"/>
+        <line x="55" y="40"/>
+        <line x="85" y="40"/>
+        <line x="62" y="58"/>
+        <line x="70" y="88"/>
+        <line x="50" y="70"/>
+        <line x="30" y="88"/>
+        <line x="38" y="58"/>
+        <line x="15" y="40"/>
+        <line x="45" y="40"/>
+        <close/>
+      </path>
+      <fillstroke/>
+    </foreground>
+  </shape>
+  
+  <!-- 箭头 -->
+  <shape name="arrow" w="100" h="50">
+    <background>
+      <rect x="0" y="0" w="100" h="50"/>
+    </background>
+    <foreground>
+      <strokecolor color="#000000"/>
+      <fillcolor color="#7ED321"/>
+      <strokewidth width="2"/>
+      <path>
+        <move x="10" y="25"/>
+        <line x="70" y="25"/>
+        <line x="70" y="15"/>
+        <line x="90" y="25"/>
+        <line x="70" y="35"/>
+        <line x="70" y="25"/>
+        <close/>
+      </path>
+      <fillstroke/>
+    </foreground>
+  </shape>
+</shapes>
+

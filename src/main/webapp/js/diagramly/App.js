@@ -798,6 +798,26 @@ App.main = function(callback, createUi)
 
 				var temp = urlParams['p'];
 				App.initPluginCallback();
+				
+				// Configure Material Library API URL from URL parameter or default
+				var apiUrl = urlParams['materialApiUrl'] || urlParams['apiUrl'];
+				if (apiUrl) {
+					window.MATERIAL_LIBRARY_API_URL = decodeURIComponent(apiUrl);
+				} else if (!window.MATERIAL_LIBRARY_API_URL) {
+					// Default to local test server if not set
+					window.MATERIAL_LIBRARY_API_URL = window.location.origin + "/api";
+				}
+				
+				// Configure Material Library API Token/Key from URL parameter
+				var apiToken = urlParams['materialApiToken'] || urlParams['apiToken'];
+				if (apiToken) {
+					window.MATERIAL_LIBRARY_API_TOKEN = decodeURIComponent(apiToken);
+				}
+				
+				var apiKey = urlParams['materialApiKey'] || urlParams['apiKey'];
+				if (apiKey) {
+					window.MATERIAL_LIBRARY_API_KEY = decodeURIComponent(apiKey);
+				}
 
 				// Default plugins to load if no p parameter is specified
 				var defaultPlugins = ['plugins/isocube.js', 'plugins/ai-convert.js', 'plugins/material-library.js'];
@@ -808,7 +828,8 @@ App.main = function(callback, createUi)
 					'plugins/highlight-effect.js',
 					'plugins/isocube.js',
 					'plugins/isoextrude.js',
-					'plugins/material-library.js'
+					'plugins/material-library.js',
+					'plugins/material-library-api.js'
 				];
 				
 				// Check if all=1 parameter is set

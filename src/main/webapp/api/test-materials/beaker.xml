@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shapes>
+  <shape name="beaker" w="100" h="150">
+    <background>
+      <rect x="0" y="0" w="100" h="150"/>
+    </background>
+    <foreground>
+      <strokecolor color="#000000"/>
+      <fillcolor color="#E0E0E0"/>
+      <strokewidth width="2"/>
+      <!-- 烧杯主体 -->
+      <path>
+        <move x="20" y="20"/>
+        <line x="20" y="130"/>
+        <line x="80" y="130"/>
+        <line x="80" y="20"/>
+        <close/>
+      </path>
+      <fillstroke/>
+      
+      <!-- 烧杯底部 -->
+      <fillcolor color="#C0C0C0"/>
+      <path>
+        <move x="20" y="130"/>
+        <line x="15" y="140"/>
+        <line x="85" y="140"/>
+        <line x="80" y="130"/>
+        <close/>
+      </path>
+      <fillstroke/>
+      
+      <!-- 烧杯口 -->
+      <strokecolor color="#000000"/>
+      <fillcolor color="none"/>
+      <path>
+        <move x="20" y="20"/>
+        <line x="80" y="20"/>
+      </path>
+      <stroke/>
+      
+      <!-- 刻度线 -->
+      <strokewidth width="1"/>
+      <path>
+        <move x="85" y="40"/>
+        <line x="90" y="40"/>
+      </path>
+      <stroke/>
+      <path>
+        <move x="85" y="60"/>
+        <line x="90" y="60"/>
+      </path>
+      <stroke/>
+      <path>
+        <move x="85" y="80"/>
+        <line x="90" y="80"/>
+      </path>
+      <stroke/>
+      <path>
+        <move x="85" y="100"/>
+        <line x="90" y="100"/>
+      </path>
+      <stroke/>
+      <path>
+        <move x="85" y="120"/>
+        <line x="90" y="120"/>
+      </path>
+      <stroke/>
+    </foreground>
+  </shape>
+</shapes>
+

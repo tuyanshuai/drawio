@@ -8,6 +8,27 @@
 		var changed = false;
 		if (!/[?&]dev=1(?!\d)/.test(search) && !params.has("dev")) { params.set("dev", "1"); changed = true; }
 		if (params.get("plugins") !== "1") { params.set("plugins", "1"); changed = true; }
+		
+		// Configure Material Library API URL from URL parameter or default
+		var apiUrl = params.get("materialApiUrl") || params.get("apiUrl");
+		if (apiUrl) {
+			window.MATERIAL_LIBRARY_API_URL = decodeURIComponent(apiUrl);
+		} else if (!window.MATERIAL_LIBRARY_API_URL) {
+			// Default to local test server if not set
+			window.MATERIAL_LIBRARY_API_URL = window.location.origin + "/api";
+		}
+		
+		// Configure Material Library API Token/Key from URL parameter
+		var apiToken = params.get("materialApiToken") || params.get("apiToken");
+		if (apiToken) {
+			window.MATERIAL_LIBRARY_API_TOKEN = decodeURIComponent(apiToken);
+		}
+		
+		var apiKey = params.get("materialApiKey") || params.get("apiKey");
+		if (apiKey) {
+			window.MATERIAL_LIBRARY_API_KEY = decodeURIComponent(apiKey);
+		}
+		
 		var p = params.get("p") || "";
 		
 		// All available plugins - default to load all plugins
@@ -16,7 +37,8 @@
 			"plugins/highlight-effect.js",
 			"plugins/isocube.js",
 			"plugins/isoextrude.js",
-			"plugins/material-library.js"
+			"plugins/material-library.js",
+			"plugins/material-library-api.js"
 		];
 		
 		// Check if 'minimal=1' parameter is set to load only core plugins
