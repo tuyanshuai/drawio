@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>动态调整星形形状</title>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #editor-container {
+            width: 100%;
+            max-width: 800px;
+            height: 600px;
+            border: 1px solid #ccc;
+            margin-bottom: 20px;
+            position: relative;
+            background-color: #f9f9f9;
+        }
+        #svg-container {
+            width: 100%;
+            height: 100%;
+        }
+        #controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            width: 100%;
+            max-width: 600px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            gap: 5px;
+        }
+        label {
+            font-weight: bold;
+        }
+        input[type="range"] {
+            width: 100%;
+        }
+        #info {
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 5px;
+            width: 100%;
+            max-width: 600px;
+            font-family: monospace;
+            font-size: 14px;
+            overflow-x: auto;
+        }
+        #drawio-code {
+            background: #e6e6e6;
+            padding: 10px;
+            border-radius: 5px;
+            width: 100%;
+            max-width: 600px;
+            font-family: monospace;
+            font-size: 14px;
+            overflow-x: auto;
+            margin-top: 10px;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <h1>动态调整星形形状</h1>
+    <div id="editor-container">
+        <svg id="svg-container" viewBox="0 0 800 600">
+            <polygon id="star-shape" fill="#FFFFFF" stroke="#000000" stroke-width="2" />
+        </svg>
+    </div>
+    
+    <div id="controls">
+        <div class="control-group">
+            <label for="vertex-count">顶点数量: <span id="vertex-count-value">5</span></label>
+            <input type="range" id="vertex-count" min="3" max="20" value="5">
+        </div>
+        
+        <div class="control-group">
+            <label for="inner-radius">内半径比例: <span id="inner-radius-value">0.5</span></label>
+            <input type="range" id="inner-radius" min="0.1" max="0.9" step="0.05" value="0.5">
+        </div>
+        
+        <div class="control-group">
+            <label for="rotation">旋转角度: <span id="rotation-value">0</span>°</label>
+            <input type="range" id="rotation" min="0" max="360" value="0">
+        </div>
+        
+        <button id="copy-drawio-code">复制Draw.io代码</button>
+    </div>
+    
+    <div id="info">
+        SVG points: <span id="svg-points-value"></span>
+    </div>
+    
+    <div id="drawio-code">
+        Draw.io points: <span id="drawio-points-value"></span>
+    </div>
+
+    <script>
+        // 获取DOM元素
+        const starShape = document.getElementById('star-shape');
+        const vertexCountSlider = document.getElementById('vertex-count');
+        const vertexCountValue = document.getElementById('vertex-count-value');
+        const innerRadiusSlider = document.getElementById('inner-radius');
+        const innerRadiusValue = document.getElementById('inner-radius-value');
+        const rotationSlider = document.getElementById('rotation');
+        const rotationValue = document.getElementById('rotation-value');
+        const svgPointsValue = document.getElementById('svg-points-value');
+        const drawioPointsValue = document.getElementById('drawio-points-value');
+        const copyButton = document.getElementById('copy-drawio-code');
+        
+        // 中心点和大小
+        const centerX = 400;
+        const centerY = 300;
+        const radius = 200;
+        
+        // 计算星形的SVG点坐标
+        function calculateSvgPoints(vertexCount, innerRadius, rotation) {
+            const points = [];
+            const angleStep = Math.PI / vertexCount;
+            const rotationRad = rotation * Math.PI / 180;
+            
+            for (let i = 0; i < vertexCount * 2; i++) {
+                const currentRadius = i % 2 === 0 ? radius : radius * innerRadius;
+                const angle = i * angleStep - Math.PI / 2 + rotationRad;
+                const x = centerX + currentRadius * Math.cos(angle);
+                const y = centerY + currentRadius * Math.sin(angle);
+                points.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+            }
+            
+            return points.join(' ');
+        }
+        
+        // 计算Draw.io的相对点坐标（范围：0-1）
+        function calculateDrawioPoints(vertexCount, innerRadius, rotation) {
+            const points = [];
+            const angleStep = Math.PI / vertexCount;
+            const rotationRad = rotation * Math.PI / 180;
+            
+            for (let i = 0; i < vertexCount * 2; i++) {
+                const currentRadius = i % 2 === 0 ? 0.5 : 0.5 * innerRadius;
+                const angle = i * angleStep - Math.PI / 2 + rotationRad;
+                const x = 0.5 + currentRadius * Math.cos(angle);
+                const y = 0.5 + currentRadius * Math.sin(angle);
+                points.push(`${x.toFixed(2)},${y.toFixed(2)}`);
+            }
+            
+            return points.join(' ');
+        }
+        
+        // 更新星形形状
+        function updateStarShape() {
+            const vertexCount = parseInt(vertexCountSlider.value);
+            const innerRadius = parseFloat(innerRadiusSlider.value);
+            const rotation = parseInt(rotationSlider.value);
+            
+            // 更新显示的值
+            vertexCountValue.textContent = vertexCount;
+            innerRadiusValue.textContent = innerRadius;
+            rotationValue.textContent = rotation;
+            
+            // 计算并设置SVG点
+            const svgPoints = calculateSvgPoints(vertexCount, innerRadius, rotation);
+            starShape.setAttribute('points', svgPoints);
+            svgPointsValue.textContent = svgPoints;
+            
+            // 计算并显示Draw.io点
+            const drawioPoints = calculateDrawioPoints(vertexCount, innerRadius, rotation);
+            drawioPointsValue.textContent = drawioPoints;
+        }
+        
+        // 复制Draw.io代码到剪贴板
+        function copyDrawioCode() {
+            const vertexCount = parseInt(vertexCountSlider.value);
+            const innerRadius = parseFloat(innerRadiusSlider.value);
+            const rotation = parseInt(rotationSlider.value);
+            const drawioPoints = calculateDrawioPoints(vertexCount, innerRadius, rotation);
+            
+            const drawioCode = `shape=polygon;whiteSpace=wrap;html=1;points=${drawioPoints};`;
+            
+            navigator.clipboard.writeText(drawioCode).then(function() {
+                alert('Draw.io代码已复制到剪贴板！');
+            }).catch(function() {
+                alert('复制失败，请手动复制：' + drawioCode);
+            });
+        }
+        
+        // 初始化事件监听
+        function initEvents() {
+            // 顶点数量滑块事件
+            vertexCountSlider.addEventListener('input', updateStarShape);
+            
+            // 内半径比例滑块事件
+            innerRadiusSlider.addEventListener('input', updateStarShape);
+            
+            // 旋转角度滑块事件
+            rotationSlider.addEventListener('input', updateStarShape);
+            
+            // 复制按钮事件
+            copyButton.addEventListener('click', copyDrawioCode);
+        }
+        
+        // 页面加载完成后初始化
+        window.addEventListener('load', function() {
+            // 初始化事件监听
+            initEvents();
+            
+            // 初始更新星形
+            updateStarShape();
+        });
+    </script>
+</body>
+</html>

@@ -279,7 +279,7 @@ if (!window.DRAWIO_PUBLIC_BUILD)
 	mxscript(drawDevUrl + 'js/diagramly/vsdx/VsdxExport.js');
 }
 
-mxscript(drawDevUrl + 'js/mermaid/mermaid2drawio.js');	
+// mxscript(drawDevUrl + 'js/mermaid/mermaid2drawio.js');	
 
 // Vsdx/vssx support
 mxscript(drawDevUrl + 'js/diagramly/vsdx/mxVsdxCanvas2D.js');

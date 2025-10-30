@@ -350,3 +350,64 @@ mxHandle.prototype.destroy = function()
 		this.shape = null;
 	}
 };
+
+/**
+ * Static Function: safeProcessEvent
+ * 
+ * Safely processes an event for a handle, checking for null references
+ */
+mxHandle.safeProcessEvent = function(handle, me)
+{
+	if (handle != null)
+	{
+		try
+		{
+			handle.processEvent(me);
+			handle.active = true;
+		}
+		catch (e)
+		{
+			console.error('Error processing event for handle:', e);
+		}
+	}
+};
+
+/**
+ * Static Function: safePositionChanged
+ * 
+ * Safely calls positionChanged for a handle, checking for null references
+ */
+mxHandle.safePositionChanged = function(handle)
+{
+	if (handle != null)
+	{
+		try
+		{
+			handle.positionChanged();
+		}
+		catch (e)
+		{
+			console.error('Error calling positionChanged for handle:', e);
+		}
+	}
+};
+
+/**
+ * Static Function: safeExecute
+ * 
+ * Safely executes a handle, checking for null references
+ */
+mxHandle.safeExecute = function(handle, me)
+{
+	if (handle != null)
+	{
+		try
+		{
+			handle.execute(me);
+		}
+		catch (e)
+		{
+			console.error('Error executing handle:', e);
+		}
+	}
+};

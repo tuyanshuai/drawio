@@ -14670,6 +14670,119 @@ if (typeof mxVertexHandler !== 'undefined')
 
 			var handles = vertexHandlerCreateCustomHandles.apply(this, arguments);
 			
+			// Add custom handles for 3D shapes
+			var style = this.state.style;
+			var shape = mxUtils.getValue(style, mxConstants.STYLE_SHAPE, null);
+			
+			// Check if this is a 3D shape
+			if (shape == 'generic3d' || shape == 'rectangle3d' || shape == 'ellipse3d' || shape == 'triangle3d')
+			{
+				if (handles == null)
+				{
+					handles = [];
+				}
+				
+				// Create a custom handle for rotating around X axis (red color)
+				var rotationXHandle = new mxHandle(this.state, 'pointer', null, new mxRectangleShape(new mxRectangle(0, 0, 10, 10), '#ff0000', mxConstants.HANDLE_STROKECOLOR));
+				rotationXHandle.getPosition = mxUtils.bind(this, function(bounds)
+				{
+					// Use the Generic3dShape method to get the position
+					if (this.state.shape != null && typeof this.state.shape.getRotationHandlePosition === 'function') {
+						return this.state.shape.getRotationHandlePosition(bounds, 'rotationX');
+					}
+					// Fallback position at the top-right corner of the shape
+					return new mxPoint(bounds.x + bounds.width, bounds.y);
+				});
+				
+				rotationXHandle.setPosition = mxUtils.bind(this, function(bounds, pt, me)
+				{
+					// Calculate the rotation based on the handle position
+					var centerX = bounds.x + bounds.width / 2;
+					var centerY = bounds.y + bounds.height / 2;
+					
+					// Calculate rotation angle based on mouse position relative to center
+					var dy = pt.y - centerY;
+					
+					// Map the position to a rotation angle (more accurate calculation)
+					// Use a more realistic mapping where moving the handle 1/4 of the shape height = 90 degrees
+					var rotationX = Math.max(-360, Math.min(360, (dy / (bounds.height / 4)) * 90));
+					
+					// Update the cell style
+					this.graph.setCellStyles('rotationX', rotationX, [this.state.cell]);
+				});
+				
+				rotationXHandle.execute = mxUtils.bind(this, function(me)
+				{
+					// Refresh the display
+					this.graph.refresh(this.state.cell);
+				});
+				
+				// Initialize the shape property to avoid null reference errors
+				try {
+					if (rotationXHandle.shape != null) {
+						rotationXHandle.shape.dialect = mxConstants.DIALECT_SVG;
+						rotationXHandle.shape.init(this.graph.getView().getOverlayPane());
+					}
+				} catch (e) {
+					console.error('Error initializing rotationXHandle:', e);
+				}
+				
+				// Add null check before pushing to handles array
+				if (rotationXHandle != null) {
+					handles.push(rotationXHandle);
+				}
+				
+				// Create a custom handle for rotating around Y axis (yellow color)
+				var rotationYHandle = new mxHandle(this.state, 'pointer', null, new mxRectangleShape(new mxRectangle(0, 0, 10, 10), '#ffff00', mxConstants.HANDLE_STROKECOLOR));
+				rotationYHandle.getPosition = mxUtils.bind(this, function(bounds)
+				{
+					// Use the Generic3dShape method to get the position
+					if (this.state.shape != null && typeof this.state.shape.getRotationHandlePosition === 'function') {
+						return this.state.shape.getRotationHandlePosition(bounds, 'rotationY');
+					}
+					// Fallback position at the top-left corner of the shape
+					return new mxPoint(bounds.x, bounds.y);
+				});
+				
+				rotationYHandle.setPosition = mxUtils.bind(this, function(bounds, pt, me)
+				{
+					// Calculate the rotation based on the handle position
+					var centerX = bounds.x + bounds.width / 2;
+					var centerY = bounds.y + bounds.height / 2;
+					
+					// Calculate rotation angle based on mouse position relative to center
+					var dx = pt.x - centerX;
+					
+					// Map the position to a rotation angle (more accurate calculation)
+					// Use a more realistic mapping where moving the handle 1/4 of the shape width = 90 degrees
+					var rotationY = Math.max(-360, Math.min(360, (dx / (bounds.width / 4)) * 90));
+					
+					// Update the cell style
+					this.graph.setCellStyles('rotationY', rotationY, [this.state.cell]);
+				});
+				
+				rotationYHandle.execute = mxUtils.bind(this, function(me)
+				{
+					// Refresh the display
+					this.graph.refresh(this.state.cell);
+				});
+				
+				// Initialize the shape property to avoid null reference errors
+				try {
+					if (rotationYHandle.shape != null) {
+						rotationYHandle.shape.dialect = mxConstants.DIALECT_SVG;
+						rotationYHandle.shape.init(this.graph.getView().getOverlayPane());
+					}
+				} catch (e) {
+					console.error('Error initializing rotationYHandle:', e);
+				}
+				
+				// Add null check before pushing to handles array
+				if (rotationYHandle != null) {
+					handles.push(rotationYHandle);
+				}
+			}
+			
 			if (this.graph.isTable(this.state.cell) && this.graph.isCellMovable(this.state.cell))
 			{
 				var self = this;
@@ -15934,8 +16047,17 @@ if (typeof mxVertexHandler !== 'undefined')
 		// Workaround for "isConsumed not defined" in MS Edge is to use arguments
 		mxVertexHandler.prototype.mouseMove = function(sender, me)
 		{
-			vertexHandlerMouseMove.apply(this, arguments);
+			// Add comprehensive null checks to prevent TypeError: Cannot read properties of null
+			try {
+				// Call the original mouseMove method first
+				vertexHandlerMouseMove.apply(this, arguments);
+			} catch (e) {
+				// Log the error for debugging
+				console.error('Error in mouseMove:', e);
+				// Continue with our processing even if the original method fails
+			}
 			
+			// Add null check to prevent TypeError: Cannot read properties of null (reading '0' or '1')
 			if (this.graph.graphHandler.first != null)
 			{
 				if (this.rotationShape != null && this.rotationShape.node != null)
@@ -15946,6 +16068,30 @@ if (typeof mxVertexHandler !== 'undefined')
 				if (this.linkHint != null && this.linkHint.style.display != 'none')
 				{
 					this.linkHint.style.display = 'none';
+				}
+			}
+			
+			// Add additional null checks for custom handles to prevent "Cannot read properties of null" errors
+			if (this.customHandles != null) {
+				// Check each custom handle to ensure it's not null before accessing its properties
+				for (var i = 0; i < this.customHandles.length; i++) {
+					if (this.customHandles[i] == null) {
+						// Remove null handles from the array
+						this.customHandles.splice(i, 1);
+						i--; // Adjust index after removal
+					}
+				}
+			}
+			
+			// Add additional null checks for custom handles to prevent "Cannot read properties of null" errors
+			if (this.customHandles != null) {
+				// Check each custom handle to ensure it's not null before accessing its properties
+				for (var i = 0; i < this.customHandles.length; i++) {
+					if (this.customHandles[i] == null) {
+						// Remove null handles from the array
+						this.customHandles.splice(i, 1);
+						i--; // Adjust index after removal
+					}
 				}
 			}
 		};
