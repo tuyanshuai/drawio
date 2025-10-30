@@ -1,0 +1,22 @@
+{
+  "id": "technology",
+  "title": "科技",
+  "description": "科技相关素材",
+  "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBmaWxsPSIjNjA3RDhCIiBkPSJNMTIgMkM2LjQ4IDIgMiA2LjQ4IDIgMTJzNC40OCAxMCAxMCAxMCAxMC00LjQ4IDEwLTEwUzE3LjUyIDIgMTIgMnptLTIgMTVsLTUtNSAxLjQxLTEuNDFMMTAgMTQuMTdsNy41OS03LjU5TDE5IDhsLTkgOXoiLz48L3N2Zz4=",
+  "order": 6,
+  "preload": false,
+  "version": "1.0.0",
+  "itemCount": 2,
+  "icons": [
+    {
+      "name": "technology_1",
+      "url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij4NCiAgPHBhdGggZD0iTTEyIDJDNi40OCAyIDIgNi40OCAyIDEyczQuNDggMTAgMTAgMTAgMTAtNC40OCAxMC0xMFMxNy41MiAyIDEyIDJ6bS0yIDE1bC01LTUgMS40MS0xLjQxTDEwIDE0LjE3bDcuNTktNy41OUwxOSA4bC05IDl6IiBmaWxsPSIjNjA3RDhCIi8+DQo8L3N2Zz4NCg0K",
+      "type": "svg"
+    },
+    {
+      "name": "technology_2",
+      "url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij4NCiAgPHJlY3QgeD0iNCIgeT0iNiIgd2lkdGg9IjE2IiBoZWlnaHQ9IjEyIiByeD0iMSIgZmlsbD0iIzYwN0Q4QiIgb3BhY2l0eT0iMC4zIi8+DQogIDxyZWN0IHg9IjYiIHk9IjgiIHdpZHRoPSIxMiIgaGVpZ2h0PSI4IiBmaWxsPSIjNjA3RDhCIi8+DQogIDxyZWN0IHg9IjciIHk9IjEwIiB3aWR0aD0iMTAiIGhlaWdodD0iMSIgZmlsbD0iI0VDRUZGMSIvPg0KICA8cmVjdCB4PSI3IiB5PSIxMiIgd2lkdGg9IjgiIGhlaWdodD0iMSIgZmlsbD0iI0VDRUZGMSIvPg0KICA8cmVjdCB4PSI3IiB5PSIxNCIgd2lkdGg9IjYiIGhlaWdodD0iMSIgZmlsbD0iI0VDRUZGMSIvPg0KPC9zdmc+DQoNCg==",
+      "type": "svg"
+    }
+  ]
+}

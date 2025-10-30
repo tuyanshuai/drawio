@@ -1,0 +1,27 @@
+{
+  "id": "mathematics",
+  "title": "数学",
+  "description": "数学符号和公式素材",
+  "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBmaWxsPSIjOUMyN0I1IiBkPSJNMTkgM0g1Yy0xLjEgMC0yIC45LTIgMnYxNGMwIDEuMS45IDIgMiAyaDE0YzEuMSAwIDItLjkgMi0yVjVjMC0xLjEtLjktMi0yLTJ6TTkgMTdIN3YtN2gyVjE3em00IDBoLTJWN2gyVjE3em00IDBoLTJ2LTRoMlYxN3oiLz48L3N2Zz4=",
+  "order": 4,
+  "preload": false,
+  "version": "1.0.0",
+  "itemCount": 3,
+  "icons": [
+    {
+      "name": "mathematics_1",
+      "url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij4NCiAgPHBhdGggZD0iTTE5IDNINWMtMS4xIDAtMiAuOS0yIDJ2MTRjMCAxLjEuOSAyIDIgMmgxNGMxLjEgMCAyLS45IDItMlY1YzAtMS4xLS45LTItMi0yek05IDE3SDd2LTdoMnY3em00IDBoLTJWN2gydjEwem00IDBoLTJ2LTRoMnY0eiIgZmlsbD0iIzlDMjdCMCIvPg0KPC9zdmc+DQoNCg==",
+      "type": "svg"
+    },
+    {
+      "name": "mathematics_2",
+      "url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij4NCiAgPHBhdGggZD0iTTEyIDJMMiA3bDEwIDUgMTAtNS0xMC01ek0yIDE3bDEwIDUgMTAtNU0yIDEybDEwIDUgMTAtNSIgZmlsbD0iIzlDMjdCMCIvPg0KICA8Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIyIiBmaWxsPSIjQkE2OEM4IiBvcGFjaXR5PSIwLjUiLz4NCjwvc3ZnPg0KDQo=",
+      "type": "svg"
+    },
+    {
+      "name": "mathematics_3",
+      "url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij4NCiAgPHBhdGggZD0iTTEyIDJDNi40OCAyIDIgNi40OCAyIDEyczQuNDggMTAgMTAgMTAgMTAtNC40OCAxMC0xMFMxNy41MiAyIDEyIDJ6bTEuNDEgMTYuMDlWMjBoLTIuNjd2LTEuOTNjLTEuNzEtLjM2LTMuMTYtMS40Ni0zLjI3LTMuNGgxLjk2Yy4xIDEuMDUuODIgMS44NyAyLjY1IDEuODcgMS45NiAwIDIuNC0uOTggMi40LTEuNTkgMC0uODMtLjQ0LTEuNjEtMi42Ny0yLjE0LTIuNDgtLjYtNC4xOC0xLjYyLTQuMTgtMy42NyAwLTEuNzIgMS4zOS0yLjg0IDMuMTEtMy4yMVY0aDIuNjd2MS45NWMxLjg2LjQ1IDIuNzkgMS44NiAyLjg1IDMuMzlIMTQuM2MtLjA1LTEuMTEtLjY0LTEuODctMi4yMi0xLjg3LTEuNSAwLTIuNC42OC0yLjQgMS42NCAwIC44NC42NSAxLjM5IDIuNjcgMS45MXM0LjE4IDEuMzkgNC4xOCAzLjkxYy0uMDEgMS44My0xLjM4IDIuODMtMy4xMiAzLjE2eiIgZmlsbD0iIzlDMjdCMCIvPg0KPC9zdmc+DQoNCg==",
+      "type": "svg"
+    }
+  ]
+}

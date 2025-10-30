@@ -1,0 +1,22 @@
+{
+  "id": "engineering",
+  "title": "工程",
+  "description": "工程相关素材",
+  "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBmaWxsPSIjNzk1NTQ4IiBkPSJNMTIgMkwyIDd2MTBjMCA1LjU1IDMuODQgMTAuNzQgOSAxMiA1LjE2LTEuMjYgOS02LjQ1IDktMTJWNWwtMTAtNXptMCAyLjE4bDggNHY4LjgyYzAgNC41NC0zLjA3IDguNzQtOCA5LjgxLTQuOTMtMS4wNy04LTUuMjctOC05LjgxVjguMThsOC00eiIvPjwvc3ZnPg==",
+  "order": 7,
+  "preload": false,
+  "version": "1.0.0",
+  "itemCount": 2,
+  "icons": [
+    {
+      "name": "engineering_1",
+      "url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij4NCiAgPHBhdGggZD0iTTEyIDJMMiA3djEwYzAgNS41NSAzLjg0IDEwLjc0IDkgMTIgNS4xNi0xLjI2IDktNi40NSA5LTEyVjdsLTEwLTV6bTAgMi4xOGw4IDR2OC44MmMwIDQuNTQtMy4wNyA4Ljc0LTggOS44MS00LjkzLTEuMDctOC01LjI3LTgtOS44MVY4LjE4bDgtNHoiIGZpbGw9IiM3OTU1NDgiLz4NCjwvc3ZnPg0KDQo=",
+      "type": "svg"
+    },
+    {
+      "name": "engineering_2",
+      "url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij4NCiAgPHJlY3QgeD0iNCIgeT0iNiIgd2lkdGg9IjE2IiBoZWlnaHQ9IjEyIiByeD0iMSIgZmlsbD0iIzc5NTU0OCIgb3BhY2l0eT0iMC4zIi8+DQogIDxwYXRoIGQ9Ik0xMiAyTDQgNnYxMmw4IDQgOC00VjZsLTgtNHoiIGZpbGw9IiM3OTU1NDgiLz4NCiAgPHJlY3QgeD0iOCIgeT0iMTAiIHdpZHRoPSI4IiBoZWlnaHQ9IjQiIGZpbGw9IiNBMTg4N0YiLz4NCjwvc3ZnPg0KDQo=",
+      "type": "svg"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+pillow==10.1.0
+numpy==1.24.3
+opencv-python==4.8.1.78
+torch>=2.0.0
+torchvision>=0.15.0
+
+# SAM 相关依赖
+# 注意：segment-anything 需要从 GitHub 安装
+# 安装命令: pip install git+https://github.com/facebookresearch/segment-anything.git
+
+# 可选：如果需要使用 GPU 加速，请安装对应的 CUDA 版本的 PyTorch
+# 访问 https://pytorch.org/get-started/locally/ 获取正确的安装命令
+

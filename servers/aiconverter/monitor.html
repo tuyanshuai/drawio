@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Converter - 图片处理监控</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 30px;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+        
+        .status {
+            text-align: center;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        
+        .status.running {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .status.ready {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .images-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 30px;
+        }
+        
+        .image-box {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .image-box h2 {
+            color: #495057;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+            text-align: center;
+        }
+        
+        .image-wrapper {
+            position: relative;
+            width: 100%;
+            padding-top: 75%; /* 4:3 比例 */
+            background: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .image-wrapper img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: none;
+        }
+        
+        .image-wrapper img.loaded {
+            display: block;
+        }
+        
+        .image-wrapper .placeholder {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #6c757d;
+            font-size: 1.2em;
+        }
+        
+        .info {
+            margin-top: 15px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+        
+        .refresh-btn {
+            display: block;
+            width: 200px;
+            margin: 30px auto;
+            padding: 15px 30px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .refresh-btn:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.6);
+        }
+        
+        .refresh-btn:active {
+            transform: translateY(0);
+        }
+        
+        @media (max-width: 768px) {
+            .images-container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🖼️ AI Converter - 图片处理监控</h1>
+        
+        <div id="status" class="status ready">等待处理图片...</div>
+        
+        <div class="images-container">
+            <div class="image-box">
+                <h2>📤 原始图片</h2>
+                <div class="image-wrapper">
+                    <div class="placeholder">暂无图片</div>
+                    <img id="originalImg" alt="原始图片" />
+                </div>
+                <div class="info" id="originalInfo">等待上传图片...</div>
+            </div>
+            
+            <div class="image-box">
+                <h2>🎨 分割结果</h2>
+                <div class="image-wrapper">
+                    <div class="placeholder">等待处理...</div>
+                    <img id="visualizationImg" alt="可视化结果" />
+                </div>
+                <div class="info" id="visualizationInfo">等待处理结果...</div>
+            </div>
+        </div>
+        
+        <button class="refresh-btn" onclick="refreshImages()">🔄 刷新图片</button>
+    </div>
+    
+    <script>
+        let refreshInterval = null;
+        
+        function updateStatus(status, message) {
+            const statusEl = document.getElementById('status');
+            statusEl.className = `status ${status}`;
+            statusEl.textContent = message;
+        }
+        
+        function loadImage(imgId, url, infoId, infoText) {
+            const img = document.getElementById(imgId);
+            const placeholder = img.parentElement.querySelector('.placeholder');
+            const info = document.getElementById(infoId);
+            
+            const newImg = new Image();
+            newImg.onload = function() {
+                img.src = url + '?t=' + Date.now(); // 添加时间戳防止缓存
+                img.classList.add('loaded');
+                if (placeholder) placeholder.style.display = 'none';
+                info.textContent = infoText || `图片已加载 (${newImg.width}x${newImg.height})`;
+            };
+            newImg.onerror = function() {
+                if (placeholder) {
+                    placeholder.textContent = '图片不存在';
+                    placeholder.style.display = 'block';
+                }
+                info.textContent = '图片不存在或加载失败';
+            };
+            newImg.src = url + '?t=' + Date.now();
+        }
+        
+        function refreshImages() {
+            updateStatus('running', '正在刷新图片...');
+            
+            // 加载原始图片
+            loadImage(
+                'originalImg',
+                'http://127.0.0.1:8000/api/image/original',
+                'originalInfo',
+                '原始图片'
+            );
+            
+            // 加载可视化图片
+            loadImage(
+                'visualizationImg',
+                'http://127.0.0.1:8000/api/image/visualization',
+                'visualizationInfo',
+                '分割结果'
+            );
+            
+            // 检查健康状态
+            fetch('http://127.0.0.1:8000/health')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.sam_loaded) {
+                        updateStatus('ready', '✓ 服务器运行正常，SAM 模型已加载');
+                    } else {
+                        updateStatus('error', '⚠ SAM 模型未加载');
+                    }
+                })
+                .catch(err => {
+                    updateStatus('error', '✗ 无法连接到服务器');
+                    console.error('Health check failed:', err);
+                });
+        }
+        
+        // 页面加载时刷新
+        refreshImages();
+        
+        // 每2秒自动刷新
+        refreshInterval = setInterval(refreshImages, 2000);
+        
+        // 页面可见性变化时刷新
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden) {
+                refreshImages();
+            }
+        });
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,22 @@
+{
+  "id": "astronomy",
+  "title": "天文学",
+  "description": "天文学相关素材",
+  "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBmaWxsPSIjRkZDMTA3IiBkPSJNMTIgMmwzLjA5IDYuMjZMMjIgOS4yN2wtNSA0Ljg3IDEuMTggNi44OEwxMiAxNy43N2wtNi4xOCAzLjI1TDcgMTQuMTQgMiA5LjI3bDYuOTEtMS4wMUwxMiAyeiIvPjwvc3ZnPg==",
+  "order": 8,
+  "preload": false,
+  "version": "1.0.0",
+  "itemCount": 2,
+  "icons": [
+    {
+      "name": "astronomy_1",
+      "url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij4NCiAgPHBhdGggZD0iTTEyIDJsMy4wOSA2LjI2TDIyIDkuMjdsLTUgNC44NyAxLjE4IDYuODhMMTIgMTcuNzdsLTYuMTggMy4yNUw3IDE0LjE0IDIgOS4yN2w2LjkxLTEuMDFMMTIgMnoiIGZpbGw9IiNGRkMxMDciLz4NCjwvc3ZnPg0KDQo=",
+      "type": "svg"
+    },
+    {
+      "name": "astronomy_2",
+      "url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij4NCiAgPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTAiIGZpbGw9IiNGRkMxMDciIG9wYWNpdHk9IjAuMiIvPg0KICA8Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI2IiBmaWxsPSIjRkZDMTA3IiBvcGFjaXR5PSIwLjQiLz4NCiAgPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMyIgZmlsbD0iI0ZGQzEwNyIvPg0KICA8cGF0aCBkPSJNMTIgMkwxNCA4bDYgMi02IDItMiA2LTItNi02LTIgNi0yIDItNnoiIGZpbGw9IiNGRkMxMDciIG9wYWNpdHk9IjAuNiIvPg0KPC9zdmc+DQoNCg==",
+      "type": "svg"
+    }
+  ]
+}

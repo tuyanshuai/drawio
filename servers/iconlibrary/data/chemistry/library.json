@@ -1,0 +1,27 @@
+{
+  "id": "chemistry",
+  "title": "化学",
+  "description": "化学相关素材",
+  "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBmaWxsPSIjRkY5ODAwIiBkPSJNMTIgMkwyIDcgbDEwIDUgMTAtNS0xMC01ek0yIDE3bDEwIDUgMTAtNU0yIDEybDEwIDUgMTAtNSIvPjwvc3ZnPg==",
+  "order": 2,
+  "preload": false,
+  "version": "1.0.0",
+  "itemCount": 2,
+  "icons": [
+    {
+      "name": "chemistry_1",
+      "url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij4NCiAgPHBhdGggZD0iTTEyIDJMMiA3bDEwIDUgMTAtNS0xMC01ek0yIDE3bDEwIDUgMTAtNU0yIDEybDEwIDUgMTAtNSIgZmlsbD0iI0ZGOTgwMCIgc3Ryb2tlPSIjRkY2RjAwIiBzdHJva2Utd2lkdGg9IjEiLz4NCjwvc3ZnPg0KDQo=",
+      "type": "svg"
+    },
+    {
+      "name": "chemistry_2",
+      "url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij4NCiAgPGNpcmNsZSBjeD0iOCIgY3k9IjEwIiByPSIyIiBmaWxsPSIjRkY5ODAwIi8+DQogIDxjaXJjbGUgY3g9IjE2IiBjeT0iMTAiIHI9IjIiIGZpbGw9IiNGRjk4MDAiLz4NCiAgPGNpcmNsZSBjeD0iMTIiIGN5PSIxNiIgcj0iMiIgZmlsbD0iI0ZGOTgwMCIvPg0KICA8bGluZSB4MT0iOS40MSIgeTE9IjExLjQxIiB4Mj0iMTAuNTkiIHkyPSIxMi41OSIgc3Ryb2tlPSIjRkY5ODAwIiBzdHJva2Utd2lkdGg9IjEuNSIvPg0KICA8bGluZSB4MT0iMTMuNDEiIHkxPSIxMS40MSIgeDI9IjE0LjU5IiB5Mj0iMTIuNTkiIHN0cm9rZT0iI0ZGOTgwMCIgc3Ryb2tlLXdpZHRoPSIxLjUiLz4NCiAgPGxpbmUgeDE9IjkuNDEiIHkxPSIxMi41OSIgeDI9IjE0LjU5IiB5Mj0iMTIuNTkiIHN0cm9rZT0iI0ZGOTgwMCIgc3Ryb2tlLXdpZHRoPSIxLjUiLz4NCjwvc3ZnPg0KDQo=",
+      "type": "svg"
+    },
+    {
+      "name": "chemistry_3",
+      "url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij4NCiAgPHJlY3QgeD0iNiIgeT0iNCIgd2lkdGg9IjEyIiBoZWlnaHQ9IjE2IiByeD0iMSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRkY5ODAwIiBzdHJva2Utd2lkdGg9IjIiLz4NCiAgPGxpbmUgeDE9IjkiIHkxPSI4IiB4Mj0iMTUiIHkyPSI4IiBzdHJva2U9IiNGRjk4MDAiIHN0cm9rZS13aWR0aD0iMiIvPg0KICA8bGluZSB4MT0iOSIgeTE9IjEyIiB4Mj0iMTUiIHkyPSIxMiIgc3Ryb2tlPSIjRkY5ODAwIiBzdHJva2Utd2lkdGg9IjIiLz4NCiAgPGxpbmUgeDE9IjkiIHkxPSIxNiIgeDI9IjE1IiB5Mj0iMTYiIHN0cm9rZT0iI0ZGOTgwMCIgc3Ryb2tlLXdpZHRoPSIyIi8+DQo8L3N2Zz4NCg0K",
+      "type": "svg"
+    }
+  ]
+}
