@@ -620,147 +620,24 @@ Draw.loadPlugin(function(editorUi)
 
     mxCellRenderer.registerShape('isoCylinder', IsoCylinderShape);
 
-    // --- Insert menu item ---
-    // Try to add into Insert menu if present
-    var insertMenu = editorUi.menus.get('insert');
-    if (insertMenu != null)
-    {
-        var oldInsertFunct = insertMenu.funct;
-        insertMenu.funct = function(menu, parent)
-        {
-            oldInsertFunct.apply(this, arguments);
-            editorUi.menus.addMenuItems(menu, ['-', 'insertIsoCube'], parent);
-        };
-    }
-    // Also add into Extras for visibility in UIs without Insert
-    var extrasMenu = editorUi.menus.get('extras');
-    if (extrasMenu != null)
-    {
-        var oldExtrasFunct = extrasMenu.funct;
-        extrasMenu.funct = function(menu, parent)
-        {
-            oldExtrasFunct.apply(this, arguments);
-            editorUi.menus.addMenuItems(menu, ['-', 'insertIsoCube'], parent);
-        };
-    }
-
-    mxResources.parse('insertIsoCube=3D Cube (Isometric)');
-    editorUi.actions.addAction('insertIsoCube', function()
-    {
-        var gs = graph.getGridSize();
-        var parent = graph.getDefaultParent();
-        var w = 120, h = 120;
-        var v = graph.insertVertex(parent, null, '', gs * 2, gs * 2, w, h,
-            'shape=isoCube;isoZ=100;isoRx=35;isoRy=35;isoRz=0;fillColor=#26a0da;strokeColor=#1e78b7;rounded=0;');
-        graph.setSelectionCell(v);
-    });
-
-    // --- Custom Isometric Icon Shape for Sidebar ---
-    function IsoIconShape(bounds, fill, stroke, strokewidth)
-    {
-        mxShape.call(this);
-        this.bounds = bounds;
-        this.fill = fill;
-        this.stroke = stroke;
-        this.strokewidth = (strokewidth != null) ? strokewidth : 1;
-    };
-
-    mxUtils.extend(IsoIconShape, mxShape);
-
-    IsoIconShape.prototype.paintVertexShape = function(c, x, y, w, h)
-    {
-        c.translate(x, y);
-        
-        // Draw a simple isometric cube icon using lines
-        var size = Math.min(w, h) * 0.6;
-        var cx = w / 2;
-        var cy = h / 2;
-        
-        // Isometric projection parameters
-        var isoAngle = Math.PI / 6; // 30 degrees
-        var isoX = size * Math.cos(isoAngle);
-        var isoY = size * Math.sin(isoAngle);
-        var depth = size * 0.5;
-        
-        // Calculate the 8 vertices of the cube in isometric view
-        // Front face (visible)
-        var frontLeft = cx - isoX;
-        var frontRight = cx + isoX;
-        var frontTop = cy - isoY;
-        var frontBottom = cy + isoY;
-        
-        // Back face (offset by depth)
-        var backLeft = frontLeft - depth * Math.cos(isoAngle);
-        var backRight = frontRight - depth * Math.cos(isoAngle);
-        var backTop = frontTop - depth * Math.sin(isoAngle);
-        var backBottom = frontBottom - depth * Math.sin(isoAngle);
-        
-        // Set stroke properties
-        c.setStrokeColor('#666666');
-        c.setStrokeWidth(2);
-        c.setFillColor('none');
-        
-        // Draw front face (square)
-        c.begin();
-        c.moveTo(frontLeft, frontTop);
-        c.lineTo(frontRight, frontTop);
-        c.lineTo(frontRight, frontBottom);
-        c.lineTo(frontLeft, frontBottom);
-        c.close();
-        c.stroke();
-        
-        // Draw back face (slightly smaller, offset)
-        c.begin();
-        c.moveTo(backLeft, backTop);
-        c.lineTo(backRight, backTop);
-        c.lineTo(backRight, backBottom);
-        c.lineTo(backLeft, backBottom);
-        c.close();
-        c.stroke();
-        
-        // Draw connecting edges (3D effect)
-        c.begin();
-        c.moveTo(frontLeft, frontTop);
-        c.lineTo(backLeft, backTop);
-        c.stroke();
-        
-        c.begin();
-        c.moveTo(frontRight, frontTop);
-        c.lineTo(backRight, backTop);
-        c.stroke();
-        
-        c.begin();
-        c.moveTo(frontRight, frontBottom);
-        c.lineTo(backRight, backBottom);
-        c.stroke();
-    };
-
-    mxCellRenderer.registerShape('isoIcon', IsoIconShape);
-
     // --- Sidebar palette entry ---
     var sb = editorUi.sidebar;
     function addIsoPalette()
     {
         if (sb != null)
         {
-            sb.addPalette('isometric', 'Isometric', false, function(content)
+            sb.addPalette('isometric', '3D 形状', true, function(content)
             {
                 (function(){
-                    // Custom icon for palette header
-                    var iconCell = new mxCell('', new mxGeometry(0, 0, 120, 120),
-                        'shape=isoIcon;fillColor=none;strokeColor=#666666;strokeWidth=2;');
-                    iconCell.vertex = true;
-                    content.appendChild(sb.createVertexTemplateFromCells([iconCell], 120, 120, 'Isometric 3D'));
-                    
                     // Cube
-                    var cell = new mxCell('', new mxGeometry(0, 0, 120, 120),
-                        'shape=isoCube;isoZ=100;isoRx=35;isoRy=35;isoRz=0;fillColor=#26a0da;strokeColor=#1e78b7;rounded=0;');
+                    var cell = new mxCell('', new mxGeometry(0, 0, 250, 250),
+                        'shape=isoCube;isoZ=70;isoRx=35;isoRy=35;isoRz=0;fillColor=none;strokeColor=#1e78b7;rounded=0;');
                     cell.vertex = true;
                     content.appendChild(sb.createVertexTemplateFromCells([cell], 120, 120, 'Cube'));
                     
                     // Cylinder
-                    var cell2 = new mxCell('', new mxGeometry(0, 0, 120, 120),
-                        'shape=isoCylinder;isoZ=100;isoRx=35;isoRy=35;isoRz=0;fillColor=#26a0da;strokeColor=#1e78b7;rounded=0;');
+                    var cell2 = new mxCell('', new mxGeometry(0, 0, 250, 250),
+                        'shape=isoCylinder;isoZ=70;isoRx=35;isoRy=35;isoRz=0;fillColor=none;strokeColor=#1e78b7;rounded=0;');
                     cell2.vertex = true;
                     content.appendChild(sb.createVertexTemplateFromCells([cell2], 120, 120, 'Cylinder'));
                 })();
