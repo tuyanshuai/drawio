@@ -396,7 +396,8 @@ Draw.loadPlugin(function(editorUi)
                 indices: idx,
                 normal: {x: nx, y: ny, z: nz},
                 z: avgZ,
-                visible: vis
+                visible: vis,
+                isFrontFace: (fi < 2) // Remember original face type before sorting
             });
         }
 
@@ -545,21 +546,22 @@ Draw.loadPlugin(function(editorUi)
                 c.setFillColor(faceFill);
                 c.begin();
                 
-                // Use standard lineTo for all shapes (no quadTo)
-                // With 512 samples for curves, lineTo should be very smooth
-                // Ensure we close the path properly
+                // Use standard lineTo for all shapes
                 c.moveTo(points[0].x, points[0].y);
                 for (var k = 1; k < points.length; k++)
                 {
                     c.lineTo(points[k].x, points[k].y);
                 }
-                // Explicitly close the path to ensure smooth connection
                 c.close();
                 
-                // For curve shapes, don't draw lines on side faces (fi >= 2)
-                // Only draw lines on front/back faces (fi < 2)
-                var isSideFace = (fi >= 2);
-                var shouldDrawStroke = strokeEnabled && (!isCurveShape || !isSideFace);
+                // For curve shapes, determine if this is a top/bottom face or side face
+                // Top/bottom faces are the first two faces created (finfo.id < 2)
+                // Side faces are all other faces (finfo.id >= 2)
+                var isTopOrBottomFace = (finfo.id < 2);
+                
+                // For curve shapes: do not draw lines at all (neither top/bottom nor side faces)
+                // For non-curve shapes: draw lines on all faces normally
+                var shouldDrawStroke = strokeEnabled && !isCurveShape;
                 
                 if (shouldDrawStroke) 
                 { 

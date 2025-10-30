@@ -655,6 +655,88 @@ Draw.loadPlugin(function(editorUi)
         graph.setSelectionCell(v);
     });
 
+    // --- Custom Isometric Icon Shape for Sidebar ---
+    function IsoIconShape(bounds, fill, stroke, strokewidth)
+    {
+        mxShape.call(this);
+        this.bounds = bounds;
+        this.fill = fill;
+        this.stroke = stroke;
+        this.strokewidth = (strokewidth != null) ? strokewidth : 1;
+    };
+
+    mxUtils.extend(IsoIconShape, mxShape);
+
+    IsoIconShape.prototype.paintVertexShape = function(c, x, y, w, h)
+    {
+        c.translate(x, y);
+        
+        // Draw a simple isometric cube icon using lines
+        var size = Math.min(w, h) * 0.6;
+        var cx = w / 2;
+        var cy = h / 2;
+        
+        // Isometric projection parameters
+        var isoAngle = Math.PI / 6; // 30 degrees
+        var isoX = size * Math.cos(isoAngle);
+        var isoY = size * Math.sin(isoAngle);
+        var depth = size * 0.5;
+        
+        // Calculate the 8 vertices of the cube in isometric view
+        // Front face (visible)
+        var frontLeft = cx - isoX;
+        var frontRight = cx + isoX;
+        var frontTop = cy - isoY;
+        var frontBottom = cy + isoY;
+        
+        // Back face (offset by depth)
+        var backLeft = frontLeft - depth * Math.cos(isoAngle);
+        var backRight = frontRight - depth * Math.cos(isoAngle);
+        var backTop = frontTop - depth * Math.sin(isoAngle);
+        var backBottom = frontBottom - depth * Math.sin(isoAngle);
+        
+        // Set stroke properties
+        c.setStrokeColor('#666666');
+        c.setStrokeWidth(2);
+        c.setFillColor('none');
+        
+        // Draw front face (square)
+        c.begin();
+        c.moveTo(frontLeft, frontTop);
+        c.lineTo(frontRight, frontTop);
+        c.lineTo(frontRight, frontBottom);
+        c.lineTo(frontLeft, frontBottom);
+        c.close();
+        c.stroke();
+        
+        // Draw back face (slightly smaller, offset)
+        c.begin();
+        c.moveTo(backLeft, backTop);
+        c.lineTo(backRight, backTop);
+        c.lineTo(backRight, backBottom);
+        c.lineTo(backLeft, backBottom);
+        c.close();
+        c.stroke();
+        
+        // Draw connecting edges (3D effect)
+        c.begin();
+        c.moveTo(frontLeft, frontTop);
+        c.lineTo(backLeft, backTop);
+        c.stroke();
+        
+        c.begin();
+        c.moveTo(frontRight, frontTop);
+        c.lineTo(backRight, backTop);
+        c.stroke();
+        
+        c.begin();
+        c.moveTo(frontRight, frontBottom);
+        c.lineTo(backRight, backBottom);
+        c.stroke();
+    };
+
+    mxCellRenderer.registerShape('isoIcon', IsoIconShape);
+
     // --- Sidebar palette entry ---
     var sb = editorUi.sidebar;
     function addIsoPalette()
@@ -664,6 +746,12 @@ Draw.loadPlugin(function(editorUi)
             sb.addPalette('isometric', 'Isometric', false, function(content)
             {
                 (function(){
+                    // Custom icon for palette header
+                    var iconCell = new mxCell('', new mxGeometry(0, 0, 120, 120),
+                        'shape=isoIcon;fillColor=none;strokeColor=#666666;strokeWidth=2;');
+                    iconCell.vertex = true;
+                    content.appendChild(sb.createVertexTemplateFromCells([iconCell], 120, 120, 'Isometric 3D'));
+                    
                     // Cube
                     var cell = new mxCell('', new mxGeometry(0, 0, 120, 120),
                         'shape=isoCube;isoZ=100;isoRx=35;isoRy=35;isoRz=0;fillColor=#26a0da;strokeColor=#1e78b7;rounded=0;');
