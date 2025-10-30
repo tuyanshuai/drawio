@@ -53,6 +53,23 @@
 		</p>
 	</div>
 </div>
+<script>
+(function() {
+	try {
+		var search = window.location.search || "";
+		if (!/[?&]dev=1(?!\d)/.test(search)) {
+			var params = new URLSearchParams(search);
+			if (!params.has("dev")) {
+				params.set("dev", "1");
+				var query = "?" + params.toString();
+				var newUrl = window.location.origin + window.location.pathname + query + window.location.hash;
+				window.location.replace(newUrl);
+				return;
+			}
+		}
+	} catch (e) {}
+})();
+</script>
 <script src="js/main.js"></script>
 </body>
 </html>
