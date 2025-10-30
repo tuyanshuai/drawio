@@ -23,6 +23,7 @@
     <link rel="stylesheet" type="text/css" href="styles/grapheditor.css">
 	<link rel="stylesheet" media="(forced-colors: active)" href="styles/high-contrast.css" id="high-contrast-stylesheet">
 	<script src="js/bootstrap.js"></script>
+	<script src="preload.js"></script>
 	<style type="text/css">
 		.geBlock {
 			z-index:-3;
@@ -53,23 +54,7 @@
 		</p>
 	</div>
 </div>
-<script>
-(function() {
-	try {
-		var search = window.location.search || "";
-		if (!/[?&]dev=1(?!\d)/.test(search)) {
-			var params = new URLSearchParams(search);
-			if (!params.has("dev")) {
-				params.set("dev", "1");
-				var query = "?" + params.toString();
-				var newUrl = window.location.origin + window.location.pathname + query + window.location.hash;
-				window.location.replace(newUrl);
-				return;
-			}
-		}
-	} catch (e) {}
-})();
-</script>
 <script src="js/main.js"></script>
+<script src="plugins/isocube.js"></script>
 </body>
 </html>
