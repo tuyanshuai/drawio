@@ -5,6 +5,12 @@
 Draw.loadPlugin(function(editorUi)
 {
     var graph = editorUi.editor.graph;
+    
+    // Debug: Log that plugin is loaded
+    if (window.console)
+    {
+        console.log('Highlight Effect plugin loaded');
+    }
 
     // --- Helper: Check if a path is closed ---
     function isPathClosed(path)
@@ -206,6 +212,39 @@ Draw.loadPlugin(function(editorUi)
         }
     }
 
+    // Add action for highlight effect
+    editorUi.actions.addAction('addHighlight', function()
+    {
+        var cells = graph.getSelectionCells();
+        if (cells.length === 0)
+        {
+            editorUi.alert(mxResources.get('nothingIsSelected') || 'Nothing is selected');
+            return;
+        }
+        
+        addHighlightEffect(cells);
+    });
+    
+    // Set action properties
+    editorUi.actions.get('addHighlight').isEnabled = function()
+    {
+        var cells = graph.getSelectionCells();
+        if (cells.length == 0) return false;
+        
+        for (var i = 0; i < cells.length; i++)
+        {
+            if (isClosedShape(cells[i])) return true;
+        }
+        
+        return false;
+    };
+    
+    // Add resource for menu item
+    if (typeof mxResources !== 'undefined')
+    {
+        mxResources.parse('addHighlight=增加高光');
+    }
+
     // --- Override shape rendering to apply highlight filter ---
     var originalRedraw = mxShape.prototype.redraw;
     mxShape.prototype.redraw = function()
@@ -243,77 +282,28 @@ Draw.loadPlugin(function(editorUi)
         }
     };
 
-    // --- Modify addPopupMenuCellItems to add highlight menu item ---
-    var originalAddPopupMenuCellItems = Menus.prototype.addPopupMenuCellItems;
-    Menus.prototype.addPopupMenuCellItems = function(menu, cell, evt)
+    // Add to context menu (same way as isoextrude plugin)
+    if (editorUi.menus && editorUi.menus.addPopupMenuCellItems)
     {
-        var graph = this.editorUi.editor.graph;
-        var ss = this.editorUi.getSelectionState();
-        
-        // Call original function first
-        originalAddPopupMenuCellItems.apply(this, arguments);
-        
-        // Add highlight menu item for closed shapes
-        if (cell != null)
+        var addPopupMenuCellItems = editorUi.menus.addPopupMenuCellItems;
+        editorUi.menus.addPopupMenuCellItems = function(menu, cell, evt)
         {
-            // Check if it's a closed shape
-            var isClosed = false;
-            if (graph.getModel().isVertex(cell))
+            addPopupMenuCellItems.apply(this, arguments);
+            
+            if (cell != null && graph.getSelectionCount() == 1 && graph.getModel().isVertex(cell))
             {
                 var style = graph.getCurrentCellStyle(cell);
                 var shape = mxUtils.getValue(style, mxConstants.STYLE_SHAPE, null);
+                var hasHighlight = mxUtils.getValue(style, 'highlightEffect', '0') == '1';
                 
-                if (shape == null || shape == '')
-                {
-                    isClosed = true; // Default shapes are usually closed
-                }
-                else if (shape != 'text')
-                {
-                    // Check if it's a known closed shape
-                    var shapeLower = shape.toLowerCase();
-                    isClosed = shapeLower.indexOf('ellipse') >= 0 || 
-                              shapeLower.indexOf('rectangle') >= 0 || 
-                              shapeLower.indexOf('rounded') >= 0 || 
-                              shapeLower.indexOf('rhombus') >= 0 ||
-                              shapeLower.indexOf('triangle') >= 0 || 
-                              shapeLower.indexOf('hexagon') >= 0 ||
-                              shapeLower.indexOf('octagon') >= 0 || 
-                              shapeLower.indexOf('pentagon') >= 0 ||
-                              shapeLower.indexOf('star') >= 0 || 
-                              shapeLower.indexOf('cloud') >= 0 ||
-                              shapeLower.indexOf('cylinder') >= 0 || 
-                              shapeLower.indexOf('parallelogram') >= 0 ||
-                              shapeLower.indexOf('circle') >= 0 || 
-                              shapeLower.indexOf('square') >= 0 ||
-                              shapeLower.indexOf('diamond') >= 0 || 
-                              shapeLower.indexOf('trapezoid') >= 0 ||
-                              shapeLower.indexOf('path') >= 0; // Custom paths are usually closed
-                }
-            }
-            
-            if (isClosed)
-            {
-                var hasHighlight = mxUtils.getValue(
-                    graph.getCurrentCellStyle(cell),
-                    'highlightEffect', '0') == '1';
-                
-                if (!hasHighlight)
+                // Only show for non-3D shapes, closed shapes, and shapes without highlight
+                if (shape != 'isoCube' && shape != 'isoExtrude' && isClosedShape(cell) && !hasHighlight)
                 {
                     menu.addSeparator();
-                    
-                    menu.addItem('增加高光', null, mxUtils.bind(this, function()
-                    {
-                        var cells = graph.getSelectionCells();
-                        if (cells.length === 0)
-                        {
-                            cells = [cell];
-                        }
-                        
-                        addHighlightEffect(cells);
-                    }));
+                    editorUi.menus.addMenuItem(menu, 'addHighlight', null, evt);
                 }
             }
-        }
-    };
+        };
+    }
 });
 

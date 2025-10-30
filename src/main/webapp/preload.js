@@ -10,14 +10,63 @@
 		if (params.get("plugins") !== "1") { params.set("plugins", "1"); changed = true; }
 		var p = params.get("p") || "";
 		
-		// Default plugins to load
-		var defaultPlugins = ["plugins/isocube.js", "plugins/ai-convert.js", "plugins/material-library.js"];
+		// All available plugins - default to load all plugins
+		var allPlugins = [
+			"plugins/ai-convert.js",
+			"plugins/highlight-effect.js",
+			"plugins/isocube.js",
+			"plugins/isoextrude.js",
+			"plugins/material-library.js"
+		];
 		
-		// Check if any default plugin is missing and add them
-		for (var i = 0; i < defaultPlugins.length; i++) {
-			if (p.indexOf(defaultPlugins[i]) === -1) {
-				params.set("p", (p ? (p + ";") : "") + defaultPlugins[i]);
-				p = params.get("p");
+		// Check if 'minimal=1' parameter is set to load only core plugins
+		var loadMinimal = params.get("minimal") === "1";
+		var loadAll = params.get("all") === "1";
+		
+		// Core plugins (only loaded if minimal=1)
+		var corePlugins = [
+			"plugins/isocube.js", 
+			"plugins/ai-convert.js", 
+			"plugins/material-library.js", 
+			"plugins/highlight-effect.js"
+		];
+		
+		// Determine which plugins to load
+		var pluginsToLoad = [];
+		if (loadMinimal) {
+			pluginsToLoad = corePlugins;
+		} else if (loadAll || p === "") {
+			// If all=1 or no p parameter, load all plugins
+			pluginsToLoad = allPlugins;
+		} else {
+			// If p parameter exists, use existing plugins (don't modify)
+			pluginsToLoad = [];
+		}
+		
+		// Only add plugins to URL if we need to change something
+		if (pluginsToLoad.length > 0) {
+			// Check if any plugin is missing and add them
+			var needsUpdate = false;
+			for (var i = 0; i < pluginsToLoad.length; i++) {
+				if (p.indexOf(pluginsToLoad[i]) === -1) {
+					needsUpdate = true;
+					break;
+				}
+			}
+			
+			if (needsUpdate) {
+				// If no p parameter exists and we want all plugins, use a short 'all=1' parameter
+				if (p === "" && !loadMinimal && !loadAll) {
+					params.set("all", "1");
+				} else {
+					// Otherwise, add all plugins to p parameter
+					var newP = "";
+					for (var i = 0; i < pluginsToLoad.length; i++) {
+						if (newP) newP += ";";
+						newP += pluginsToLoad[i];
+					}
+					params.set("p", newP);
+				}
 				changed = true;
 			}
 		}

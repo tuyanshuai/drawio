@@ -802,6 +802,18 @@ App.main = function(callback, createUi)
 				// Default plugins to load if no p parameter is specified
 				var defaultPlugins = ['plugins/isocube.js', 'plugins/ai-convert.js', 'plugins/material-library.js'];
 				
+				// All available plugins (when all=1 is specified)
+				var allPlugins = [
+					'plugins/ai-convert.js',
+					'plugins/highlight-effect.js',
+					'plugins/isocube.js',
+					'plugins/isoextrude.js',
+					'plugins/material-library.js'
+				];
+				
+				// Check if all=1 parameter is set
+				var loadAll = urlParams['all'] === '1';
+				
 				if (temp != null)
 				{
 					// Split by semicolon first, then decode each plugin separately
@@ -823,6 +835,11 @@ App.main = function(callback, createUi)
 					
 					// Mapping from key to URL in App.plugins
 					App.loadPlugins(pluginList);
+				}
+				else if (loadAll)
+				{
+					// Load all plugins if all=1 is specified
+					App.loadPlugins(allPlugins);
 				}
 				else
 				{
