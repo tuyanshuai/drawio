@@ -943,7 +943,7 @@
 		this.addGeneralPalette(this.customEntries == null);
 		// this.addMiscPalette(false); // Misc palette disabled
 		// this.addAdvancedPalette(false); // Disabled - only keeping General and Isometric palettes
-		// this.addBasicPalette(); // Disabled - only keeping General and Isometric palettes
+		// this.addBasicPalette(); // Disabled - basic shapes palette removed
 		// this.addStencilPalette('arrows', mxResources.get('arrows'), dir + '/arrows.xml',
 		//		';html=1;' + mxConstants.STYLE_VERTICAL_LABEL_POSITION + '=bottom;' + mxConstants.STYLE_VERTICAL_ALIGN + '=top;' + mxConstants.STYLE_STROKEWIDTH + '=2;strokeColor=#000000;',
 		//		null, null, null, null, null, 'arrows'); // Disabled - only keeping General and Isometric palettes

@@ -137,7 +137,7 @@ Sidebar.prototype.init = function()
 	this.addGeneralPalette(true);
 	// this.addMiscPalette(false); // Misc palette disabled
 	// this.addAdvancedPalette(false); // Disabled - only keeping General and Isometric palettes
-	// this.addBasicPalette(dir); // Disabled - only keeping General and Isometric palettes
+	// this.addBasicPalette(dir); // Disabled - basic shapes palette removed
 	
 	// this.setCurrentSearchEntryLibrary('arrows'); // Disabled - only keeping General and Isometric palettes
 	// this.addStencilPalette('arrows', mxResources.get('arrows'), dir + '/arrows.xml',
@@ -1785,6 +1785,8 @@ Sidebar.prototype.addGeneralPalette = function(expand)
 	 	
 	 	this.createVertexTemplateEntry('triangle;whiteSpace=wrap;html=1;', 60, 80, '', 'Triangle', null, null, 'triangle logic inverter buffer'),
 	 	
+	 	// Add polygon shape to general palette
+	 	this.createVertexTemplateEntry('shape=manualPolygon;polyCoords=[[0.25,0],[0.75,0],[1,0.25],[1,0.75],[0.75,1],[0.25,1],[0,0.75],[0,0.25]];whiteSpace=wrap;html=1;', 100, 100, '', 'Polygon', null, null, 'polygon shape custom'),
 	 	
 	 	 
 	  
