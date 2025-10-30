@@ -120,8 +120,10 @@ Draw.loadPlugin(function(editorUi)
         faceInfo.sort(function(a, b){ return a.z - b.z; });
 
         // Fill with shading based on a fixed light direction in view space
-        var baseFill = mxUtils.getValue(style, mxConstants.STYLE_FILLCOLOR, '#26a0da');
-        var strokeColor = mxUtils.getValue(style, mxConstants.STYLE_STROKECOLOR, '#1e78b7');
+        var baseFill = mxUtils.getValue(style, mxConstants.STYLE_FILLCOLOR, null);
+        // Check if strokeColor is explicitly set, if not default to none (line disabled)
+        var strokeColor = mxUtils.getValue(style, mxConstants.STYLE_STROKECOLOR, null);
+        if (strokeColor == null || strokeColor === '') strokeColor = 'none';
         var light = {x: 0.35, y: -0.5, z: -0.8};
         var lmag = Math.sqrt(light.x*light.x + light.y*light.y + light.z*light.z) || 1;
         light.x/=lmag; light.y/=lmag; light.z/=lmag;
@@ -140,15 +142,76 @@ Draw.loadPlugin(function(editorUi)
             return '#' + ('0' + r.toString(16)).slice(-2) + ('0' + g.toString(16)).slice(-2) + ('0' + b.toString(16)).slice(-2);
         };
 
-        c.setStrokeColor(strokeColor);
-        c.setStrokeWidth(this.strokewidth);
-        // Honor style-provided opacities; default to fully opaque
+        // Line/Fill style should match standard Style > Line behavior
+        // Respect Style > Line settings; draw lines unless Line is disabled
+        function isNoneColor(col)
+        {
+            if (col == null) return true;
+            var s = String(col).toLowerCase();
+            if (s === 'none' || s === 'transparent' || s === '') return true;
+            if (s.indexOf('rgba(') === 0)
+            {
+                var m = s.match(/rgba\([^,]+,[^,]+,[^,]+,\s*([0-9.]+)\)/);
+                if (m && parseFloat(m[1]) === 0) return true;
+            }
+            if (s.length === 9 && s.startsWith('#') && s.substring(7) === '00') return true; // #RRGGBBAA with AA=00
+            return false;
+        }
+        var strokeColorNone = isNoneColor(strokeColor);
+        // Check strokeWidth - if line is disabled, it should be 0 or not set
+        var strokeWidthRaw = mxUtils.getValue(style, mxConstants.STYLE_STROKEWIDTH, null);
+        var strokeWidth = parseFloat(strokeWidthRaw);
+        // Default strokeWidth if not set or invalid
+        if (strokeWidthRaw == null || strokeWidthRaw === '' || isNaN(strokeWidth))
+        {
+            strokeWidth = strokeColorNone ? 0 : this.strokewidth;
+        }
+        var strokeOpacity = parseFloat(mxUtils.getValue(style, 'strokeOpacity', 1));
+        var baseDashed = String(mxUtils.getValue(style, mxConstants.STYLE_DASHED, '0')) === '1';
+        // If strokeColor is none, force strokeWidth and strokeOpacity to 0
+        if (strokeColorNone)
+        {
+            strokeWidth = 0;
+            strokeOpacity = 0;
+        }
+        else
+        {
+            if (isNaN(strokeOpacity)) strokeOpacity = 1;
+            if (strokeOpacity > 1) strokeOpacity = strokeOpacity / 100; // accept 0..100 style values
+        }
+        // Honor style-provided opacities for fill
         var fillOpacity = parseFloat(mxUtils.getValue(style, 'fillOpacity', 1));
         if (isNaN(fillOpacity)) fillOpacity = 1;
-        var strokeOpacity = parseFloat(mxUtils.getValue(style, 'strokeOpacity', 1));
-        if (isNaN(strokeOpacity)) strokeOpacity = 1;
+        if (fillOpacity > 1) fillOpacity = fillOpacity / 100; // accept 0..100 style values
         c.setFillAlpha(Math.max(0, Math.min(1, fillOpacity)));
-        c.setStrokeAlpha(Math.max(0, Math.min(1, strokeOpacity)));
+        var strokeEnabled = !strokeColorNone && strokeOpacity > 0 && strokeWidth > 0;
+        console.log('strokeColor:', strokeColor, 'strokeColorNone:', strokeColorNone, 'strokeWidth:', strokeWidth, 'strokeOpacity:', strokeOpacity, 'strokeEnabled:', strokeEnabled);
+        // Only set stroke properties when actually enabled
+        if (strokeEnabled)
+        {
+            c.setStrokeColor(strokeColor);
+            c.setStrokeWidth(strokeWidth);
+            c.setStrokeAlpha(Math.max(0, Math.min(1, strokeOpacity)));
+        }
+        function isNoneFill(col)
+        {
+            if (col == null) return true;
+            var s = String(col).toLowerCase();
+            if (s === 'none' || s === 'transparent' || s === '') return true;
+            if (s.indexOf('rgba(') === 0)
+            {
+                var m = s.match(/rgba\([^,]+,[^,]+,[^,]+,\s*([0-9.]+)\)/);
+                if (m && parseFloat(m[1]) === 0) return true;
+            }
+            if (s.length === 9 && s.startsWith('#') && s.substring(7) === '00') return true;
+            return false;
+        }
+        var fillEnabled = !isNoneFill(baseFill) && fillOpacity > 0;
+        if (!fillEnabled && !strokeEnabled)
+        {
+            // Nothing to render at all when both fill and line are disabled
+            return;
+        }
 
         for (var fi2 = 0; fi2 < faceInfo.length; fi2++)
         {
@@ -157,13 +220,17 @@ Draw.loadPlugin(function(editorUi)
             var n = f.normal; var nmag = Math.sqrt(n.x*n.x+n.y*n.y+n.z*n.z) || 1;
             var nx=n.x/nmag, ny=n.y/nmag, nz=n.z/nmag;
             var ndotl = Math.max(0, -(nx*light.x + ny*light.y + nz*light.z));
-            var tint = shade(baseFill, 0.55 + 0.45 * ndotl);
-            c.begin();
-            c.moveTo(v[f.idx[0]].x, v[f.idx[0]].y);
-            for (var j = 1; j < f.idx.length; j++) c.lineTo(v[f.idx[j]].x, v[f.idx[j]].y);
-            c.close();
-            c.setFillColor(tint);
-            c.fillAndStroke();
+            if (fillEnabled)
+            {
+                // Always apply shading for better 3D appearance
+                var tint = shade(baseFill, 0.55 + 0.45 * ndotl);
+                c.begin();
+                c.moveTo(v[f.idx[0]].x, v[f.idx[0]].y);
+                for (var j = 1; j < f.idx.length; j++) c.lineTo(v[f.idx[j]].x, v[f.idx[j]].y);
+                c.close();
+                c.setFillColor(tint);
+                if (strokeEnabled) { c.fillAndStroke(); } else { c.fill(); }
+            }
         }
 
         // Debug: draw face normals only when enabled via style
@@ -220,26 +287,30 @@ Draw.loadPlugin(function(editorUi)
         }
 
         var faceVisible = visibleByIndex;
-        for (var ei = 0; ei < edges.length; ei++)
+        // Render edges only if line is enabled in style
+        console.log('strokeEnabled:', strokeEnabled);
+        if (strokeEnabled)
         {
-            var e = edges[ei];
-            var adj = edgeFaces(e[0], e[1]);
-            // Edge style policy (engineering drawing style):
-            // - Any adjacent face front-facing -> solid (visible outline or seam)
-            // - Both adjacent faces back-facing -> dashed (hidden edge)
-            var dashed = false;
-            if (adj.length === 2)
+            for (var ei = 0; ei < edges.length; ei++)
             {
-                var f0 = faceVisible[adj[0]];
-                var f1 = faceVisible[adj[1]];
-                dashed = (!f0 && !f1);
+                var e = edges[ei];
+                var adj = edgeFaces(e[0], e[1]);
+                // Hidden edge policy: both adjacent faces back-facing => dashed, else solid
+                var hidden = false;
+                if (adj.length === 2)
+                {
+                    var f0 = faceVisible[adj[0]];
+                    var f1 = faceVisible[adj[1]];
+                    hidden = (!f0 && !f1);
+                }
+                c.setDashed(baseDashed || hidden);
+                c.setStrokeColor(strokeColor);
+                c.begin();
+                c.moveTo(v[e[0]].x, v[e[0]].y);
+                c.lineTo(v[e[1]].x, v[e[1]].y);
+                c.stroke();
             }
-            c.setDashed(dashed);
-            c.setStrokeColor(strokeColor);
-            c.begin();
-            c.moveTo(v[e[0]].x, v[e[0]].y);
-            c.lineTo(v[e[1]].x, v[e[1]].y);
-            c.stroke();
+            c.setDashed(baseDashed);
         }
     };
 
@@ -321,46 +392,58 @@ Draw.loadPlugin(function(editorUi)
         };
     }
 
-    // --- Property panel for isoCube ---
-    var propWin = null;
-    function ensurePropWindow()
+    // --- Inject properties into right-side Format panel (no separate popup)
+    function renderIsoFormatPanel()
     {
-        if (propWin != null) return propWin;
-        var container = document.createElement('div');
-        container.style.background = Editor.isDarkMode() ? Editor.darkColor : '#ffffff';
-        container.style.padding = '8px';
-        container.style.border = '1px solid lightgray';
-        container.style.minWidth = '220px';
+        var fmt = editorUi.format;
+        if (!fmt || !fmt.container) return;
+        // Remove previous
+        var old = document.getElementById('isoCube-format-panel');
+        if (old && old.parentNode) old.parentNode.removeChild(old);
 
-        function addRow(labelText, key, min, max, step)
+        var cell = graph.getSelectionCell();
+        var style = (cell != null) ? graph.getCurrentCellStyle(cell) : null;
+        if (!style || style['shape'] !== 'isoCube') return;
+
+        var panel = document.createElement('div');
+        panel.id = 'isoCube-format-panel';
+        panel.className = 'geStyleOptions';
+        panel.style.padding = '8px 12px';
+        panel.style.borderTop = '1px solid var(--gePrimaryBorderColor, #e0e0e0)';
+
+        // Insert rows directly into the existing format container without separate section title
+        var first = fmt.container.firstChild;
+        if (first) fmt.container.insertBefore(panel, first.nextSibling);
+        else fmt.container.appendChild(panel);
+
+        function addNumber(labelText, key, min, max, step)
         {
             var row = document.createElement('div');
             row.style.display = 'flex';
             row.style.alignItems = 'center';
             row.style.gap = '6px';
-            row.style.marginBottom = '6px';
+            row.style.margin = '6px 0';
             var label = document.createElement('label');
-            label.style.flex = '0 0 48px';
+            label.style.flex = '0 0 64px';
             mxUtils.write(label, labelText);
             var input = document.createElement('input');
             input.type = 'number';
             input.style.flex = '1 1 auto';
-            input.min = (min != null) ? String(min) : '';
-            input.max = (max != null) ? String(max) : '';
-            input.step = (step != null) ? String(step) : '1';
+            if (min != null) input.min = String(min);
+            if (max != null) input.max = String(max);
+            input.step = String(step != null ? step : 1);
+            input.value = mxUtils.getValue(style, key, key === 'isoZ' ? 100 : (key === 'isoRz' ? 0 : 35));
 
             mxEvent.addListener(input, 'change', function()
             {
-                var cell = graph.getSelectionCell();
-                if (cell != null && graph.getModel().isVertex(cell) && graph.getCurrentCellStyle(cell)['shape'] === 'isoCube')
+                var cur = graph.getSelectionCell();
+                if (cur && graph.getModel().isVertex(cur) && graph.getCurrentCellStyle(cur)['shape'] === 'isoCube')
                 {
-                    var val = input.value;
                     graph.getModel().beginUpdate();
                     try
                     {
-                        graph.setCellStyles(key, val, [cell]);
-                        // Force immediate repaint so visibility is recomputed after rotation/depth changes
-                        graph.refresh(cell);
+                        graph.setCellStyles(key, input.value, [cur]);
+                        graph.refresh(cur);
                     }
                     finally
                     {
@@ -371,63 +454,27 @@ Draw.loadPlugin(function(editorUi)
 
             row.appendChild(label);
             row.appendChild(input);
-            container.appendChild(row);
-
-            return input;
-        };
-
-        var rxIn = addRow('Rot X', 'isoRx', -180, 180, 1);
-        var ryIn = addRow('Rot Y', 'isoRy', -180, 180, 1);
-        var rzIn = addRow('Rot Z', 'isoRz', -180, 180, 1);
-        var dIn  = addRow('Depth', 'isoZ', 0, 1000, 1);
-
-        propWin = new mxWindow('Isometric Cube', container, document.body.offsetWidth - 280, 100, 240, 160, true, true);
-        propWin.destroyOnClose = false;
-        propWin.setMaximizable(false);
-        propWin.setResizable(false);
-        propWin.setClosable(true);
-
-        function syncInputs(cell)
-        {
-            var style = (cell != null) ? graph.getCurrentCellStyle(cell) : null;
-            if (style != null && style['shape'] === 'isoCube')
-            {
-                rxIn.value = mxUtils.getValue(style, 'isoRx', 35);
-                ryIn.value = mxUtils.getValue(style, 'isoRy', 35);
-                rzIn.value = mxUtils.getValue(style, 'isoRz', 0);
-                dIn.value  = mxUtils.getValue(style, 'isoZ', 100);
-                propWin.setVisible(true);
-            }
-            else
-            {
-                propWin.setVisible(false);
-            }
-        };
-
-        graph.getSelectionModel().addListener(mxEvent.CHANGE, function()
-        {
-            syncInputs(graph.getSelectionCell());
-        });
-        graph.getModel().addListener(mxEvent.CHANGE, function()
-        {
-            if (propWin.isVisible()) syncInputs(graph.getSelectionCell());
-        });
-
-        // Initial state
-        syncInputs(graph.getSelectionCell());
-        return propWin;
-    };
-
-    // Lazy create the window when needed
-    graph.selectionModel.addListener(mxEvent.CHANGE, function()
-    {
-        var cell = graph.getSelectionCell();
-        var style = (cell != null) ? graph.getCurrentCellStyle(cell) : null;
-        if (style != null && style['shape'] === 'isoCube')
-        {
-            ensurePropWindow();
+            panel.appendChild(row);
         }
+
+        addNumber('Rot X', 'isoRx', -180, 180, 1);
+        addNumber('Rot Y', 'isoRy', -180, 180, 1);
+        addNumber('Rot Z', 'isoRz', -180, 180, 1);
+        addNumber('Depth', 'isoZ', 0, 2000, 1);
+    }
+
+    var scheduleRender = mxUtils.bind(this, function()
+    {
+        // Defer slightly to let core format panel rebuild first
+        window.setTimeout(renderIsoFormatPanel, 0);
     });
+
+    if (editorUi.format && editorUi.format.addListener)
+    {
+        editorUi.format.addListener('refresh', scheduleRender);
+    }
+    graph.getSelectionModel().addListener(mxEvent.CHANGE, scheduleRender);
+    graph.getModel().addListener(mxEvent.CHANGE, scheduleRender);
 });
 
 
