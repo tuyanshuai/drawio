@@ -1519,48 +1519,117 @@ Draw.loadPlugin(function(editorUi)
         }
     };
     
+    // Track currently editing cell
+    var currentEditingCell = null;
+    
+    // Listen for editing start to track the cell
+    var originalStartEditingAtCell = graph.startEditingAtCell;
+    graph.startEditingAtCell = function(cell, evt)
+    {
+        var result = originalStartEditingAtCell.apply(this, arguments);
+        if (cell && editingIsoExtrudeCells[cell.getId()])
+        {
+            currentEditingCell = cell;
+        }
+        return result;
+    };
+    
     // Listen for editing stop
     var originalStopEditing = graph.stopEditing;
     graph.stopEditing = function(cancel)
     {
+        var wasEditing = currentEditingCell;
         originalStopEditing.apply(this, arguments);
         
-        if (!cancel)
+        if (wasEditing && editingIsoExtrudeCells[wasEditing.getId()])
         {
-            var cell = graph.getSelectionCell();
-            if (cell) reapply3DEffect(cell);
+            if (!cancel)
+            {
+                // Text editing completed - re-apply 3D after a short delay
+                window.setTimeout(function()
+                {
+                    if (!graph.isEditing() && editingIsoExtrudeCells[wasEditing.getId()])
+                    {
+                        reapply3DEffect(wasEditing);
+                    }
+                }, 50);
+            }
+            currentEditingCell = null;
         }
     };
     
-    // Listen for selection changes (when user clicks away)
-    graph.addListener(mxEvent.CHANGE, function(sender, evt)
+    // Listen for ESC key to exit edit mode
+    graph.addListener(mxEvent.ESCAPE, function(sender, evt)
     {
-        var changes = evt.getProperty('edit').changes;
-        if (changes)
+        // Check if any cells are in editing mode
+        var cellsToReapply = [];
+        for (var cellId in editingIsoExtrudeCells)
         {
-            for (var i = 0; i < changes.length; i++)
+            var cell = graph.getModel().getCell(cellId);
+            if (cell)
             {
-                var change = changes[i];
-                if (change.constructor.name === 'mxSelectionChange')
-                {
-                    // Selection changed - check if we need to re-apply 3D for previously selected cells
-                    var previous = change.previous;
-                    if (previous && previous.length > 0)
-                    {
-                        for (var j = 0; j < previous.length; j++)
-                        {
-                            var prevCell = previous[j];
-                            if (prevCell && editingIsoExtrudeCells[prevCell.getId()])
-                            {
-                                // User deselected - re-apply 3D
-                                reapply3DEffect(prevCell);
-                            }
-                        }
-                    }
-                }
+                cellsToReapply.push(cell);
             }
         }
+        
+        // Re-apply 3D for all editing cells
+        for (var i = 0; i < cellsToReapply.length; i++)
+        {
+            reapply3DEffect(cellsToReapply[i]);
+        }
+        
+        currentEditingCell = null;
     });
+    
+    // Listen for selection changes more directly
+    var selectionModel = graph.getSelectionModel();
+    if (selectionModel)
+    {
+        var previousSelection = [];
+        
+        selectionModel.addListener(mxEvent.CHANGE, function(sender, evt)
+        {
+            var currentSelection = selectionModel.cells || [];
+            
+            // Check cells that were previously selected but are not now
+            for (var i = 0; i < previousSelection.length; i++)
+            {
+                var prevCell = previousSelection[i];
+                var stillSelected = false;
+                
+                for (var j = 0; j < currentSelection.length; j++)
+                {
+                    if (currentSelection[j] == prevCell)
+                    {
+                        stillSelected = true;
+                        break;
+                    }
+                }
+                
+                // Cell was deselected and was in editing mode
+                if (!stillSelected && prevCell && editingIsoExtrudeCells[prevCell.getId()])
+                {
+                    // Stop editing if currently editing this cell
+                    if (graph.isEditing() && currentEditingCell == prevCell)
+                    {
+                        graph.stopEditing(true);
+                    }
+                    
+                    // Re-apply 3D effect
+                    window.setTimeout(function(cell)
+                    {
+                        if (editingIsoExtrudeCells[cell.getId()])
+                        {
+                            reapply3DEffect(cell);
+                        }
+                    }, 50, prevCell);
+                }
+            }
+            
+            // Update previous selection
+            previousSelection = currentSelection.slice();
+        });
+    }
     
     // Also listen for label changes (text editing completion)
     graph.addListener(mxEvent.LABEL_CHANGED, function(sender, evt)
@@ -1578,6 +1647,40 @@ Draw.loadPlugin(function(editorUi)
             }, 100);
         }
     });
+    
+    // Listen for clicks on background or other cells
+    var originalClick = graph.click;
+    graph.click = function(me)
+    {
+        originalClick.apply(this, arguments);
+        
+        // Check if clicked on something else
+        var clickedCell = me.getCell();
+        var selectedCell = graph.getSelectionCell();
+        
+        // If we clicked on background or a different cell
+        if ((clickedCell == null || clickedCell != selectedCell) && selectedCell)
+        {
+            // Check if the selected cell was in editing mode
+            if (selectedCell && editingIsoExtrudeCells[selectedCell.getId()])
+            {
+                // Stop editing if currently editing
+                if (graph.isEditing() && currentEditingCell == selectedCell)
+                {
+                    graph.stopEditing(true);
+                }
+                
+                // Re-apply 3D effect
+                window.setTimeout(function()
+                {
+                    if (editingIsoExtrudeCells[selectedCell.getId()])
+                    {
+                        reapply3DEffect(selectedCell);
+                    }
+                }, 50);
+            }
+        }
+    };
     
     // Add 3D properties section to Style format panel for isoExtrude shapes
     if (typeof StyleFormatPanel !== 'undefined')
