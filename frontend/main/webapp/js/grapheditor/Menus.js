@@ -1771,6 +1771,19 @@ Menus.prototype.addPopupMenuCellEditItems = function(menu, cell, evt, parent)
 		this.addMenuItem(menu, 'crop', parent, evt);
 	}
 
+	if (graph.getModel().isVertex(cell))
+	{
+		var image = mxUtils.getValue(state.style, mxConstants.STYLE_IMAGE, null);
+		var value = graph.getModel().getValue(cell);
+		var isSvgImage = image != null && (image.substring(0, 19) == 'data:image/svg+xml' || /\.svg(\?.*)?$/i.test(image));
+		var isSvgValue = mxUtils.isNode(value) && value.nodeName != null && value.nodeName.toLowerCase() == 'svg';
+		
+		if (isSvgImage || isSvgValue)
+		{
+			this.addMenuItems(menu, ['convertSvgToShape'], parent, evt);
+		}
+	}
+
 	if (graph.getModel().isVertex(cell) && graph.isCellConnectable(cell))
 	{
 		this.addMenuItem(menu, 'editConnectionPoints', parent, evt);

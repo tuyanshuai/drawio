@@ -778,6 +778,191 @@ Actions.prototype.init = function()
 	{
 		ui.actions.get('image').funct();
 	});
+
+	this.put('convertSvgToShape', new Action('convertSvgToShape', function(evt)
+	{
+		var cell = graph.getSelectionCell();
+
+		if (!cell)
+		{
+			return;
+		}
+
+		var state = graph.view.getState(cell);
+		var style = (state != null) ? state.style : graph.getCellStyle(cell);
+		var image = (style != null) ? mxUtils.getValue(style, mxConstants.STYLE_IMAGE, null) : null;
+
+		var value = graph.getModel().getValue(cell);
+
+		var processSvg = function(svgString)
+		{
+			if (svgString == null || svgString.length == 0)
+			{
+				ui.handleError({message: mxResources.get('svgConversionError') || 'Unable to convert SVG'});
+				return;
+			}
+
+			graph.getModel().beginUpdate();
+			try
+			{
+				var newCells = ui.convertSvgCellToShapes(cell, svgString);
+
+				if (newCells != null && newCells.length > 0)
+				{
+					var inserted = newCells;
+
+					if (newCells.length > 1)
+					{
+						inserted = [graph.groupCells(null, 0, newCells)];
+					}
+
+					graph.setSelectionCells(inserted);
+				}
+			}
+			catch (e)
+			{
+				ui.handleError(e);
+			}
+			finally
+			{
+				graph.getModel().endUpdate();
+			}
+		};
+
+	if (image != null)
+	{
+		var lowerImage = String(image).toLowerCase();
+		if (lowerImage.indexOf('data:image/svg+xml') === 0)
+		{
+			var svgText = null;
+			try
+			{
+				svgText = Graph.getSvgFromDataUri(image);
+			}
+			catch (e)
+			{
+				// ignore and fallback below
+			}
+
+			if (svgText == null)
+			{
+				var commaIndex = image.indexOf(',');
+				if (commaIndex >= 0)
+				{
+					try
+					{
+						svgText = decodeURIComponent(image.substring(commaIndex + 1));
+					}
+					catch (e)
+					{
+						// ignore
+					}
+				}
+			}
+
+			processSvg(svgText);
+			return;
+		}
+		else if (/\.svg(\?.*)?$/i.test(lowerImage))
+		{
+			try
+			{
+				ui.spinner.spin(document.body, mxResources.get('loading'));
+				mxUtils.get(image, function(req)
+				{
+					ui.spinner.stop();
+					processSvg(req.getText());
+				}, function()
+				{
+					ui.spinner.stop();
+					ui.handleError({message: mxResources.get('svgConversionError') || 'Unable to convert SVG'});
+				});
+			}
+			catch (e)
+			{
+				ui.handleError(e);
+			}
+
+			return;
+		}
+	}
+	else if (mxUtils.isNode(value) && value.nodeName != null && value.nodeName.toLowerCase() == 'svg')
+	{
+		processSvg(mxUtils.getXml(value));
+		return;
+	}
+	else if (typeof value === 'string')
+	{
+		var trimmed = value.trim();
+		if (trimmed.length > 4 && trimmed.charAt(0) == '<')
+		{
+			try
+			{
+				processSvg(trimmed);
+				return;
+			}
+			catch (e)
+			{
+				// ignore parse error and fall through
+			}
+		}
+	}
+
+	ui.handleError({message: mxResources.get('svgConversionError') || 'Unable to convert SVG'});
+	})).isEnabled = function()
+	{
+		if (!isGraphEnabled())
+		{
+			return false;
+		}
+
+		var cell = graph.getSelectionCell();
+
+		if (!cell || !graph.getModel().isVertex(cell))
+		{
+			return false;
+		}
+
+		var state = graph.view.getState(cell);
+		var style = (state != null) ? state.style : graph.getCellStyle(cell);
+		var image = (style != null) ? mxUtils.getValue(style, mxConstants.STYLE_IMAGE, null) : null;
+
+	if (image != null)
+	{
+		var lowerImage = String(image).toLowerCase();
+		if (lowerImage.indexOf('data:image/svg+xml') === 0 || /\.svg(\?.*)?$/i.test(lowerImage))
+		{
+			return true;
+		}
+	}
+
+	var value = graph.getModel().getValue(cell);
+	
+	if (mxUtils.isNode(value) && value.nodeName != null && value.nodeName.toLowerCase() == 'svg')
+	{
+		return true;
+	}
+
+	if (typeof value === 'string')
+	{
+		var trimmed = value.trim();
+		if (trimmed.length > 4 && trimmed.charAt(0) == '<')
+		{
+			try
+			{
+				var doc = mxUtils.parseXml(trimmed);
+				return doc != null && doc.documentElement != null && doc.documentElement.nodeName &&
+					doc.documentElement.nodeName.toLowerCase() == 'svg';
+			}
+			catch (e)
+			{
+				// ignore parse errors
+			}
+		}
+	}
+
+	return false;
+	};
 	this.put('insertLink', new Action('link' + '...', function()
 	{
 		if (graph.isEnabled() && !graph.isCellLocked(graph.getDefaultParent()))
