@@ -998,7 +998,7 @@ Draw.loadPlugin(function(editorUi)
         
         // Store base indices for reference
         var topCircleStartIdx = 0;
-        var bottomCircleStartIdx = numSamples;
+        var bottomCircleStartIdx = numSamples; // Will be updated after top bevel is added
         
         // Generate bevel vertices if needed
         var topBevelStartIdx = -1;
@@ -1092,6 +1092,10 @@ Draw.loadPlugin(function(editorUi)
                 }
             }
         }
+        
+        // Update bottomCircleStartIdx after top bevel is added (if any)
+        // Bottom circle is added after all top bevel vertices
+        bottomCircleStartIdx = v3.length;
         
         // Add original bottom circle vertices
         for (var i = 0; i < numSamples; i++)
@@ -1280,12 +1284,27 @@ Draw.loadPlugin(function(editorUi)
                 var nextArcVerts = topSideVertexPairs[next].arcVertices;
                 
                 // Create faces connecting arc vertices
+                // Start from original top circle (topCircleStartIdx + i), connect through arc vertices
                 for (var a = 0; a < currArcVerts.length - 1; a++)
                 {
-                    var v1 = currArcVerts[a];
-                    var v2 = currArcVerts[a + 1];
-                    var v3 = nextArcVerts[a + 1];
-                    var v4 = nextArcVerts[a];
+                    var v1, v2, v3, v4;
+                    if (a === 0)
+                    {
+                        // First face: connect from original top circle to first arc vertex
+                        // Use original top circle points directly
+                        v1 = topCircleStartIdx + i;
+                        v2 = currArcVerts[a];
+                        v3 = currArcVerts[a + 1];
+                        v4 = topCircleStartIdx + next;
+                    }
+                    else
+                    {
+                        // Subsequent faces: connect arc vertices
+                        v1 = currArcVerts[a];
+                        v2 = currArcVerts[a + 1];
+                        v3 = nextArcVerts[a + 1];
+                        v4 = nextArcVerts[a];
+                    }
                     
                     // Create quad face (CCW order when looking from outside)
                     faces.push({
@@ -1325,15 +1344,44 @@ Draw.loadPlugin(function(editorUi)
         else if (hasTopBevel && !hasBottomBevel)
         {
             // Connect bevel top to original bottom
-            var topConnectIdx = hasTopBevel && topBevelType === 'circle' ? 
-                (topBevelStartIdx + (numSamples * 13)) : topBevelStartIdx;
-            for (var i = 0; i < numSamples; i++)
+            if (topBevelType === 'circle')
             {
-                var next = (i + 1) % numSamples;
-                faces.push({
-                    indices: [topConnectIdx + i, topConnectIdx + next, bottomCircleStartIdx + next, bottomCircleStartIdx + i],
-                    isSide: true
-                });
+                // For rounded bevel, connect from the last arc vertices (which are at original top circle level) to bottom circle
+                // The arc vertices start from original top circle level and go to bevel circle level
+                for (var i = 0; i < numSamples; i++)
+                {
+                    var next = (i + 1) % numSamples;
+                    
+                    // Get the last arc vertex for this sample (at bevel circle level, but we want to connect from original top circle level)
+                    // Actually, we should connect from original top circle to bottom circle
+                    // The arc vertices connect from original top circle to bevel circle
+                    // So we use the first arc vertex (which is at original top circle level) to connect to bottom circle
+                    var currArcVerts = topSideVertexPairs[i].arcVertices;
+                    var nextArcVerts = topSideVertexPairs[next].arcVertices;
+                    
+                    // Use the first arc vertex (index 0) which is at original top circle level
+                    var v1 = topCircleStartIdx + i;
+                    var v2 = topCircleStartIdx + next;
+                    
+                    // Connect to bottom circle
+                    faces.push({
+                        indices: [v1, v2, bottomCircleStartIdx + next, bottomCircleStartIdx + i],
+                        isSide: true
+                    });
+                }
+            }
+            else
+            {
+                // Simple bevel: connect bevel top circle to original bottom
+                var topBevelCircleStartIdx = topBevelStartIdx;
+                for (var i = 0; i < numSamples; i++)
+                {
+                    var next = (i + 1) % numSamples;
+                    faces.push({
+                        indices: [topBevelCircleStartIdx + i, topBevelCircleStartIdx + next, bottomCircleStartIdx + next, bottomCircleStartIdx + i],
+                        isSide: true
+                    });
+                }
             }
         }
         else if (!hasTopBevel && hasBottomBevel)
