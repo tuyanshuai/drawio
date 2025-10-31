@@ -798,11 +798,14 @@ Draw.loadPlugin(function(editorUi)
     var sb = editorUi.sidebar;
     function addIsoPalette()
     {
-        if (sb != null)
+        if (sb == null)
         {
-            // Remove existing palettes to control order
-            // Check if palettes exist and are valid before removing
-            var aiConvertExists = sb.palettes && sb.palettes['aiConvert'] != null && sb.palettes['aiConvert'][1] != null;
+            return;
+        }
+        
+        try
+        {
+            // Remove existing isometric palette if it exists
             var isometricExists = sb.palettes && sb.palettes['isometric'] != null && sb.palettes['isometric'][1] != null;
             
             if (isometricExists)
@@ -814,64 +817,84 @@ Draw.loadPlugin(function(editorUi)
                 catch (e)
                 {
                     // Ignore error if palette doesn't exist or already removed
-                    console.warn('Failed to remove isometric palette:', e);
+                    if (window.console)
+                    {
+                        console.warn('Failed to remove isometric palette:', e);
+                    }
                 }
             }
             
-            // Temporarily remove AI convert palette if it exists
-            // so that 3D shape palette can be added first
-            if (aiConvertExists)
+            // Ensure General palette exists before adding Isometric
+            var generalExists = sb.palettes && sb.palettes['general'] != null && sb.palettes['general'][1] != null;
+            
+            if (!generalExists)
             {
-                try
-                {
-                    sb.removePalette('aiConvert');
-                }
-                catch (e)
-                {
-                    // Ignore error if palette doesn't exist or already removed
-                    console.warn('Failed to remove aiConvert palette:', e);
-                }
+                // If General doesn't exist yet, wait a bit and try again
+                window.setTimeout(addIsoPalette, 100);
+                return;
             }
             
+            // Use standard addPalette method to ensure all functionality works correctly
             sb.addPalette('isometric', '3D 形状', true, function(content)
             {
-                (function(){
-                    // Cube
-                    var cell = new mxCell('', new mxGeometry(0, 0, 250, 250),
-                        'shape=isoCube;isoZ=70;isoRx=35;isoRy=35;isoRz=0;fillColor=#1e78b7;strokeColor=#1e78b7;rounded=0;');
-                    cell.vertex = true;
-                    // Set attributes for property panel
-                    var doc = mxUtils.createXmlDocument();
-                    var obj = doc.createElement('object');
-                    obj.setAttribute('label', '');
-                    obj.setAttribute('isoRx', '35');
-                    obj.setAttribute('isoRy', '35');
-                    obj.setAttribute('isoRz', '0');
-                    obj.setAttribute('isoZ', '70');
-                    cell.value = obj;
-                    content.appendChild(sb.createVertexTemplateFromCells([cell], 120, 120, 'Cube'));
-                    
-                    // Cylinder
-                    var cell2 = new mxCell('', new mxGeometry(0, 0, 250, 250),
-                        'shape=isoCylinder;isoZ=70;isoRx=35;isoRy=35;isoRz=0;fillColor=#1e78b7;strokeColor=#1e78b7;rounded=0;');
-                    cell2.vertex = true;
-                    // Set attributes for property panel
-                    var doc2 = mxUtils.createXmlDocument();
-                    var obj2 = doc2.createElement('object');
-                    obj2.setAttribute('label', '');
-                    obj2.setAttribute('isoRx', '35');
-                    obj2.setAttribute('isoRy', '35');
-                    obj2.setAttribute('isoRz', '0');
-                    obj2.setAttribute('isoZ', '70');
-                    cell2.value = obj2;
-                    content.appendChild(sb.createVertexTemplateFromCells([cell2], 120, 120, 'Cylinder'));
-                })();
+                // Cube
+                var cell = new mxCell('', new mxGeometry(0, 0, 250, 250),
+                    'shape=isoCube;isoZ=70;isoRx=35;isoRy=35;isoRz=0;fillColor=#1e78b7;strokeColor=#1e78b7;rounded=0;');
+                cell.vertex = true;
+                var doc = mxUtils.createXmlDocument();
+                var obj = doc.createElement('object');
+                obj.setAttribute('label', '');
+                obj.setAttribute('isoRx', '35');
+                obj.setAttribute('isoRy', '35');
+                obj.setAttribute('isoRz', '0');
+                obj.setAttribute('isoZ', '70');
+                cell.value = obj;
+                content.appendChild(sb.createVertexTemplateFromCells([cell], 120, 120, 'Cube'));
+                
+                // Cylinder
+                var cell2 = new mxCell('', new mxGeometry(0, 0, 250, 250),
+                    'shape=isoCylinder;isoZ=70;isoRx=35;isoRy=35;isoRz=0;fillColor=#1e78b7;strokeColor=#1e78b7;rounded=0;');
+                cell2.vertex = true;
+                var doc2 = mxUtils.createXmlDocument();
+                var obj2 = doc2.createElement('object');
+                obj2.setAttribute('label', '');
+                obj2.setAttribute('isoRx', '35');
+                obj2.setAttribute('isoRy', '35');
+                obj2.setAttribute('isoRz', '0');
+                obj2.setAttribute('isoZ', '70');
+                cell2.value = obj2;
+                content.appendChild(sb.createVertexTemplateFromCells([cell2], 120, 120, 'Cylinder'));
             });
+            
+            // Now move the isometric palette to be right after general palette
+            var generalPalette = sb.palettes['general'];
+            var isometricPalette = sb.palettes['isometric'];
+            
+            if (generalPalette && isometricPalette && generalPalette[1] && generalPalette[1].parentNode)
+            {
+                var wrapper = generalPalette[1].parentNode;
+                var generalOuter = generalPalette[1];
+                var nextSibling = generalOuter.nextSibling;
+                
+                // Move isometric title and outer to be after general
+                if (isometricPalette[0] && isometricPalette[0].parentNode)
+                {
+                    wrapper.insertBefore(isometricPalette[0], nextSibling);
+                }
+                if (isometricPalette[1] && isometricPalette[1].parentNode)
+                {
+                    wrapper.insertBefore(isometricPalette[1], nextSibling);
+                }
+            }
+        }
+        catch (e)
+        {
+            if (window.console)
+            {
+                console.warn('Failed to add isometric palette:', e);
+            }
         }
     };
-    
-    // Add palette immediately
-    addIsoPalette();
     
     // Handles reload of sidebar after dark mode change or reinit
     if (sb != null)
@@ -879,10 +902,37 @@ Draw.loadPlugin(function(editorUi)
         var sbInit = sb.init;
         sb.init = function()
         {
-            // Add Isometric palette BEFORE General palette
-            addIsoPalette();
+            // Call original init first to add General palette
             sbInit.apply(this, arguments);
+            // Use setTimeout to ensure General palette is fully added to DOM
+            // before adding Isometric palette
+            var self = this;
+            window.setTimeout(function()
+            {
+                addIsoPalette();
+            }, 0);
         };
+        
+        // Also handle refresh() calls to ensure isometric stays after general
+        var sbRefresh = sb.refresh;
+        sb.refresh = function()
+        {
+            // Call original refresh
+            sbRefresh.apply(this, arguments);
+            // After refresh, ensure isometric palette is added after general
+            var self = this;
+            window.setTimeout(function()
+            {
+                addIsoPalette();
+            }, 0);
+        };
+        
+        // Try to add palette immediately if sidebar is already initialized
+        // This handles the case where the plugin loads after sidebar.init() was called
+        window.setTimeout(function()
+        {
+            addIsoPalette();
+        }, 200);
     }
 
     // Note: Right-click menu "添加3D效果" is handled by isoextrude.js plugin

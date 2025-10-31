@@ -1808,7 +1808,28 @@ Sidebar.prototype.addGeneralPalette = function(expand)
 	 			}
 	 		});
 	 		
-	 		return this.createVertexTemplate('shape=manualPolygon;polyCoords=[[0.25,0],[0.75,0],[1,0.25],[1,0.75],[0.75,1],[0.25,1],[0,0.75],[0,0.25]];whiteSpace=wrap;html=1;', 100, 100, '', 'Polygon', null, null, null, null, clickFn);
+	 		// Check if manualPolygon shape is registered (polygon-draw.js plugin loaded)
+	 		var shapeRegistered = false;
+	 		try {
+	 			// Check if manualPolygon shape exists in cell renderer's defaultShapes
+	 			if (mxCellRenderer && mxCellRenderer.defaultShapes && mxCellRenderer.defaultShapes['manualPolygon']) {
+	 				shapeRegistered = true;
+	 			}
+	 		} catch (e) {
+	 			// Shape not registered yet
+	 		}
+	 		
+	 		var style;
+	 		if (shapeRegistered) {
+	 			// Use manualPolygon shape with irregular pentagon coordinates (no fill, only stroke)
+	 			style = 'shape=manualPolygon;polyCoords=[[0.5,0],[0.9,0.3],[0.7,0.9],[0.3,0.9],[0.1,0.3]];whiteSpace=wrap;html=1;fillColor=none;strokeColor=#000000;strokeWidth=2;';
+	 		} else {
+	 			// Fallback: use hexagon shape as temporary placeholder until plugin loads (no fill, only stroke)
+	 			// Note: We don't refresh sidebar to avoid palette reordering issues
+	 			style = 'shape=hexagon;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#000000;strokeWidth=2;';
+	 		}
+	 		
+	 		return this.createVertexTemplate(style, 100, 100, '', 'Polygon', null, null, null, null, clickFn);
 	 	})),
 	 	
 	 	 
