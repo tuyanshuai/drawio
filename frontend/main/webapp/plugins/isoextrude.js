@@ -524,9 +524,9 @@ Draw.loadPlugin(function(editorUi)
         }
         
         // Honor style-provided opacities for fill
-        // Default opacity to 20% (0.2) for 3D effect if not set
-        var fillOpacity = parseFloat(mxUtils.getValue(style, 'fillOpacity', 0.2));
-        if (isNaN(fillOpacity)) fillOpacity = 0.2; // Default 20% opacity for 3D effect
+        // Default opacity to 60% (0.6) for 3D effect if not set
+        var fillOpacity = parseFloat(mxUtils.getValue(style, 'fillOpacity', 0.6));
+        if (isNaN(fillOpacity)) fillOpacity = 0.6; // Default 60% opacity for 3D effect
         if (fillOpacity > 1) fillOpacity = fillOpacity / 100; // accept 0..100 style values
         c.setFillAlpha(Math.max(0, Math.min(1, fillOpacity)));
         
@@ -650,10 +650,10 @@ Draw.loadPlugin(function(editorUi)
             {
                 style[mxConstants.STYLE_FILLCOLOR] = '#1e78b7';
             }
-            // Set default opacity to 20% (0.2) for 3D effect if not set
+            // Set default opacity to 60% (0.6) for 3D effect if not set
             if (!style['fillOpacity'] || style['fillOpacity'] === null || style['fillOpacity'] === undefined)
             {
-                style['fillOpacity'] = '0.2';
+                style['fillOpacity'] = '0.6';
             }
         }
         return style;
@@ -828,8 +828,8 @@ Draw.loadPlugin(function(editorUi)
                 var strokeWidth = mxUtils.getValue(style, mxConstants.STYLE_STROKEWIDTH, null);
                 if (strokeWidth != null) newStyle += 'strokeWidth=' + strokeWidth + ';';
 
-                // Set default opacity to 20% (0.2) for 3D effect
-                var fillOpacity = mxUtils.getValue(style, mxConstants.STYLE_FILLOPACITY, 20);
+                // Set default opacity to 60% (0.6) for 3D effect
+                var fillOpacity = mxUtils.getValue(style, mxConstants.STYLE_FILLOPACITY, 60);
                 newStyle += 'fillOpacity=' + fillOpacity + ';';
 
                 var strokeOpacity = mxUtils.getValue(style, mxConstants.STYLE_STROKEOPACITY, 100);
@@ -849,14 +849,55 @@ Draw.loadPlugin(function(editorUi)
                     var obj = doc.createElement('object');
                     obj.setAttribute('label', cellValue || '');
                     cellValue = obj;
-                    graph.getModel().setValue(cell, cellValue);
                 }
                 
-                // Set attributes for property panel
+                // Always set attributes for property panel (force update)
                 cellValue.setAttribute('isoRx', '35');
                 cellValue.setAttribute('isoRy', '35');
                 cellValue.setAttribute('isoRz', '0');
                 cellValue.setAttribute('isoZ', String(defaultDepth));
+                
+                // Ensure the value is saved (this triggers setValue which will sync attributes)
+                // Save immediately to ensure attributes are persisted
+                graph.getModel().beginUpdate();
+                try
+                {
+                    graph.getModel().setValue(cell, cellValue);
+                }
+                finally
+                {
+                    graph.getModel().endUpdate();
+                }
+                
+                // Double-check: ensure attributes are still there after setValue
+                // Some operations might clear attributes, so we set them again
+                var verifyValue = graph.getModel().getValue(cell);
+                if (mxUtils.isNode(verifyValue))
+                {
+                    if (!verifyValue.getAttribute('isoRx') || !verifyValue.getAttribute('isoRy') || 
+                        !verifyValue.getAttribute('isoRz') || !verifyValue.getAttribute('isoZ'))
+                    {
+                        verifyValue.setAttribute('isoRx', '35');
+                        verifyValue.setAttribute('isoRy', '35');
+                        verifyValue.setAttribute('isoRz', '0');
+                        verifyValue.setAttribute('isoZ', String(defaultDepth));
+                        graph.getModel().setValue(cell, verifyValue);
+                    }
+                }
+                
+                // Debug log
+                if (window.console && window.console.log)
+                {
+                    var finalValue = graph.getModel().getValue(cell);
+                    console.log('[IsoExtrude] add3dEffect - Set attributes:', {
+                        isoRx: finalValue && mxUtils.isNode(finalValue) ? finalValue.getAttribute('isoRx') : 'N/A',
+                        isoRy: finalValue && mxUtils.isNode(finalValue) ? finalValue.getAttribute('isoRy') : 'N/A',
+                        isoRz: finalValue && mxUtils.isNode(finalValue) ? finalValue.getAttribute('isoRz') : 'N/A',
+                        isoZ: finalValue && mxUtils.isNode(finalValue) ? finalValue.getAttribute('isoZ') : 'N/A',
+                        isNode: mxUtils.isNode(finalValue),
+                        attributesCount: finalValue && finalValue.attributes ? finalValue.attributes.length : 0
+                    });
+                }
             }
             
             graph.refresh();
@@ -960,7 +1001,8 @@ Draw.loadPlugin(function(editorUi)
                 if (graph.getModel().isVertex(cell))
                 {
                     var style = graph.getCurrentCellStyle(cell);
-                    if (style && style[mxConstants.STYLE_SHAPE] === 'isoExtrude')
+                    var shape = style ? style[mxConstants.STYLE_SHAPE] : null;
+                    if (shape === 'isoExtrude')
                     {
                         var cellValue = graph.getModel().getValue(cell);
                         if (!mxUtils.isNode(cellValue))
@@ -978,14 +1020,289 @@ Draw.loadPlugin(function(editorUi)
                         var isoRz = mxUtils.getValue(style, 'isoRz', 0);
                         var isoZ = mxUtils.getValue(style, 'isoZ', 50);
                         
-                        if (!cellValue.getAttribute('isoRx')) cellValue.setAttribute('isoRx', String(isoRx));
-                        if (!cellValue.getAttribute('isoRy')) cellValue.setAttribute('isoRy', String(isoRy));
-                        if (!cellValue.getAttribute('isoRz')) cellValue.setAttribute('isoRz', String(isoRz));
-                        if (!cellValue.getAttribute('isoZ')) cellValue.setAttribute('isoZ', String(isoZ));
+                        // Always set attributes (force update)
+                        cellValue.setAttribute('isoRx', String(isoRx));
+                        cellValue.setAttribute('isoRy', String(isoRy));
+                        cellValue.setAttribute('isoRz', String(isoRz));
+                        cellValue.setAttribute('isoZ', String(isoZ));
+                        
+                        // Save to ensure attributes are persisted
+                        graph.getModel().setValue(cell, cellValue);
                     }
                 }
             }
         }
     });
+    
+    // Ensure attributes are set when opening property panel
+    // Hook into EditDataDialog constructor to set attributes before dialog reads them
+    if (typeof window.EditDataDialog !== 'undefined')
+    {
+        var OriginalEditDataDialog = window.EditDataDialog;
+        window.EditDataDialog = function(ui, cell)
+        {
+            // Ensure attributes are set BEFORE EditDataDialog reads the value
+            if (cell && ui.editor.graph.getModel().isVertex(cell))
+            {
+                var graph = ui.editor.graph;
+                var style = graph.getCurrentCellStyle(cell);
+                if (style && style[mxConstants.STYLE_SHAPE] === 'isoExtrude')
+                {
+                    var cellValue = graph.getModel().getValue(cell);
+                    if (!mxUtils.isNode(cellValue))
+                    {
+                        var doc = mxUtils.createXmlDocument();
+                        var obj = doc.createElement('object');
+                        obj.setAttribute('label', cellValue || '');
+                        cellValue = obj;
+                        graph.getModel().setValue(cell, cellValue);
+                    }
+                    
+                    // Sync style values to attributes
+                    var isoRx = mxUtils.getValue(style, 'isoRx', 35);
+                    var isoRy = mxUtils.getValue(style, 'isoRy', 35);
+                    var isoRz = mxUtils.getValue(style, 'isoRz', 0);
+                    var isoZ = mxUtils.getValue(style, 'isoZ', 50);
+                    
+                    // Always set attributes (force update)
+                    cellValue.setAttribute('isoRx', String(isoRx));
+                    cellValue.setAttribute('isoRy', String(isoRy));
+                    cellValue.setAttribute('isoRz', String(isoRz));
+                    cellValue.setAttribute('isoZ', String(isoZ));
+                    
+                    // Save to ensure attributes are persisted
+                    graph.getModel().beginUpdate();
+                    try
+                    {
+                        graph.getModel().setValue(cell, cellValue);
+                    }
+                    finally
+                    {
+                        graph.getModel().endUpdate();
+                    }
+                    
+                    // Debug log - detailed information
+                    if (window.console && window.console.log)
+                    {
+                        var finalValue = graph.getModel().getValue(cell);
+                        var allAttrs = [];
+                        if (finalValue && finalValue.attributes)
+                        {
+                            for (var ai = 0; ai < finalValue.attributes.length; ai++)
+                            {
+                                var attr = finalValue.attributes[ai];
+                                allAttrs.push(attr.name + '=' + attr.value);
+                            }
+                        }
+                        console.log('[IsoExtrude] EditDataDialog hook - Set attributes:', {
+                            shape: style[mxConstants.STYLE_SHAPE],
+                            isoRx: finalValue && mxUtils.isNode(finalValue) ? finalValue.getAttribute('isoRx') : 'N/A',
+                            isoRy: finalValue && mxUtils.isNode(finalValue) ? finalValue.getAttribute('isoRy') : 'N/A',
+                            isoRz: finalValue && mxUtils.isNode(finalValue) ? finalValue.getAttribute('isoRz') : 'N/A',
+                            isoZ: finalValue && mxUtils.isNode(finalValue) ? finalValue.getAttribute('isoZ') : 'N/A',
+                            isNode: mxUtils.isNode(finalValue),
+                            attributesCount: finalValue && finalValue.attributes ? finalValue.attributes.length : 0,
+                            allAttributes: allAttrs
+                        });
+                    }
+                }
+            }
+            
+            // Call original EditDataDialog constructor
+            return new OriginalEditDataDialog(ui, cell);
+        };
+    }
+    
+    // Also keep showDataDialog override as backup
+    if (editorUi.showDataDialog)
+    {
+        var originalShowDataDialog = editorUi.showDataDialog;
+        editorUi.showDataDialog = function(cell)
+        {
+            // Ensure attributes are set for isoExtrude shapes before opening property panel
+            if (cell && graph.getModel().isVertex(cell))
+            {
+                var style = graph.getCurrentCellStyle(cell);
+                if (style && style[mxConstants.STYLE_SHAPE] === 'isoExtrude')
+                {
+                    var cellValue = graph.getModel().getValue(cell);
+                    if (!mxUtils.isNode(cellValue))
+                    {
+                        var doc = mxUtils.createXmlDocument();
+                        var obj = doc.createElement('object');
+                        obj.setAttribute('label', cellValue || '');
+                        cellValue = obj;
+                        graph.getModel().setValue(cell, cellValue);
+                    }
+                    
+                    // Sync style values to attributes
+                    var isoRx = mxUtils.getValue(style, 'isoRx', 35);
+                    var isoRy = mxUtils.getValue(style, 'isoRy', 35);
+                    var isoRz = mxUtils.getValue(style, 'isoRz', 0);
+                    var isoZ = mxUtils.getValue(style, 'isoZ', 50);
+                    
+                    // Always set attributes (force update)
+                    cellValue.setAttribute('isoRx', String(isoRx));
+                    cellValue.setAttribute('isoRy', String(isoRy));
+                    cellValue.setAttribute('isoRz', String(isoRz));
+                    cellValue.setAttribute('isoZ', String(isoZ));
+                    
+                    // Save to ensure attributes are persisted
+                    graph.getModel().setValue(cell, cellValue);
+                }
+            }
+            
+            originalShowDataDialog.apply(this, arguments);
+        };
+    }
+    
+    // Add 3D properties section to Style format panel for isoExtrude shapes
+    if (typeof StyleFormatPanel !== 'undefined')
+    {
+        var originalStyleInit = StyleFormatPanel.prototype.init;
+        StyleFormatPanel.prototype.init = function()
+        {
+            // Call original init
+            originalStyleInit.apply(this, arguments);
+            
+            // Add 3D properties section for isoExtrude shapes
+            var ui = this.editorUi;
+            var graph = ui.editor.graph;
+            var ss = ui.getSelectionState();
+            
+            if (ss.cells.length === 1 && ss.vertices.length === 1)
+            {
+                var cell = ss.cells[0];
+                var style = graph.getCurrentCellStyle(cell);
+                
+                if (style && style[mxConstants.STYLE_SHAPE] === 'isoExtrude')
+                {
+                    var propsPanel = this.createPanel();
+                    
+                    // Create title for properties section
+                    var title = this.createTitle(mxResources.get('properties') || '属性');
+                    propsPanel.appendChild(title);
+                    
+                    // Helper function to add a property row
+                    var addPropertyRow = mxUtils.bind(this, function(labelText, key, defaultValue, min, max, step)
+                    {
+                        var row = document.createElement('div');
+                        row.className = 'geFormatEntry';
+                        row.style.display = 'flex';
+                        row.style.alignItems = 'center';
+                        row.style.gap = '8px';
+                        row.style.padding = '4px 0';
+                        
+                        var label = document.createElement('label');
+                        label.style.minWidth = '80px';
+                        label.style.flex = '0 0 auto';
+                        mxUtils.write(label, labelText);
+                        row.appendChild(label);
+                        
+                        var input = document.createElement('input');
+                        input.type = 'number';
+                        input.style.flex = '1 1 auto';
+                        input.style.width = '100px';
+                        if (min != null) input.min = String(min);
+                        if (max != null) input.max = String(max);
+                        input.step = String(step != null ? step : 1);
+                        
+                        // Get current value from style
+                        var currentValue = mxUtils.getValue(style, key, defaultValue);
+                        input.value = String(currentValue);
+                        
+                        // Update handler
+                        var updateHandler = mxUtils.bind(this, function()
+                        {
+                            var newValue = parseInt(input.value) || defaultValue;
+                            if (newValue !== currentValue)
+                            {
+                                graph.getModel().beginUpdate();
+                                try
+                                {
+                                    graph.setCellStyles(key, String(newValue), [cell]);
+                                    
+                                    // Sync to cell value attributes
+                                    var cellValue = graph.getModel().getValue(cell);
+                                    if (mxUtils.isNode(cellValue))
+                                    {
+                                        cellValue.setAttribute(key, String(newValue));
+                                        graph.getModel().setValue(cell, cellValue);
+                                    }
+                                    
+                                    graph.refresh(cell);
+                                    currentValue = newValue;
+                                }
+                                finally
+                                {
+                                    graph.getModel().endUpdate();
+                                }
+                            }
+                        });
+                        
+                        mxEvent.addListener(input, 'change', updateHandler);
+                        mxEvent.addListener(input, 'blur', updateHandler);
+                        
+                        // Add mouse wheel support for increment/decrement
+                        mxEvent.addListener(input, 'wheel', function(evt)
+                        {
+                            var delta = evt.deltaY || -evt.wheelDelta || 0;
+                            var increment = (evt.shiftKey || evt.ctrlKey) ? (step * 10) : step;
+                            
+                            if (delta < 0)
+                            {
+                                // Scroll up - increase value
+                                var newValue = Math.min(max, parseInt(input.value) + increment);
+                                input.value = String(newValue);
+                                updateHandler();
+                            }
+                            else if (delta > 0)
+                            {
+                                // Scroll down - decrease value
+                                var newValue = Math.max(min, parseInt(input.value) - increment);
+                                input.value = String(newValue);
+                                updateHandler();
+                            }
+                            
+                            evt.preventDefault();
+                            mxEvent.consume(evt);
+                        });
+                        
+                        // Also handle mouseenter to focus when hovering (optional enhancement)
+                        mxEvent.addListener(row, 'mouseenter', function()
+                        {
+                            // Auto-focus on hover for easier wheel adjustment
+                            if (document.activeElement !== input && !input.disabled)
+                            {
+                                input.focus();
+                            }
+                        });
+                        
+                        row.appendChild(input);
+                        propsPanel.appendChild(row);
+                    });
+                    
+                    // Add property rows with Chinese labels
+                    var propertyTranslations = {
+                        'isoRx': mxResources.get('rotationX') || '旋转X',
+                        'isoRy': mxResources.get('rotationY') || '旋转Y',
+                        'isoRz': mxResources.get('rotationZ') || '旋转Z',
+                        'isoZ': mxResources.get('depth') || '深度'
+                    };
+                    
+                    addPropertyRow(propertyTranslations['isoRx'] || '旋转X', 'isoRx', 35, -180, 180, 1);
+                    addPropertyRow(propertyTranslations['isoRy'] || '旋转Y', 'isoRy', 35, -180, 180, 1);
+                    addPropertyRow(propertyTranslations['isoRz'] || '旋转Z', 'isoRz', 0, -180, 180, 1);
+                    addPropertyRow(propertyTranslations['isoZ'] || '深度', 'isoZ', 50, 0, 2000, 1);
+                    
+                    // Insert after effects section (before opsPanel)
+                    if (propsPanel.firstChild)
+                    {
+                        this.container.insertBefore(propsPanel, this.container.lastChild);
+                    }
+                }
+            }
+        };
+    }
 });
 

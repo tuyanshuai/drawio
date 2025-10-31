@@ -768,12 +768,30 @@ Draw.loadPlugin(function(editorUi)
                     var cell = new mxCell('', new mxGeometry(0, 0, 250, 250),
                         'shape=isoCube;isoZ=70;isoRx=35;isoRy=35;isoRz=0;fillColor=#1e78b7;strokeColor=#1e78b7;rounded=0;');
                     cell.vertex = true;
+                    // Set attributes for property panel
+                    var doc = mxUtils.createXmlDocument();
+                    var obj = doc.createElement('object');
+                    obj.setAttribute('label', '');
+                    obj.setAttribute('isoRx', '35');
+                    obj.setAttribute('isoRy', '35');
+                    obj.setAttribute('isoRz', '0');
+                    obj.setAttribute('isoZ', '70');
+                    cell.value = obj;
                     content.appendChild(sb.createVertexTemplateFromCells([cell], 120, 120, 'Cube'));
                     
                     // Cylinder
                     var cell2 = new mxCell('', new mxGeometry(0, 0, 250, 250),
                         'shape=isoCylinder;isoZ=70;isoRx=35;isoRy=35;isoRz=0;fillColor=#1e78b7;strokeColor=#1e78b7;rounded=0;');
                     cell2.vertex = true;
+                    // Set attributes for property panel
+                    var doc2 = mxUtils.createXmlDocument();
+                    var obj2 = doc2.createElement('object');
+                    obj2.setAttribute('label', '');
+                    obj2.setAttribute('isoRx', '35');
+                    obj2.setAttribute('isoRy', '35');
+                    obj2.setAttribute('isoRz', '0');
+                    obj2.setAttribute('isoZ', '70');
+                    cell2.value = obj2;
                     content.appendChild(sb.createVertexTemplateFromCells([cell2], 120, 120, 'Cylinder'));
                 })();
             });
@@ -795,68 +813,8 @@ Draw.loadPlugin(function(editorUi)
         };
     }
 
-    // --- Add right-click menu item to convert shapes to 3D ---
-    if (editorUi.menus && editorUi.menus.createPopupMenu)
-    {
-        var originalCreatePopupMenu = editorUi.menus.createPopupMenu;
-        editorUi.menus.createPopupMenu = function(menu, cell, evt)
-        {
-            originalCreatePopupMenu.apply(this, arguments);
-            
-            // Only show menu item for vertex cells that are not already 3D shapes
-            if (cell && graph.getModel().isVertex(cell))
-            {
-                var style = graph.getCurrentCellStyle(cell);
-                var shapeType = style ? style[mxConstants.STYLE_SHAPE] : null;
-                
-                // Only show if not already a 3D shape
-                if (shapeType !== 'isoCube' && shapeType !== 'isoCylinder')
-                {
-                    menu.addSeparator();
-                    menu.addItem('添加3D效果', null, function()
-                    {
-                        graph.getModel().beginUpdate();
-                        try
-                        {
-                            var currentStyle = graph.getCurrentCellStyle(cell);
-                            var fillColor = mxUtils.getValue(currentStyle, mxConstants.STYLE_FILLCOLOR, '#1e78b7');
-                            
-                            // Ensure fillColor is not black or none
-                            if (!fillColor || fillColor === '#000000' || fillColor === '#000' || 
-                                fillColor === 'black' || fillColor === 'none' || fillColor === 'transparent')
-                            {
-                                fillColor = '#1e78b7';
-                            }
-                            
-                            // Convert to isoCube shape with 3D effect
-                            var newStyle = {
-                                shape: 'isoCube',
-                                fillColor: fillColor,
-                                fillOpacity: '0.2',
-                                isoZ: '70',
-                                isoRx: '35',
-                                isoRy: '35',
-                                isoRz: '0'
-                            };
-                            
-                            // Preserve other style properties
-                            var keys = Object.keys(newStyle);
-                            for (var i = 0; i < keys.length; i++)
-                            {
-                                graph.setCellStyles(keys[i], newStyle[keys[i]], [cell]);
-                            }
-                            
-                            graph.refresh(cell);
-                        }
-                        finally
-                        {
-                            graph.getModel().endUpdate();
-                        }
-                    });
-                }
-            }
-        };
-    }
+    // Note: Right-click menu "添加3D效果" is handled by isoextrude.js plugin
+    // to avoid duplicate menu items
 
     // --- Inject properties into right-side Format panel (no separate popup)
     function renderIsoFormatPanel()
@@ -902,7 +860,7 @@ Draw.loadPlugin(function(editorUi)
             input.step = String(step != null ? step : 1);
             input.value = mxUtils.getValue(style, key, key === 'isoZ' ? 100 : (key === 'isoRz' ? 0 : 35));
 
-            mxEvent.addListener(input, 'change', function()
+            var updateHandler = function()
             {
                 var cur = graph.getSelectionCell();
                 var curStyle = (cur != null) ? graph.getCurrentCellStyle(cur) : null;
@@ -919,6 +877,44 @@ Draw.loadPlugin(function(editorUi)
                     {
                         graph.getModel().endUpdate();
                     }
+                }
+            };
+
+            mxEvent.addListener(input, 'change', updateHandler);
+            mxEvent.addListener(input, 'blur', updateHandler);
+            
+            // Add mouse wheel support for increment/decrement
+            mxEvent.addListener(input, 'wheel', function(evt)
+            {
+                var delta = evt.deltaY || -evt.wheelDelta || 0;
+                var increment = (evt.shiftKey || evt.ctrlKey) ? (step * 10) : step;
+                
+                if (delta < 0)
+                {
+                    // Scroll up - increase value
+                    var newValue = Math.min(max, parseInt(input.value) + increment);
+                    input.value = String(newValue);
+                    updateHandler();
+                }
+                else if (delta > 0)
+                {
+                    // Scroll down - decrease value
+                    var newValue = Math.max(min, parseInt(input.value) - increment);
+                    input.value = String(newValue);
+                    updateHandler();
+                }
+                
+                evt.preventDefault();
+                mxEvent.consume(evt);
+            });
+            
+            // Also handle mouseenter to focus when hovering for easier wheel adjustment
+            mxEvent.addListener(row, 'mouseenter', function()
+            {
+                // Auto-focus on hover for easier wheel adjustment
+                if (document.activeElement !== input && !input.disabled)
+                {
+                    input.focus();
                 }
             });
 
@@ -945,6 +941,86 @@ Draw.loadPlugin(function(editorUi)
     }
     graph.getSelectionModel().addListener(mxEvent.CHANGE, scheduleRender);
     graph.getModel().addListener(mxEvent.CHANGE, scheduleRender);
+    
+    // --- Sync attributes from property panel to style ---
+    // Listen for cell value changes to sync property panel attributes to style
+    var originalSetValue = graph.getModel().setValue;
+    graph.getModel().setValue = function(cell, value)
+    {
+        originalSetValue.apply(this, arguments);
+        
+        // Sync isoRx, isoRy, isoRz, isoZ from attributes to style if cell is isoCube or isoCylinder
+        if (cell && graph.getModel().isVertex(cell))
+        {
+            var style = graph.getCurrentCellStyle(cell);
+            var shape = style ? style[mxConstants.STYLE_SHAPE] : null;
+            if (shape === 'isoCube' || shape === 'isoCylinder')
+            {
+                if (mxUtils.isNode(value))
+                {
+                    var isoRx = value.getAttribute('isoRx');
+                    var isoRy = value.getAttribute('isoRy');
+                    var isoRz = value.getAttribute('isoRz');
+                    var isoZ = value.getAttribute('isoZ');
+                    
+                    graph.getModel().beginUpdate();
+                    try
+                    {
+                        if (isoRx != null) graph.setCellStyles('isoRx', isoRx, [cell]);
+                        if (isoRy != null) graph.setCellStyles('isoRy', isoRy, [cell]);
+                        if (isoRz != null) graph.setCellStyles('isoRz', isoRz, [cell]);
+                        if (isoZ != null) graph.setCellStyles('isoZ', isoZ, [cell]);
+                        graph.refresh(cell);
+                    }
+                    finally
+                    {
+                        graph.getModel().endUpdate();
+                    }
+                }
+            }
+        }
+    };
+    
+    // When loading existing isoCube/isoCylinder shapes, ensure attributes are set
+    graph.addListener(mxEvent.CELLS_ADDED, function(sender, evt)
+    {
+        var cells = evt.getProperty('cells');
+        if (cells)
+        {
+            for (var i = 0; i < cells.length; i++)
+            {
+                var cell = cells[i];
+                if (graph.getModel().isVertex(cell))
+                {
+                    var style = graph.getCurrentCellStyle(cell);
+                    var shape = style ? style[mxConstants.STYLE_SHAPE] : null;
+                    if (shape === 'isoCube' || shape === 'isoCylinder')
+                    {
+                        var cellValue = graph.getModel().getValue(cell);
+                        if (!mxUtils.isNode(cellValue))
+                        {
+                            var doc = mxUtils.createXmlDocument();
+                            var obj = doc.createElement('object');
+                            obj.setAttribute('label', cellValue || '');
+                            cellValue = obj;
+                            graph.getModel().setValue(cell, cellValue);
+                        }
+                        
+                        // Sync style values to attributes if not already set
+                        var isoRx = mxUtils.getValue(style, 'isoRx', 35);
+                        var isoRy = mxUtils.getValue(style, 'isoRy', 35);
+                        var isoRz = mxUtils.getValue(style, 'isoRz', 0);
+                        var isoZ = mxUtils.getValue(style, 'isoZ', 70);
+                        
+                        if (!cellValue.getAttribute('isoRx')) cellValue.setAttribute('isoRx', String(isoRx));
+                        if (!cellValue.getAttribute('isoRy')) cellValue.setAttribute('isoRy', String(isoRy));
+                        if (!cellValue.getAttribute('isoRz')) cellValue.setAttribute('isoRz', String(isoRz));
+                        if (!cellValue.getAttribute('isoZ')) cellValue.setAttribute('isoZ', String(isoZ));
+                    }
+                }
+            }
+        }
+    });
 });
 
 
