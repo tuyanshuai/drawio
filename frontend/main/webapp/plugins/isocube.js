@@ -6,6 +6,112 @@ Draw.loadPlugin(function(editorUi)
 {
     var graph = editorUi.editor.graph;
 
+    // --- Shared utility function for setting stroke properties ---
+    // This function is used by both isoCube and isoExtrude to ensure consistent stroke handling
+    window.setup3DShapeStroke = function(c, style, defaultStrokewidth, baseFill)
+    {
+        // Helper function to check if color is "none"
+        function isNoneColor(col)
+        {
+            if (col == null) return true;
+            var s = String(col).toLowerCase();
+            if (s === 'none' || s === 'transparent' || s === '') return true;
+            if (s.indexOf('rgba(') === 0)
+            {
+                var m = s.match(/rgba\([^,]+,[^,]+,[^,]+,\s*([0-9.]+)\)/);
+                if (m && parseFloat(m[1]) === 0) return true;
+            }
+            if (s.length === 9 && s.startsWith('#') && s.substring(7) === '00') return true; // #RRGGBBAA with AA=00
+            return false;
+        }
+
+        // Get stroke color from style
+        var strokeColor = mxUtils.getValue(style, mxConstants.STYLE_STROKECOLOR, null);
+        
+        // Check if strokeColor is explicitly set to mxConstants.NONE (when user disables line)
+        // mxConstants.NONE is typically 'none' but could be null or empty
+        var strokeColorNone = false;
+        if (strokeColor == null || strokeColor === '' || strokeColor === 'none' || 
+            strokeColor === mxConstants.NONE || strokeColor === 'transparent')
+        {
+            strokeColorNone = true;
+        }
+        else
+        {
+            strokeColorNone = isNoneColor(strokeColor);
+        }
+        
+        // If strokeColor is not set, default to 'none' (line disabled by default for isoCube)
+        // But for isoExtrude, we may want to use fillColor as default - handled by caller
+        if (strokeColor == null || strokeColor === '')
+        {
+            strokeColor = 'none';
+            strokeColorNone = true;
+        }
+        
+        // Check strokeWidth
+        var strokeWidthRaw = mxUtils.getValue(style, mxConstants.STYLE_STROKEWIDTH, null);
+        var strokeWidth = parseFloat(strokeWidthRaw);
+        // Default strokeWidth if not set or invalid
+        if (strokeWidthRaw == null || strokeWidthRaw === '' || isNaN(strokeWidth))
+        {
+            strokeWidth = strokeColorNone ? 0 : (defaultStrokewidth || 1);
+        }
+        
+        // Get stroke opacity
+        var strokeOpacity = parseFloat(mxUtils.getValue(style, 'strokeOpacity', 1));
+        
+        // If strokeColor is none, force strokeWidth and strokeOpacity to 0
+        if (strokeColorNone)
+        {
+            strokeWidth = 0;
+            strokeOpacity = 0;
+        }
+        else
+        {
+            if (isNaN(strokeOpacity)) strokeOpacity = 1;
+            if (strokeOpacity > 1) strokeOpacity = strokeOpacity / 100; // accept 0..100 style values
+        }
+        
+        // Calculate if stroke is enabled
+        var strokeEnabled = !strokeColorNone && strokeOpacity > 0 && strokeWidth > 0;
+        
+        // Set stroke properties on canvas
+        if (strokeEnabled)
+        {
+            c.setStrokeColor(strokeColor);
+            c.setStrokeWidth(strokeWidth);
+            c.setStrokeAlpha(Math.max(0, Math.min(1, strokeOpacity)));
+        }
+        
+        // Debug: Print stroke setup details
+        if (window.console && window.console.log)
+        {
+            console.log('[setup3DShapeStroke] Stroke setup result:', {
+                strokeColor: strokeColor,
+                strokeColorNone: strokeColorNone,
+                strokeWidth: strokeWidth,
+                strokeOpacity: strokeOpacity,
+                strokeEnabled: strokeEnabled,
+                defaultStrokewidth: defaultStrokewidth,
+                styleStrokeColor: mxUtils.getValue(style, mxConstants.STYLE_STROKECOLOR, null),
+                styleStrokeWidth: mxUtils.getValue(style, mxConstants.STYLE_STROKEWIDTH, null),
+                styleStrokeOpacity: mxUtils.getValue(style, 'strokeOpacity', null),
+                mxConstantsNONE: mxConstants.NONE,
+                isEqualToNONE: (strokeColor === mxConstants.NONE || 
+                               mxUtils.getValue(style, mxConstants.STYLE_STROKECOLOR, null) === mxConstants.NONE)
+            });
+        }
+        
+        // Return stroke info object
+        return {
+            strokeColor: strokeColor,
+            strokeWidth: strokeWidth,
+            strokeOpacity: strokeOpacity,
+            strokeEnabled: strokeEnabled
+        };
+    };
+
     // --- Shape registration ---
     function IsoCubeShape(bounds, fill, stroke, strokewidth)
     {
@@ -168,55 +274,21 @@ Draw.loadPlugin(function(editorUi)
 
         // Line/Fill style should match standard Style > Line behavior
         // Respect Style > Line settings; draw lines unless Line is disabled
-        function isNoneColor(col)
-        {
-            if (col == null) return true;
-            var s = String(col).toLowerCase();
-            if (s === 'none' || s === 'transparent' || s === '') return true;
-            if (s.indexOf('rgba(') === 0)
-            {
-                var m = s.match(/rgba\([^,]+,[^,]+,[^,]+,\s*([0-9.]+)\)/);
-                if (m && parseFloat(m[1]) === 0) return true;
-            }
-            if (s.length === 9 && s.startsWith('#') && s.substring(7) === '00') return true; // #RRGGBBAA with AA=00
-            return false;
-        }
-        var strokeColorNone = isNoneColor(strokeColor);
-        // Check strokeWidth - if line is disabled, it should be 0 or not set
-        var strokeWidthRaw = mxUtils.getValue(style, mxConstants.STYLE_STROKEWIDTH, null);
-        var strokeWidth = parseFloat(strokeWidthRaw);
-        // Default strokeWidth if not set or invalid
-        if (strokeWidthRaw == null || strokeWidthRaw === '' || isNaN(strokeWidth))
-        {
-            strokeWidth = strokeColorNone ? 0 : this.strokewidth;
-        }
-        var strokeOpacity = parseFloat(mxUtils.getValue(style, 'strokeOpacity', 1));
+        // Use shared stroke setup function
+        var strokeInfo = window.setup3DShapeStroke(c, style, this.strokewidth, baseFill);
+        var strokeColor = strokeInfo.strokeColor;
+        var strokeWidth = strokeInfo.strokeWidth;
+        var strokeOpacity = strokeInfo.strokeOpacity;
+        var strokeEnabled = strokeInfo.strokeEnabled;
+        
+        // Get dashed line style
         var baseDashed = String(mxUtils.getValue(style, mxConstants.STYLE_DASHED, '0')) === '1';
-        // If strokeColor is none, force strokeWidth and strokeOpacity to 0
-        if (strokeColorNone)
-        {
-            strokeWidth = 0;
-            strokeOpacity = 0;
-        }
-        else
-        {
-            if (isNaN(strokeOpacity)) strokeOpacity = 1;
-            if (strokeOpacity > 1) strokeOpacity = strokeOpacity / 100; // accept 0..100 style values
-        }
+        
         // Honor style-provided opacities for fill
         var fillOpacity = parseFloat(mxUtils.getValue(style, 'fillOpacity', 1));
         if (isNaN(fillOpacity)) fillOpacity = 1;
         if (fillOpacity > 1) fillOpacity = fillOpacity / 100; // accept 0..100 style values
         c.setFillAlpha(Math.max(0, Math.min(1, fillOpacity)));
-        var strokeEnabled = !strokeColorNone && strokeOpacity > 0 && strokeWidth > 0;
-        // console.log('strokeColor:', strokeColor, 'strokeColorNone:', strokeColorNone, 'strokeWidth:', strokeWidth, 'strokeOpacity:', strokeOpacity, 'strokeEnabled:', strokeEnabled);
-        // Only set stroke properties when actually enabled
-        if (strokeEnabled)
-        {
-            c.setStrokeColor(strokeColor);
-            c.setStrokeWidth(strokeWidth);
-            c.setStrokeAlpha(Math.max(0, Math.min(1, strokeOpacity)));
-        }
         function isNoneFill(col)
         {
             if (col == null) return true;

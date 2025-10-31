@@ -2035,6 +2035,29 @@ var ExportDialog = function(editorUi)
 	zoomInput.setAttribute('type', 'number');
 	zoomInput.setAttribute('value', '100');
 	zoomInput.style.width = '180px';
+	
+	// Add mouse wheel support for increment/decrement
+	mxEvent.addListener(zoomInput, 'wheel', function(evt)
+	{
+		var delta = evt.deltaY || -evt.wheelDelta || 0;
+		var step = (evt.shiftKey || evt.ctrlKey) ? 10 : 1;
+		
+		if (delta < 0)
+		{
+			// Scroll up - increase value
+			var val = parseInt(zoomInput.value) || 100;
+			zoomInput.value = Math.min(1000, val + step);
+		}
+		else if (delta > 0)
+		{
+			// Scroll down - decrease value
+			var val = parseInt(zoomInput.value) || 100;
+			zoomInput.value = Math.max(1, val - step);
+		}
+		
+		evt.preventDefault();
+		mxEvent.consume(evt);
+	});
 
 	td = document.createElement('td');
 	td.appendChild(zoomInput);
@@ -2121,6 +2144,31 @@ var ExportDialog = function(editorUi)
 	customDpi.setAttribute('type', 'number');
 	customDpi.setAttribute('min', '50');
 	customDpi.setAttribute('step', '50');
+	
+	// Add mouse wheel support for increment/decrement
+	mxEvent.addListener(customDpi, 'wheel', function(evt)
+	{
+		var delta = evt.deltaY || -evt.wheelDelta || 0;
+		var step = parseInt(customDpi.getAttribute('step')) || 50;
+		var increment = (evt.shiftKey || evt.ctrlKey) ? (step * 2) : step;
+		var min = parseInt(customDpi.getAttribute('min')) || 50;
+		
+		if (delta < 0)
+		{
+			// Scroll up - increase value
+			var val = parseInt(customDpi.value) || 100;
+			customDpi.value = val + increment;
+		}
+		else if (delta > 0)
+		{
+			// Scroll down - decrease value
+			var val = parseInt(customDpi.value) || 100;
+			customDpi.value = Math.max(min, val - increment);
+		}
+		
+		evt.preventDefault();
+		mxEvent.consume(evt);
+	});
 	
 	var zoomUserChanged = false;
 	
@@ -2220,6 +2268,29 @@ var ExportDialog = function(editorUi)
 	borderInput.setAttribute('type', 'number');
 	borderInput.setAttribute('value', ExportDialog.lastBorderValue);
 	borderInput.style.width = '180px';
+	
+	// Add mouse wheel support for increment/decrement
+	mxEvent.addListener(borderInput, 'wheel', function(evt)
+	{
+		var delta = evt.deltaY || -evt.wheelDelta || 0;
+		var step = (evt.shiftKey || evt.ctrlKey) ? 10 : 1;
+		
+		if (delta < 0)
+		{
+			// Scroll up - increase value
+			var val = parseFloat(borderInput.value) || 0;
+			borderInput.value = Math.min(1000, val + step);
+		}
+		else if (delta > 0)
+		{
+			// Scroll down - decrease value
+			var val = parseFloat(borderInput.value) || 0;
+			borderInput.value = Math.max(0, val - step);
+		}
+		
+		evt.preventDefault();
+		mxEvent.consume(evt);
+	});
 
 	td = document.createElement('td');
 	td.appendChild(borderInput);

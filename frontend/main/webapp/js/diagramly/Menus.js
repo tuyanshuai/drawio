@@ -1279,6 +1279,30 @@
 				parentChildSpacing.value = parentChildSpacingVal;
 				parentChildSpacing.style.width = '160px';
 				parentChildSpacing.style.boxSizing = 'border-box';
+				
+				// Add mouse wheel support for increment/decrement
+				mxEvent.addListener(parentChildSpacing, 'wheel', function(evt)
+				{
+					var delta = evt.deltaY || -evt.wheelDelta || 0;
+					var step = (evt.shiftKey || evt.ctrlKey) ? 10 : 1;
+					
+					if (delta < 0)
+					{
+						var val = parseFloat(parentChildSpacing.value) || 0;
+						parentChildSpacing.value = val + step;
+						parentChildSpacingVal = parentChildSpacing.value;
+					}
+					else if (delta > 0)
+					{
+						var val = parseFloat(parentChildSpacing.value) || 0;
+						parentChildSpacing.value = Math.max(0, val - step);
+						parentChildSpacingVal = parentChildSpacing.value;
+					}
+					
+					evt.preventDefault();
+					mxEvent.consume(evt);
+				});
+				
 				div.appendChild(parentChildSpacing);
 				
 				mxEvent.addListener(parentChildSpacing, 'change', function()
@@ -1298,6 +1322,30 @@
 				siblingSpacing.value = siblingSpacingVal;
 				siblingSpacing.style.width = '160px';
 				siblingSpacing.style.boxSizing = 'border-box';
+				
+				// Add mouse wheel support for increment/decrement
+				mxEvent.addListener(siblingSpacing, 'wheel', function(evt)
+				{
+					var delta = evt.deltaY || -evt.wheelDelta || 0;
+					var step = (evt.shiftKey || evt.ctrlKey) ? 10 : 1;
+					
+					if (delta < 0)
+					{
+						var val = parseFloat(siblingSpacing.value) || 0;
+						siblingSpacing.value = val + step;
+						siblingSpacingVal = siblingSpacing.value;
+					}
+					else if (delta > 0)
+					{
+						var val = parseFloat(siblingSpacing.value) || 0;
+						siblingSpacing.value = Math.max(0, val - step);
+						siblingSpacingVal = siblingSpacing.value;
+					}
+					
+					evt.preventDefault();
+					mxEvent.consume(evt);
+				});
+				
 				div.appendChild(siblingSpacing);
 				
 				mxEvent.addListener(siblingSpacing, 'change', function()

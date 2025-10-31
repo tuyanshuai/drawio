@@ -5709,6 +5709,40 @@
 							{
 								input.max = parseFloat(prop.max);
 							}
+							
+							// Add mouse wheel support for increment/decrement
+							var stepValue = pType == 'int'? 1 : (parseFloat(input.step) || 0.1);
+							mxEvent.addListener(input, 'wheel', function(evt)
+							{
+								var delta = evt.deltaY || -evt.wheelDelta || 0;
+								var increment = (evt.shiftKey || evt.ctrlKey) ? (stepValue * 10) : stepValue;
+								var min = prop.min != null ? parseFloat(prop.min) : null;
+								var max = prop.max != null ? parseFloat(prop.max) : null;
+								
+								if (delta < 0)
+								{
+									// Scroll up - increase value
+									var val = pType == 'int' ? parseInt(input.value) : parseFloat(input.value);
+									if (isNaN(val)) val = 0;
+									var newVal = val + increment;
+									if (max != null && !isNaN(max)) newVal = Math.min(max, newVal);
+									input.value = String(newVal);
+									setInputVal();
+								}
+								else if (delta > 0)
+								{
+									// Scroll down - decrease value
+									var val = pType == 'int' ? parseInt(input.value) : parseFloat(input.value);
+									if (isNaN(val)) val = 0;
+									var newVal = val - increment;
+									if (min != null && !isNaN(min)) newVal = Math.max(min, newVal);
+									input.value = String(newVal);
+									setInputVal();
+								}
+								
+								evt.preventDefault();
+								mxEvent.consume(evt);
+							});
 						}
 						
 						valueDiv.appendChild(input);
@@ -8689,6 +8723,29 @@
 		pagesFromInput.setAttribute('type', 'number');
 		pagesFromInput.setAttribute('min', '1');
 		pagesFromInput.style.width = '40px';
+		
+		// Add mouse wheel support for increment/decrement
+		mxEvent.addListener(pagesFromInput, 'wheel', function(evt)
+		{
+			var delta = evt.deltaY || -evt.wheelDelta || 0;
+			var step = (evt.shiftKey || evt.ctrlKey) ? 10 : 1;
+			var min = parseInt(pagesFromInput.getAttribute('min')) || 1;
+			
+			if (delta < 0)
+			{
+				var val = parseInt(pagesFromInput.value) || 1;
+				pagesFromInput.value = val + step;
+			}
+			else if (delta > 0)
+			{
+				var val = parseInt(pagesFromInput.value) || 1;
+				pagesFromInput.value = Math.max(min, val - step);
+			}
+			
+			evt.preventDefault();
+			mxEvent.consume(evt);
+		});
+		
 		pagesSection.appendChild(pagesFromInput);
 		
 		var span = document.createElement('span');
@@ -8696,6 +8753,29 @@
 		pagesSection.appendChild(span);
 		
 		var pagesToInput = pagesFromInput.cloneNode(true);
+		
+		// Add mouse wheel support for the cloned input (cloneNode doesn't copy event listeners)
+		mxEvent.addListener(pagesToInput, 'wheel', function(evt)
+		{
+			var delta = evt.deltaY || -evt.wheelDelta || 0;
+			var step = (evt.shiftKey || evt.ctrlKey) ? 10 : 1;
+			var min = parseInt(pagesToInput.getAttribute('min')) || 1;
+			
+			if (delta < 0)
+			{
+				var val = parseInt(pagesToInput.value) || 1;
+				pagesToInput.value = val + step;
+			}
+			else if (delta > 0)
+			{
+				var val = parseInt(pagesToInput.value) || 1;
+				pagesToInput.value = Math.max(min, val - step);
+			}
+			
+			evt.preventDefault();
+			mxEvent.consume(evt);
+		});
+		
 		pagesSection.appendChild(pagesToInput);
 
 		mxEvent.addListener(pagesFromInput, 'focus', function()
@@ -8920,6 +9000,29 @@
 		sheetsAcrossInput.setAttribute('min', '1');
 		sheetsAcrossInput.setAttribute('type', 'number');
 		sheetsAcrossInput.style.width = '40px';
+		
+		// Add mouse wheel support for increment/decrement
+		mxEvent.addListener(sheetsAcrossInput, 'wheel', function(evt)
+		{
+			var delta = evt.deltaY || -evt.wheelDelta || 0;
+			var step = (evt.shiftKey || evt.ctrlKey) ? 10 : 1;
+			var min = parseInt(sheetsAcrossInput.getAttribute('min')) || 1;
+			
+			if (delta < 0)
+			{
+				var val = parseInt(sheetsAcrossInput.value) || 1;
+				sheetsAcrossInput.value = val + step;
+			}
+			else if (delta > 0)
+			{
+				var val = parseInt(sheetsAcrossInput.value) || 1;
+				sheetsAcrossInput.value = Math.max(min, val - step);
+			}
+			
+			evt.preventDefault();
+			mxEvent.consume(evt);
+		});
+		
 		td2.appendChild(sheetsAcrossInput);
 		
 		var span = document.createElement('span');
@@ -8992,6 +9095,29 @@
 		borderInput.style.marginLeft = '4px';
 		borderInput.value = (editorUi.lastPrintBorder != null) ?
 			editorUi.lastPrintBorder : mxPrintPreview.prototype.pageMargin;
+		
+		// Add mouse wheel support for increment/decrement
+		mxEvent.addListener(borderInput, 'wheel', function(evt)
+		{
+			var delta = evt.deltaY || -evt.wheelDelta || 0;
+			var step = (evt.shiftKey || evt.ctrlKey) ? 10 : 1;
+			var min = parseInt(borderInput.getAttribute('min')) || 0;
+			
+			if (delta < 0)
+			{
+				var val = parseFloat(borderInput.value) || 0;
+				borderInput.value = val + step;
+			}
+			else if (delta > 0)
+			{
+				var val = parseFloat(borderInput.value) || 0;
+				borderInput.value = Math.max(min, val - step);
+			}
+			
+			evt.preventDefault();
+			mxEvent.consume(evt);
+		});
+		
 		optionsSection.appendChild(borderInput);
 
 		var span = document.createElement('span');

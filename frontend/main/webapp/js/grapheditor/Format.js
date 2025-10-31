@@ -700,6 +700,72 @@ BaseFormatPanel.prototype.createStepper = function(input, update, step, height, 
 		});
 	}
 	
+	// Add mouse wheel support for increment/decrement
+	mxEvent.addListener(input, 'wheel', function(evt)
+	{
+		var delta = evt.deltaY || -evt.wheelDelta || 0;
+		var useBigStep = mxEvent.isShiftDown(evt) || mxEvent.isControlDown(evt);
+		var increment = useBigStep ? bigStep : step;
+		
+		// Get min and max values if they exist
+		var min = input.hasAttribute('min') ? parseFloat(input.getAttribute('min')) : null;
+		var max = input.hasAttribute('max') ? parseFloat(input.getAttribute('max')) : null;
+		
+		if (delta < 0)
+		{
+			// Scroll up - increase value
+			if (input.value == '')
+			{
+				input.value = (defaultValue != null) ? defaultValue : '0';
+			}
+			
+			var val = isFloat ? parseFloat(input.value) : parseInt(input.value);
+			
+			if (!isNaN(val))
+			{
+				var newVal = val + increment;
+				if (max != null && !isNaN(max))
+				{
+					newVal = Math.min(max, newVal);
+				}
+				input.value = newVal;
+				
+				if (update != null)
+				{
+					update(evt);
+				}
+			}
+		}
+		else if (delta > 0)
+		{
+			// Scroll down - decrease value
+			if (input.value == '')
+			{
+				input.value = (defaultValue != null) ? defaultValue : '0';
+			}
+			
+			var val = isFloat ? parseFloat(input.value) : parseInt(input.value);
+			
+			if (!isNaN(val))
+			{
+				var newVal = val - increment;
+				if (min != null && !isNaN(min))
+				{
+					newVal = Math.max(min, newVal);
+				}
+				input.value = newVal;
+				
+				if (update != null)
+				{
+					update(evt);
+				}
+			}
+		}
+		
+		evt.preventDefault();
+		mxEvent.consume(evt);
+	});
+	
 	return stepper;
 };
 

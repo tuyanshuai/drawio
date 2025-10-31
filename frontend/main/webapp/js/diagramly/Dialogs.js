@@ -13470,6 +13470,28 @@ var ConnectionPointsDialog = function(editorUi, cell)
 		pCount.style.width = '45px';
 		pCount.style.position = 'relative';
 		pCount.style.margin = '0 4px 0 4px';
+		
+		// Add mouse wheel support for increment/decrement
+		mxEvent.addListener(pCount, 'wheel', function(evt)
+		{
+			var delta = evt.deltaY || -evt.wheelDelta || 0;
+			var step = (evt.shiftKey || evt.ctrlKey) ? 10 : 1;
+			var min = parseInt(pCount.getAttribute('min')) || 1;
+			
+			if (delta < 0)
+			{
+				var val = parseInt(pCount.value) || 1;
+				pCount.value = Math.min(100, val + step);
+			}
+			else if (delta > 0)
+			{
+				var val = parseInt(pCount.value) || 1;
+				pCount.value = Math.max(min, val - step);
+			}
+			
+			evt.preventDefault();
+			mxEvent.consume(evt);
+		});
 
 		var sideSelect = document.createElement('select');
 		sideSelect.style.position = 'relative';
@@ -13542,6 +13564,30 @@ var ConnectionPointsDialog = function(editorUi, cell)
 		xInput.setAttribute('max', '100');
 		xInput.style.width = '45px';
 		xInput.style.margin = '0 4px 0 4px';
+		
+		// Add mouse wheel support for increment/decrement
+		mxEvent.addListener(xInput, 'wheel', function(evt)
+		{
+			var delta = evt.deltaY || -evt.wheelDelta || 0;
+			var step = (evt.shiftKey || evt.ctrlKey) ? 10 : 1;
+			var min = parseInt(xInput.getAttribute('min')) || 0;
+			var max = parseInt(xInput.getAttribute('max')) || 100;
+			
+			if (delta < 0)
+			{
+				var val = parseInt(xInput.value) || 0;
+				xInput.value = Math.min(max, val + step);
+			}
+			else if (delta > 0)
+			{
+				var val = parseInt(xInput.value) || 0;
+				xInput.value = Math.max(min, val - step);
+			}
+			
+			evt.preventDefault();
+			mxEvent.consume(evt);
+		});
+		
 		pointPropsDiv.appendChild(xInput);
 		mxUtils.write(pointPropsDiv, '%');
 
@@ -13549,6 +13595,28 @@ var ConnectionPointsDialog = function(editorUi, cell)
 		dxInput.setAttribute('type', 'number');
 		dxInput.style.width = '45px';
 		dxInput.style.margin = '0 4px 0 4px';
+		
+		// Add mouse wheel support for increment/decrement
+		mxEvent.addListener(dxInput, 'wheel', function(evt)
+		{
+			var delta = evt.deltaY || -evt.wheelDelta || 0;
+			var step = (evt.shiftKey || evt.ctrlKey) ? 10 : 1;
+			
+			if (delta < 0)
+			{
+				var val = parseFloat(dxInput.value) || 0;
+				dxInput.value = val + step;
+			}
+			else if (delta > 0)
+			{
+				var val = parseFloat(dxInput.value) || 0;
+				dxInput.value = val - step;
+			}
+			
+			evt.preventDefault();
+			mxEvent.consume(evt);
+		});
+		
 		pointPropsDiv.appendChild(dxInput);
 		mxUtils.write(pointPropsDiv, 'pt');
 
@@ -13562,6 +13630,30 @@ var ConnectionPointsDialog = function(editorUi, cell)
 		yInput.setAttribute('max', '100');
 		yInput.style.width = '45px';
 		yInput.style.margin = '0 4px 0 4px';
+		
+		// Add mouse wheel support for increment/decrement
+		mxEvent.addListener(yInput, 'wheel', function(evt)
+		{
+			var delta = evt.deltaY || -evt.wheelDelta || 0;
+			var step = (evt.shiftKey || evt.ctrlKey) ? 10 : 1;
+			var min = parseInt(yInput.getAttribute('min')) || 0;
+			var max = parseInt(yInput.getAttribute('max')) || 100;
+			
+			if (delta < 0)
+			{
+				var val = parseInt(yInput.value) || 0;
+				yInput.value = Math.min(max, val + step);
+			}
+			else if (delta > 0)
+			{
+				var val = parseInt(yInput.value) || 0;
+				yInput.value = Math.max(min, val - step);
+			}
+			
+			evt.preventDefault();
+			mxEvent.consume(evt);
+		});
+		
 		pointPropsDiv.appendChild(yInput);
 		mxUtils.write(pointPropsDiv, '%');
 
@@ -13569,6 +13661,28 @@ var ConnectionPointsDialog = function(editorUi, cell)
 		dyInput.setAttribute('type', 'number');
 		dyInput.style.width = '45px';
 		dyInput.style.margin = '0 4px 0 4px';
+		
+		// Add mouse wheel support for increment/decrement
+		mxEvent.addListener(dyInput, 'wheel', function(evt)
+		{
+			var delta = evt.deltaY || -evt.wheelDelta || 0;
+			var step = (evt.shiftKey || evt.ctrlKey) ? 10 : 1;
+			
+			if (delta < 0)
+			{
+				var val = parseFloat(dyInput.value) || 0;
+				dyInput.value = val + step;
+			}
+			else if (delta > 0)
+			{
+				var val = parseFloat(dyInput.value) || 0;
+				dyInput.value = val - step;
+			}
+			
+			evt.preventDefault();
+			mxEvent.consume(evt);
+		});
+		
 		pointPropsDiv.appendChild(dyInput);
 		mxUtils.write(pointPropsDiv, 'pt');
 		div.appendChild(pointPropsDiv);

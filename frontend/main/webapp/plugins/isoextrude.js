@@ -449,21 +449,6 @@ Draw.loadPlugin(function(editorUi)
         // Sort back-to-front
         faceInfo.sort(function(a, b){ return a.z - b.z; });
 
-        // Get base fill color - use third style color as default (#182E3E)
-        // Default fill color to blue if not set or is 'none' (avoid black)
-        var baseFill = mxUtils.getValue(style, mxConstants.STYLE_FILLCOLOR, null);
-        // Force default blue color - always use it if fillColor is invalid
-        if (!baseFill || baseFill === '' || baseFill === 'none' || baseFill === 'transparent' || 
-            baseFill === '#000000' || baseFill === '#000' || baseFill.toLowerCase() === 'black')
-        {
-            baseFill = '#1e78b7';
-        }
-        // Ensure baseFill is always a valid hex color
-        if (!baseFill.startsWith('#'))
-        {
-            baseFill = '#1e78b7';
-        }
-        
         // Lighting for 3D effect
         var light = {x: 0.35, y: -0.5, z: -0.8};
         var lmag = Math.sqrt(light.x*light.x + light.y*light.y + light.z*light.z) || 1;
@@ -497,30 +482,105 @@ Draw.loadPlugin(function(editorUi)
             return false;
         }
         
-        // Stroke color handling - same as isoCube
-        var strokeColor = mxUtils.getValue(style, mxConstants.STYLE_STROKECOLOR, null);
-        var strokeColorNone = isNoneColor(strokeColor);
-        
-        // Check strokeWidth - if line is disabled, it should be 0 or not set
-        var strokeWidthRaw = mxUtils.getValue(style, mxConstants.STYLE_STROKEWIDTH, null);
-        var strokeWidth = parseFloat(strokeWidthRaw);
-        // Default strokeWidth if not set or invalid
-        if (strokeWidthRaw == null || strokeWidthRaw === '' || isNaN(strokeWidth))
+        // Get base fill color first (needed for stroke default)
+        // Default fill color to blue if not set or is 'none' (avoid black)
+        var baseFill = mxUtils.getValue(style, mxConstants.STYLE_FILLCOLOR, null);
+        // Force default blue color - always use it if fillColor is invalid
+        if (!baseFill || baseFill === '' || baseFill === 'none' || baseFill === 'transparent' || 
+            baseFill === '#000000' || baseFill === '#000' || baseFill.toLowerCase() === 'black')
         {
-            strokeWidth = strokeColorNone ? 0 : this.strokewidth;
+            baseFill = '#1e78b7';
+        }
+        // Ensure baseFill is always a valid hex color
+        if (!baseFill || !baseFill.startsWith('#'))
+        {
+            baseFill = '#1e78b7';
         }
         
-        var strokeOpacity = parseFloat(mxUtils.getValue(style, 'strokeOpacity', 1));
-        // If strokeColor is none, force strokeWidth and strokeOpacity to 0
-        if (strokeColorNone)
+        // Use shared stroke setup function (from isocube.js)
+        // IMPORTANT: Match isocube.js behavior - call setup3DShapeStroke directly with original style
+        // Do NOT modify style before calling setup3DShapeStroke, let it handle all logic
+        // The only difference for isoExtrude is we want to default strokeColor to fillColor for NEW shapes
+        // But we must respect when user explicitly disables line (mxConstants.NONE, null, etc.)
+        
+        var strokeColorFromStyle = mxUtils.getValue(style, mxConstants.STYLE_STROKECOLOR, null);
+        
+        // Check if strokeColor property exists in style object
+        // This is the key to distinguishing:
+        // - "never set" (property doesn't exist) -> default to fillColor
+        // - "explicitly disabled" (property exists, even if null/mxConstants.NONE) -> respect user's choice
+        var hasStrokeColorProperty = (mxConstants.STYLE_STROKECOLOR in style);
+        
+        // Only default to fillColor for truly new shapes (property doesn't exist)
+        // If property exists, user has interacted with it - respect their choice (even if null)
+        var styleToUse = style;
+        if (!hasStrokeColorProperty && strokeColorFromStyle == null)
         {
-            strokeWidth = 0;
-            strokeOpacity = 0;
+            // New shape: default strokeColor to fillColor (draw.io default behavior)
+            if (baseFill && !isNoneColor(baseFill))
+            {
+                styleToUse = {};
+                for (var key in style)
+                {
+                    styleToUse[key] = style[key];
+                }
+                styleToUse[mxConstants.STYLE_STROKECOLOR] = baseFill;
+            }
         }
-        else
+        // If property exists (user has set it), pass style as-is to setup3DShapeStroke
+        // setup3DShapeStroke will handle mxConstants.NONE, null, 'none', etc. correctly
+        
+        // Debug: Check stroke color handling
+        if (window.console && window.console.log)
         {
-            if (isNaN(strokeOpacity)) strokeOpacity = 1;
-            if (strokeOpacity > 1) strokeOpacity = strokeOpacity / 100; // accept 0..100 style values
+            console.log('[IsoExtrude] Stroke color check (BEFORE setup3DShapeStroke):', {
+                strokeColorFromStyle: strokeColorFromStyle,
+                hasStrokeColorProperty: hasStrokeColorProperty,
+                willUseDefaultFillColor: (!hasStrokeColorProperty && strokeColorFromStyle == null),
+                styleToUseStrokeColor: mxUtils.getValue(styleToUse, mxConstants.STYLE_STROKECOLOR, null),
+                styleStrokeWidth: mxUtils.getValue(styleToUse, mxConstants.STYLE_STROKEWIDTH, null),
+                styleStrokeOpacity: mxUtils.getValue(styleToUse, 'strokeOpacity', null),
+                originalStyleStrokeColor: mxUtils.getValue(style, mxConstants.STYLE_STROKECOLOR, null),
+                styleHasStrokeColorInObject: (mxConstants.STYLE_STROKECOLOR in style)
+            });
+        }
+        
+        // Use the shared stroke setup function from isocube.js
+        // This ensures consistent stroke handling across all 3D shapes
+        var strokeInfo = window.setup3DShapeStroke(c, styleToUse, this.strokewidth, baseFill);
+        var strokeColor = strokeInfo.strokeColor;
+        var strokeWidth = strokeInfo.strokeWidth;
+        var strokeOpacity = strokeInfo.strokeOpacity;
+        var strokeEnabled = strokeInfo.strokeEnabled;
+        
+        // Debug: Print all stroke properties AFTER setup
+        if (window.console && window.console.log)
+        {
+            // Helper to check if color is "none" for debug output
+            function isNoneColorDebug(col)
+            {
+                if (col == null) return true;
+                var s = String(col).toLowerCase();
+                if (s === 'none' || s === 'transparent' || s === '') return true;
+                return false;
+            }
+            
+            console.log('[IsoExtrude] Stroke Properties (AFTER setup3DShapeStroke):', {
+                strokeColorFromStyle: strokeColorFromStyle,
+                strokeColor: strokeColor,
+                strokeWidth: strokeWidth,
+                strokeOpacity: strokeOpacity,
+                strokeEnabled: strokeEnabled,
+                strokeEnabledCheck: (!isNoneColorDebug(strokeColor) && strokeOpacity > 0 && strokeWidth > 0),
+                baseFill: baseFill,
+                styleStrokeColor: mxUtils.getValue(style, mxConstants.STYLE_STROKECOLOR, null),
+                styleStrokeWidth: mxUtils.getValue(style, mxConstants.STYLE_STROKEWIDTH, null),
+                styleStrokeOpacity: mxUtils.getValue(style, 'strokeOpacity', null),
+                defaultStrokewidth: this.strokewidth,
+                styleToUseStrokeColor: mxUtils.getValue(styleToUse, mxConstants.STYLE_STROKECOLOR, null),
+                hasSetupFunction: typeof window.setup3DShapeStroke === 'function',
+                hasStrokeColorProperty: hasStrokeColorProperty
+            });
         }
         
         // Honor style-provided opacities for fill
@@ -529,16 +589,6 @@ Draw.loadPlugin(function(editorUi)
         if (isNaN(fillOpacity)) fillOpacity = 0.6; // Default 60% opacity for 3D effect
         if (fillOpacity > 1) fillOpacity = fillOpacity / 100; // accept 0..100 style values
         c.setFillAlpha(Math.max(0, Math.min(1, fillOpacity)));
-        
-        var strokeEnabled = !strokeColorNone && strokeOpacity > 0 && strokeWidth > 0;
-        
-        // Only set stroke properties when actually enabled
-        if (strokeEnabled)
-        {
-            c.setStrokeColor(strokeColor);
-            c.setStrokeWidth(strokeWidth);
-            c.setStrokeAlpha(Math.max(0, Math.min(1, strokeOpacity)));
-        }
         
         function isNoneFill(col)
         {
@@ -558,19 +608,77 @@ Draw.loadPlugin(function(editorUi)
         
         if (!fillEnabled && !strokeEnabled) return;
 
-        // Check if this is a curve shape (ellipse/circle) - for curves, don't draw side face lines
+        // Check if this is a curve shape (ellipse/circle/cylinder)
+        // For curves, we'll still draw lines on top/bottom faces, but may skip side faces
         var originalShape = mxUtils.getValue(style, 'isoOriginalShape', null);
         var isCurveShape = false;
         if (originalShape)
         {
             var shapeLower = originalShape.toLowerCase();
-            isCurveShape = (shapeLower.indexOf('ellipse') >= 0 || shapeLower.indexOf('circle') >= 0);
+            isCurveShape = (shapeLower.indexOf('ellipse') >= 0 || shapeLower.indexOf('circle') >= 0 ||
+                           shapeLower.indexOf('cylinder') >= 0);
         }
         // Also check if basePoints count indicates a curve (high sample count = curve)
         // Curves typically have 512 samples, polygons have much fewer (3-8 vertices)
         if (!isCurveShape && basePoints.length > 100)
         {
             isCurveShape = true;
+        }
+        
+        // Process stroke color - convert light-dark() format to actual color
+        // mxCanvas needs actual color values, not light-dark() strings
+        var actualStrokeColor = strokeColor;
+        if (strokeColor && typeof strokeColor === 'string' && strokeColor.indexOf('light-dark(') === 0)
+        {
+            // Parse light-dark(light, dark) format: light-dark(#000000, #ffffff)
+            var match = strokeColor.match(/light-dark\(([^,]+),\s*([^)]+)\)/);
+            if (match)
+            {
+                var lightColor = match[1].trim();
+                var darkColor = match[2].trim();
+                // Use mxUtils to get the actual color based on current mode
+                if (typeof mxUtils !== 'undefined' && typeof mxUtils.getLightDarkColor === 'function')
+                {
+                    try
+                    {
+                        var lightDarkColor = mxUtils.getLightDarkColor(lightColor);
+                        if (lightDarkColor && lightDarkColor.cssText)
+                        {
+                            actualStrokeColor = lightDarkColor.cssText;
+                        }
+                        else if (lightDarkColor && typeof lightDarkColor === 'string')
+                        {
+                            actualStrokeColor = lightDarkColor;
+                        }
+                        else
+                        {
+                            // Fallback: use light color directly
+                            actualStrokeColor = lightColor;
+                        }
+                    }
+                    catch (e)
+                    {
+                        // Fallback: use light color if parsing fails
+                        actualStrokeColor = lightColor;
+                    }
+                }
+                else
+                {
+                    // Fallback: use light color if mxUtils not available
+                    actualStrokeColor = lightColor;
+                }
+                
+                // Debug: Log color conversion
+                if (window.console && window.console.log && fi === 0)
+                {
+                    console.log('[IsoExtrude] Converting light-dark color:', {
+                        original: strokeColor,
+                        light: lightColor,
+                        dark: darkColor,
+                        converted: actualStrokeColor
+                    });
+                }
+            }
         }
 
         // Render faces
@@ -599,9 +707,46 @@ Draw.loadPlugin(function(editorUi)
             lightingFactor = Math.pow(lightingFactor, 0.95);
             var faceFill = fillEnabled ? shade(baseFill, lightingFactor) : baseFill;
             
+            // For curve shapes: do not draw lines at all (neither top/bottom nor side faces)
+            // For non-curve shapes: draw lines on all faces normally
+            var shouldDrawStroke = strokeEnabled && !isCurveShape;
+            
             if (fillEnabled)
             {
+                // Set fill color
                 c.setFillColor(faceFill);
+                
+                // IMPORTANT: Set stroke properties BEFORE begin() to ensure they are applied
+                // The order matters: setStroke* -> begin() -> draw path -> fillAndStroke()
+                if (shouldDrawStroke)
+                {
+                    // Use actual color (processed from light-dark format if needed)
+                    c.setStrokeColor(actualStrokeColor);
+                    c.setStrokeWidth(strokeWidth);
+                    c.setStrokeAlpha(Math.max(0, Math.min(1, strokeOpacity)));
+                    
+                    // Debug: Print stroke application for each face
+                    if (window.console && window.console.log && fi === 0) // Only log for first face to avoid spam
+                    {
+                        console.log('[IsoExtrude] Setting stroke before drawing face:', {
+                            faceIndex: fi,
+                            shouldDrawStroke: shouldDrawStroke,
+                            strokeColor: strokeColor,
+                            strokeWidth: strokeWidth,
+                            strokeOpacity: strokeOpacity,
+                            isCurveShape: isCurveShape,
+                            pointsCount: points.length,
+                            faceFill: faceFill
+                        });
+                    }
+                }
+                else if (!strokeEnabled)
+                {
+                    // Explicitly clear stroke if disabled
+                    c.setStrokeColor(null);
+                    c.setStrokeWidth(0);
+                }
+                
                 c.begin();
                 
                 // Use standard lineTo for all shapes
@@ -612,23 +757,37 @@ Draw.loadPlugin(function(editorUi)
                 }
                 c.close();
                 
-                // For curve shapes, determine if this is a top/bottom face or side face
-                // Top/bottom faces are the first two faces created (finfo.id < 2)
-                // Side faces are all other faces (finfo.id >= 2)
-                var isTopOrBottomFace = (finfo.id < 2);
-                
-                // For curve shapes: do not draw lines at all (neither top/bottom nor side faces)
-                // For non-curve shapes: draw lines on all faces normally
-                var shouldDrawStroke = strokeEnabled && !isCurveShape;
-                
                 if (shouldDrawStroke) 
                 { 
+                    // Debug: Verify before fillAndStroke
+                    if (window.console && window.console.log && fi === 0)
+                    {
+                        console.log('[IsoExtrude] Calling fillAndStroke - shouldDrawStroke:', shouldDrawStroke, 'strokeEnabled:', strokeEnabled);
+                    }
                     c.fillAndStroke(); 
                 } 
                 else 
                 { 
                     c.fill();
                 }
+            }
+            else if (shouldDrawStroke)
+            {
+                // Only stroke, no fill - draw lines only
+                // Set stroke properties before begin()
+                // Use actual color (processed from light-dark format if needed)
+                c.setStrokeColor(actualStrokeColor);
+                c.setStrokeWidth(strokeWidth);
+                c.setStrokeAlpha(Math.max(0, Math.min(1, strokeOpacity)));
+                
+                c.begin();
+                c.moveTo(points[0].x, points[0].y);
+                for (var k = 1; k < points.length; k++)
+                {
+                    c.lineTo(points[k].x, points[k].y);
+                }
+                c.close();
+                c.stroke();
             }
         }
     };
