@@ -1315,6 +1315,270 @@ Draw.loadPlugin(function(editorUi)
         };
     }
     
+    // --- Double-click to edit plane (exit 3D mode, edit, then re-apply 3D) ---
+    // Store 3D properties temporarily when entering edit mode
+    var editingIsoExtrudeCells = {};
+    
+    // Listen for double-click events
+    graph.addListener(mxEvent.DOUBLE_CLICK, function(sender, evt)
+    {
+        var cell = evt.getProperty('cell');
+        if (!cell || !graph.getModel().isVertex(cell)) return;
+        
+        var style = graph.getCurrentCellStyle(cell);
+        var shape = mxUtils.getValue(style, mxConstants.STYLE_SHAPE, null);
+        
+        // Check if it's an isoExtrude shape
+        if (shape === 'isoExtrude')
+        {
+            // Consume the event to prevent default text editing
+            var event = evt.getProperty('event');
+            if (event) mxEvent.consume(event);
+            
+            // Save 3D properties
+            var cellId = graph.getModel().getValue(cell);
+            var cellIdStr = cellId && mxUtils.isNode(cellId) ? 
+                cellId.getAttribute('label') || cell.getId() : cell.getId();
+            
+            editingIsoExtrudeCells[cell.getId()] = {
+                isoRx: mxUtils.getValue(style, 'isoRx', '35'),
+                isoRy: mxUtils.getValue(style, 'isoRy', '35'),
+                isoRz: mxUtils.getValue(style, 'isoRz', '0'),
+                isoZ: mxUtils.getValue(style, 'isoZ', '50'),
+                isoOriginalShape: mxUtils.getValue(style, 'isoOriginalShape', null),
+                polyCoords: mxUtils.getValue(style, 'polyCoords', null),
+                fillColor: mxUtils.getValue(style, mxConstants.STYLE_FILLCOLOR, null),
+                strokeColor: mxUtils.getValue(style, mxConstants.STYLE_STROKECOLOR, null),
+                strokeWidth: mxUtils.getValue(style, mxConstants.STYLE_STROKEWIDTH, null),
+                fillOpacity: mxUtils.getValue(style, mxConstants.STYLE_FILLOPACITY, null),
+                strokeOpacity: mxUtils.getValue(style, mxConstants.STYLE_STROKEOPACITY, null),
+                rounded: mxUtils.getValue(style, mxConstants.STYLE_ROUNDED, null),
+                // Preserve all other style properties
+                originalStyle: graph.getModel().getStyle(cell)
+            };
+            
+            // Restore original shape
+            var originalShape = mxUtils.getValue(style, 'isoOriginalShape', null);
+            if (!originalShape)
+            {
+                // If no original shape stored, default to rectangle
+                originalShape = null; // null means default rectangle
+            }
+            
+            // Build new style with original shape
+            var newStyle = '';
+            if (originalShape)
+            {
+                newStyle += 'shape=' + originalShape + ';';
+            }
+            
+            // Restore polyCoords if present
+            if (editingIsoExtrudeCells[cell.getId()].polyCoords)
+            {
+                newStyle += 'polyCoords=' + editingIsoExtrudeCells[cell.getId()].polyCoords + ';';
+            }
+            
+            // Restore colors and other properties
+            if (editingIsoExtrudeCells[cell.getId()].fillColor)
+            {
+                newStyle += 'fillColor=' + editingIsoExtrudeCells[cell.getId()].fillColor + ';';
+            }
+            if (editingIsoExtrudeCells[cell.getId()].strokeColor)
+            {
+                newStyle += 'strokeColor=' + editingIsoExtrudeCells[cell.getId()].strokeColor + ';';
+            }
+            if (editingIsoExtrudeCells[cell.getId()].strokeWidth)
+            {
+                newStyle += 'strokeWidth=' + editingIsoExtrudeCells[cell.getId()].strokeWidth + ';';
+            }
+            if (editingIsoExtrudeCells[cell.getId()].fillOpacity)
+            {
+                newStyle += 'fillOpacity=' + editingIsoExtrudeCells[cell.getId()].fillOpacity + ';';
+            }
+            if (editingIsoExtrudeCells[cell.getId()].strokeOpacity)
+            {
+                newStyle += 'strokeOpacity=' + editingIsoExtrudeCells[cell.getId()].strokeOpacity + ';';
+            }
+            if (editingIsoExtrudeCells[cell.getId()].rounded != null)
+            {
+                newStyle += 'rounded=' + editingIsoExtrudeCells[cell.getId()].rounded + ';';
+            }
+            
+            // Apply the new style (restore to 2D)
+            graph.getModel().beginUpdate();
+            try
+            {
+                graph.setCellStyle(newStyle, [cell]);
+                graph.refresh(cell);
+            }
+            finally
+            {
+                graph.getModel().endUpdate();
+            }
+            
+            if (window.console && window.console.log)
+            {
+                console.log('[IsoExtrude] 进入编辑模式，已保存 3D 属性:', editingIsoExtrudeCells[cell.getId()]);
+            }
+        }
+    });
+    
+    // Listen for selection changes and editing stop to re-apply 3D effect
+    var reapply3DEffect = function(cell)
+    {
+        if (!cell || !editingIsoExtrudeCells[cell.getId()]) return;
+        
+        var props = editingIsoExtrudeCells[cell.getId()];
+        var style = graph.getCurrentCellStyle(cell);
+        var currentShape = mxUtils.getValue(style, mxConstants.STYLE_SHAPE, null);
+        
+        // Only re-apply if not already isoExtrude
+        if (currentShape !== 'isoExtrude')
+        {
+            // Get current shape as the new original shape
+            var newOriginalShape = currentShape || null;
+            
+            // Build new 3D style
+            var newStyle = 'shape=isoExtrude;';
+            newStyle += 'isoZ=' + props.isoZ + ';';
+            newStyle += 'isoRx=' + props.isoRx + ';';
+            newStyle += 'isoRy=' + props.isoRy + ';';
+            newStyle += 'isoRz=' + props.isoRz + ';';
+            
+            // Save current shape as original
+            if (newOriginalShape)
+            {
+                newStyle += 'isoOriginalShape=' + newOriginalShape + ';';
+            }
+            
+            // Preserve polyCoords if current shape is manualPolygon
+            if (currentShape === 'manualPolygon' || currentShape === 'polygon')
+            {
+                var polyCoords = mxUtils.getValue(style, 'polyCoords', null);
+                if (polyCoords)
+                {
+                    newStyle += 'polyCoords=' + polyCoords + ';';
+                }
+            }
+            
+            // Preserve current colors and properties
+            var fillColor = mxUtils.getValue(style, mxConstants.STYLE_FILLCOLOR, props.fillColor || '#1e78b7');
+            newStyle += 'fillColor=' + fillColor + ';';
+            
+            var strokeColor = mxUtils.getValue(style, mxConstants.STYLE_STROKECOLOR, null);
+            if (strokeColor) newStyle += 'strokeColor=' + strokeColor + ';';
+            
+            var strokeWidth = mxUtils.getValue(style, mxConstants.STYLE_STROKEWIDTH, null);
+            if (strokeWidth) newStyle += 'strokeWidth=' + strokeWidth + ';';
+            
+            var fillOpacity = mxUtils.getValue(style, mxConstants.STYLE_FILLOPACITY, 60);
+            newStyle += 'fillOpacity=' + fillOpacity + ';';
+            
+            var strokeOpacity = mxUtils.getValue(style, mxConstants.STYLE_STROKEOPACITY, 100);
+            newStyle += 'strokeOpacity=' + strokeOpacity + ';';
+            
+            var rounded = mxUtils.getValue(style, mxConstants.STYLE_ROUNDED, 0);
+            newStyle += 'rounded=' + rounded + ';';
+            
+            // Apply 3D style
+            graph.getModel().beginUpdate();
+            try
+            {
+                graph.setCellStyle(newStyle, [cell]);
+                
+                // Sync attributes to cell value
+                var cellValue = graph.getModel().getValue(cell);
+                if (!mxUtils.isNode(cellValue))
+                {
+                    var doc = mxUtils.createXmlDocument();
+                    var obj = doc.createElement('object');
+                    obj.setAttribute('label', cellValue || '');
+                    cellValue = obj;
+                }
+                
+                cellValue.setAttribute('isoRx', String(props.isoRx));
+                cellValue.setAttribute('isoRy', String(props.isoRy));
+                cellValue.setAttribute('isoRz', String(props.isoRz));
+                cellValue.setAttribute('isoZ', String(props.isoZ));
+                graph.getModel().setValue(cell, cellValue);
+                
+                graph.refresh(cell);
+                
+                // Remove from editing list
+                delete editingIsoExtrudeCells[cell.getId()];
+                
+                if (window.console && window.console.log)
+                {
+                    console.log('[IsoExtrude] 退出编辑模式，已重新应用 3D 效果');
+                }
+            }
+            finally
+            {
+                graph.getModel().endUpdate();
+            }
+        }
+    };
+    
+    // Listen for editing stop
+    var originalStopEditing = graph.stopEditing;
+    graph.stopEditing = function(cancel)
+    {
+        originalStopEditing.apply(this, arguments);
+        
+        if (!cancel)
+        {
+            var cell = graph.getSelectionCell();
+            if (cell) reapply3DEffect(cell);
+        }
+    };
+    
+    // Listen for selection changes (when user clicks away)
+    graph.addListener(mxEvent.CHANGE, function(sender, evt)
+    {
+        var changes = evt.getProperty('edit').changes;
+        if (changes)
+        {
+            for (var i = 0; i < changes.length; i++)
+            {
+                var change = changes[i];
+                if (change.constructor.name === 'mxSelectionChange')
+                {
+                    // Selection changed - check if we need to re-apply 3D for previously selected cells
+                    var previous = change.previous;
+                    if (previous && previous.length > 0)
+                    {
+                        for (var j = 0; j < previous.length; j++)
+                        {
+                            var prevCell = previous[j];
+                            if (prevCell && editingIsoExtrudeCells[prevCell.getId()])
+                            {
+                                // User deselected - re-apply 3D
+                                reapply3DEffect(prevCell);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+    
+    // Also listen for label changes (text editing completion)
+    graph.addListener(mxEvent.LABEL_CHANGED, function(sender, evt)
+    {
+        var cell = evt.getProperty('cell');
+        if (cell && editingIsoExtrudeCells[cell.getId()])
+        {
+            // Label changed - re-apply 3D after a short delay
+            window.setTimeout(function()
+            {
+                if (!graph.isEditing() && editingIsoExtrudeCells[cell.getId()])
+                {
+                    reapply3DEffect(cell);
+                }
+            }, 100);
+        }
+    });
+    
     // Add 3D properties section to Style format panel for isoExtrude shapes
     if (typeof StyleFormatPanel !== 'undefined')
     {
