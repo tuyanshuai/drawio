@@ -307,6 +307,18 @@ Draw.loadPlugin(function(editorUi)
         var ry = mxUtils.toRadians(parseFloat(mxUtils.getValue(style, 'isoRy', 35)));
         var rz = mxUtils.toRadians(parseFloat(mxUtils.getValue(style, 'isoRz', 0)));
 
+        // Bevel parameters (units: points, convert to pixels: 1pt ≈ 1.33px at 96 DPI)
+        var pointsToPixels = 1.33;
+        var topBevelType = mxUtils.getValue(style, 'topBevelType', 'none');
+        var topBevelWidth = parseFloat(mxUtils.getValue(style, 'topBevelWidth', 0)) * pointsToPixels;
+        var topBevelHeight = parseFloat(mxUtils.getValue(style, 'topBevelHeight', 0)) * pointsToPixels;
+        var bottomBevelType = mxUtils.getValue(style, 'bottomBevelType', 'none');
+        var bottomBevelWidth = parseFloat(mxUtils.getValue(style, 'bottomBevelWidth', 0)) * pointsToPixels;
+        var bottomBevelHeight = parseFloat(mxUtils.getValue(style, 'bottomBevelHeight', 0)) * pointsToPixels;
+        
+        var hasTopBevel = topBevelType !== 'none' && topBevelType !== '' && topBevelWidth > 0 && topBevelHeight > 0;
+        var hasBottomBevel = bottomBevelType !== 'none' && bottomBevelType !== '' && bottomBevelWidth > 0 && bottomBevelHeight > 0;
+
         var cx = x + w / 2;
         var cy = y + h / 2;
         var sx = w / 2;
@@ -347,22 +359,241 @@ Draw.loadPlugin(function(editorUi)
 
         // Get base shape path points based on original shape type
         var basePoints = getOutlinePoints(originalShape, x, y, w, h, style);
+        var numPoints = basePoints.length;
 
-        // Create front and back faces
-        var frontFace = [];
-        var backFace = [];
-        for (var i = 0; i < basePoints.length; i++)
+        // Create vertex array (v3) - will contain all vertices before rotation
+        var v3 = [];
+        
+        function calcArcSegments(widthPx, heightPx)
         {
-            frontFace.push({x: basePoints[i].x, y: basePoints[i].y, z: sz});
-            backFace.push({x: basePoints[i].x, y: basePoints[i].y, z: -sz});
+            var bevelSize = Math.max(widthPx, heightPx);
+            var segments = Math.round(bevelSize / 1.5);
+            if (!isFinite(segments) || segments <= 0)
+            {
+                segments = 0;
+            }
+            return Math.max(16, Math.min(64, segments || 0));
+        }
+        
+        // Store base indices for reference
+        var frontFaceStartIdx = 0;
+        var backFaceStartIdx = numPoints;
+        var topBevelStartIdx = -1;
+        var bottomBevelStartIdx = -1;
+        var topBevelCircleStartIdx = -1;
+        var bottomBevelCircleStartIdx = -1;
+        var topArcPointsPerSample = 0;
+        var bottomArcPointsPerSample = 0;
+        var topSideVertexPairs = []; // For rounded bevel faces
+        var bottomSideVertexPairs = []; // For rounded bevel faces
+        
+        // Create original front face vertices (at z = sz)
+        for (var i = 0; i < numPoints; i++)
+        {
+            v3.push({x: basePoints[i].x, y: basePoints[i].y, z: sz});
+        }
+        
+        // Generate top bevel vertices if needed
+        if (hasTopBevel)
+        {
+            if (topBevelType === 'circle')
+            {
+                // Rounded bevel: create smooth arc transition
+                var maxDim = Math.min(w, h);
+                var scale = Math.max(0.1, 1 - (topBevelWidth / maxDim));
+                var topBevelZ = sz + topBevelHeight;
+                
+                topBevelStartIdx = v3.length;
+                
+                // Number of arc points along the transition
+                var numArcPoints = calcArcSegments(topBevelWidth, topBevelHeight);
+                var arcCount = numArcPoints + 1;
+                topArcPointsPerSample = arcCount;
+                
+                // For each point on the outline, create arc vertices
+                for (var i = 0; i < numPoints; i++)
+                {
+                    var origX = basePoints[i].x;
+                    var origY = basePoints[i].y;
+                    var origZ = sz;
+                    
+                    var bevelX = origX * scale;
+                    var bevelY = origY * scale;
+                    var bevelZ = topBevelZ;
+                    
+                    // Create arc vertices for this outline point
+                    var arcVertices = [];
+                    for (var a = 0; a <= numArcPoints; a++)
+                    {
+                        var arcT = a / numArcPoints; // 0 to 1 along the arc
+                        
+                        // Interpolate X and Y linearly from original to bevel (radius contraction)
+                        var midX = origX + (bevelX - origX) * arcT;
+                        var midY = origY + (bevelY - origY) * arcT;
+                        
+                        // Interpolate Z using smooth convex arc interpolation
+                        // Use circular arc (sin function) for smooth, convex, continuous transition
+                        var easedT = Math.sin(arcT * Math.PI / 2);
+                        
+                        // Apply the circular arc interpolation for smooth, convex transition
+                        var arcZ = origZ + (bevelZ - origZ) * easedT;
+                        
+                        var vertexIdx = v3.length;
+                        v3.push({x: midX, y: midY, z: arcZ});
+                        arcVertices.push(vertexIdx);
+                    }
+                    
+                    // Store vertex pairs for face generation
+                    topSideVertexPairs.push({
+                        pointIdx: i,
+                        arcVertices: arcVertices.slice()
+                    });
+                }
+                
+                topBevelCircleStartIdx = topBevelStartIdx + (numPoints * arcCount);
+                
+                // Create bevel top face vertices (contracted outline at raised Z)
+                for (var i = 0; i < numPoints; i++)
+                {
+                    var px = basePoints[i].x * scale;
+                    var py = basePoints[i].y * scale;
+                    var pz = topBevelZ;
+                    v3.push({x: px, y: py, z: pz});
+                }
+            }
+            else
+            {
+                // Simple bevel: just create contracted top face
+                var maxDim = Math.min(w, h);
+                var scale = Math.max(0.1, 1 - (topBevelWidth / maxDim));
+                var topBevelZ = sz + topBevelHeight;
+                
+                topBevelStartIdx = v3.length;
+                topBevelCircleStartIdx = topBevelStartIdx;
+                topArcPointsPerSample = 0;
+                for (var i = 0; i < numPoints; i++)
+                {
+                    var px = basePoints[i].x * scale;
+                    var py = basePoints[i].y * scale;
+                    var pz = topBevelZ;
+                    v3.push({x: px, y: py, z: pz});
+                }
+            }
+        }
+        else
+        {
+            topArcPointsPerSample = 0;
+            topBevelCircleStartIdx = -1;
+        }
+        
+        // Update backFaceStartIdx after top bevel is added (if any)
+        // Back face is added after all top bevel vertices
+        backFaceStartIdx = v3.length;
+        
+        // Create original back face vertices (at z = -sz)
+        for (var i = 0; i < numPoints; i++)
+        {
+            v3.push({x: basePoints[i].x, y: basePoints[i].y, z: -sz});
+        }
+        
+        // Generate bottom bevel vertices if needed
+        if (hasBottomBevel)
+        {
+            if (bottomBevelType === 'circle')
+            {
+                // Rounded bevel: create smooth arc transition
+                var maxDim = Math.min(w, h);
+                var scale = Math.max(0.1, 1 - (bottomBevelWidth / maxDim));
+                var bottomBevelZ = -sz - bottomBevelHeight;
+                
+                bottomBevelStartIdx = v3.length;
+                
+                // Number of arc points along the transition
+                var numArcPoints = calcArcSegments(bottomBevelWidth, bottomBevelHeight);
+                var arcCount = numArcPoints + 1;
+                bottomArcPointsPerSample = arcCount;
+                
+                // For each point on the outline, create arc vertices
+                for (var i = 0; i < numPoints; i++)
+                {
+                    var origX = basePoints[i].x;
+                    var origY = basePoints[i].y;
+                    var origZ = -sz;
+                    
+                    var bevelX = origX * scale;
+                    var bevelY = origY * scale;
+                    var bevelZ = bottomBevelZ;
+                    
+                    // Create arc vertices for this outline point
+                    var arcVertices = [];
+                    for (var a = 0; a <= numArcPoints; a++)
+                    {
+                        var arcT = a / numArcPoints; // 0 to 1 along the arc
+                        
+                        // Interpolate X and Y linearly from original to bevel (radius contraction)
+                        var midX = origX + (bevelX - origX) * arcT;
+                        var midY = origY + (bevelY - origY) * arcT;
+                        
+                        // Interpolate Z using smooth convex arc interpolation
+                        // Use circular arc (sin function) for smooth, convex, continuous transition
+                        var easedT = Math.sin(arcT * Math.PI / 2);
+                        
+                        // Apply the circular arc interpolation for smooth, convex transition
+                        var arcZ = origZ + (bevelZ - origZ) * easedT;
+                        
+                        var vertexIdx = v3.length;
+                        v3.push({x: midX, y: midY, z: arcZ});
+                        arcVertices.push(vertexIdx);
+                    }
+                    
+                    // Store vertex pairs for face generation
+                    bottomSideVertexPairs.push({
+                        pointIdx: i,
+                        arcVertices: arcVertices.slice()
+                    });
+                }
+                
+                bottomBevelCircleStartIdx = bottomBevelStartIdx + (numPoints * arcCount);
+                
+                // Create bevel bottom face vertices (contracted outline at lowered Z)
+                for (var i = 0; i < numPoints; i++)
+                {
+                    var px = basePoints[i].x * scale;
+                    var py = basePoints[i].y * scale;
+                    var pz = bottomBevelZ;
+                    v3.push({x: px, y: py, z: pz});
+                }
+            }
+            else
+            {
+                // Simple bevel: just create contracted bottom face
+                var maxDim = Math.min(w, h);
+                var scale = Math.max(0.1, 1 - (bottomBevelWidth / maxDim));
+                var bottomBevelZ = -sz - bottomBevelHeight;
+                
+                bottomBevelStartIdx = v3.length;
+                bottomBevelCircleStartIdx = bottomBevelStartIdx;
+                bottomArcPointsPerSample = 0;
+                for (var i = 0; i < numPoints; i++)
+                {
+                    var px = basePoints[i].x * scale;
+                    var py = basePoints[i].y * scale;
+                    var pz = bottomBevelZ;
+                    v3.push({x: px, y: py, z: pz});
+                }
+            }
+        }
+        else
+        {
+            bottomArcPointsPerSample = 0;
+            bottomBevelCircleStartIdx = -1;
         }
 
         // Rotate all vertices
-        var allVertices = frontFace.concat(backFace);
         var rotatedVertices = [];
-        for (var i = 0; i < allVertices.length; i++)
+        for (var i = 0; i < v3.length; i++)
         {
-            rotatedVertices.push(rotate(allVertices[i]));
+            rotatedVertices.push(rotate(v3[i]));
         }
 
         var projectedVertices = [];
@@ -373,32 +604,196 @@ Draw.loadPlugin(function(editorUi)
 
         // Create faces (front, back, and sides)
         var faces = [];
-        var numPoints = basePoints.length;
         
-        // Front face
-        var frontFaceIndices = [];
-        for (var i = 0; i < numPoints; i++)
+        // Top face (front face)
+        if (hasTopBevel)
         {
-            frontFaceIndices.push(i);
+            // Top bevel face uses the contracted outline
+            var topBevelFaceStartIdx = topBevelType === 'circle' ? 
+                topBevelCircleStartIdx : topBevelStartIdx;
+            
+            var topFaceIndices = [];
+            for (var i = 0; i < numPoints; i++)
+            {
+                topFaceIndices.push(topBevelFaceStartIdx + i);
+            }
+            faces.push({indices: topFaceIndices, isFront: true});
         }
-        faces.push({indices: frontFaceIndices, isFront: true});
-
-        // Back face (reversed winding)
-        var backFaceIndices = [];
-        for (var i = numPoints - 1; i >= 0; i--)
+        else
         {
-            backFaceIndices.push(i + numPoints);
+            // Original front face
+            var frontFaceIndices = [];
+            for (var i = 0; i < numPoints; i++)
+            {
+                frontFaceIndices.push(i);
+            }
+            faces.push({indices: frontFaceIndices, isFront: true});
         }
-        faces.push({indices: backFaceIndices, isFront: false});
-
-        // Side faces
-        for (var i = 0; i < numPoints; i++)
+        
+        // Bottom face (back face)
+        if (hasBottomBevel)
         {
-            var next = (i + 1) % numPoints;
-            faces.push({
-                indices: [i, next, next + numPoints, i + numPoints],
-                isFront: null
-            });
+            // Bottom bevel face uses the contracted outline
+            var bottomBevelFaceStartIdx = bottomBevelType === 'circle' ?
+                bottomBevelCircleStartIdx : bottomBevelStartIdx;
+            
+            var bottomFaceIndices = [];
+            for (var i = numPoints - 1; i >= 0; i--)
+            {
+                bottomFaceIndices.push(bottomBevelFaceStartIdx + i);
+            }
+            faces.push({indices: bottomFaceIndices, isFront: false});
+        }
+        else
+        {
+            // Original back face (reversed winding)
+            var backFaceIndices = [];
+            for (var i = numPoints - 1; i >= 0; i--)
+            {
+                backFaceIndices.push(backFaceStartIdx + i);
+            }
+            faces.push({indices: backFaceIndices, isFront: false});
+        }
+        
+        // Side faces (connecting front and back)
+        if (hasTopBevel && topBevelType === 'circle')
+        {
+            // Rounded top bevel: create faces connecting original front face to bevel face
+            for (var i = 0; i < numPoints; i++)
+            {
+                var next = (i + 1) % numPoints;
+                
+                // Get arc vertices for this point and next point
+                var currArcVerts = topSideVertexPairs[i].arcVertices;
+                var nextArcVerts = topSideVertexPairs[next].arcVertices;
+                var arcLen = Math.min(currArcVerts.length, nextArcVerts.length);
+                
+                // Create faces connecting arc vertices
+                for (var a = 0; a < arcLen - 1; a++)
+                {
+                    var v1 = currArcVerts[a];
+                    var v2 = currArcVerts[a + 1];
+                    var v3 = nextArcVerts[a + 1];
+                    var v4 = nextArcVerts[a];
+                    
+                    faces.push({
+                        indices: [v1, v2, v3, v4],
+                        isSide: true
+                    });
+                }
+            }
+        }
+        else if (hasTopBevel)
+        {
+            // Simple top bevel: connect original front face to bevel face
+            var topBevelFaceStartIdx = topBevelStartIdx;
+            for (var i = 0; i < numPoints; i++)
+            {
+                var next = (i + 1) % numPoints;
+                faces.push({
+                    indices: [frontFaceStartIdx + i, frontFaceStartIdx + next, topBevelFaceStartIdx + next, topBevelFaceStartIdx + i],
+                    isSide: true
+                });
+            }
+        }
+        
+        // Middle side faces (only if no bevels or only one bevel)
+        if (!hasTopBevel && !hasBottomBevel)
+        {
+            // Original side faces connecting front and back
+            for (var i = 0; i < numPoints; i++)
+            {
+                var next = (i + 1) % numPoints;
+                faces.push({
+                    indices: [frontFaceStartIdx + i, frontFaceStartIdx + next, backFaceStartIdx + next, backFaceStartIdx + i],
+                    isSide: true
+                });
+            }
+        }
+        else if (hasTopBevel && !hasBottomBevel)
+        {
+            // Connect bevel top to original back
+            var topConnectIdx = topBevelType === 'circle' ? topBevelCircleStartIdx : topBevelStartIdx;
+            for (var i = 0; i < numPoints; i++)
+            {
+                var next = (i + 1) % numPoints;
+                faces.push({
+                    indices: [topConnectIdx + i, topConnectIdx + next, backFaceStartIdx + next, backFaceStartIdx + i],
+                    isSide: true
+                });
+            }
+        }
+        else if (!hasTopBevel && hasBottomBevel)
+        {
+            // Connect original front to bevel bottom
+            var bottomConnectIdx = bottomBevelType === 'circle' ?
+                bottomBevelCircleStartIdx : bottomBevelStartIdx;
+            for (var i = 0; i < numPoints; i++)
+            {
+                var next = (i + 1) % numPoints;
+                faces.push({
+                    indices: [frontFaceStartIdx + i, frontFaceStartIdx + next, bottomConnectIdx + next, bottomConnectIdx + i],
+                    isSide: true
+                });
+            }
+        }
+        else if (hasTopBevel && hasBottomBevel)
+        {
+            // Connect bevel top to bevel bottom
+            var topConnectIdx = topBevelType === 'circle' ? 
+                topBevelCircleStartIdx : topBevelStartIdx;
+            var bottomConnectIdx = bottomBevelType === 'circle' ?
+                bottomBevelCircleStartIdx : bottomBevelStartIdx;
+            for (var i = 0; i < numPoints; i++)
+            {
+                var next = (i + 1) % numPoints;
+                faces.push({
+                    indices: [topConnectIdx + i, topConnectIdx + next, bottomConnectIdx + next, bottomConnectIdx + i],
+                    isSide: true
+                });
+            }
+        }
+        
+        // Bottom bevel side faces
+        if (hasBottomBevel && bottomBevelType === 'circle')
+        {
+            // Rounded bottom bevel: create faces connecting original back face to bevel face
+            for (var i = 0; i < numPoints; i++)
+            {
+                var next = (i + 1) % numPoints;
+                
+                // Get arc vertices for this point and next point
+                var currArcVerts = bottomSideVertexPairs[i].arcVertices;
+                var nextArcVerts = bottomSideVertexPairs[next].arcVertices;
+                var arcLen = Math.min(currArcVerts.length, nextArcVerts.length);
+                
+                // Create faces connecting arc vertices
+                for (var a = 0; a < arcLen - 1; a++)
+                {
+                    var v1 = currArcVerts[a];
+                    var v2 = currArcVerts[a + 1];
+                    var v3 = nextArcVerts[a + 1];
+                    var v4 = nextArcVerts[a];
+                    
+                    faces.push({
+                        indices: [v1, v2, v3, v4],
+                        isSide: true
+                    });
+                }
+            }
+        }
+        else if (hasBottomBevel)
+        {
+            // Simple bottom bevel: connect original back face to bevel face
+            var bottomBevelFaceStartIdx = bottomBevelStartIdx;
+            for (var i = 0; i < numPoints; i++)
+            {
+                var next = (i + 1) % numPoints;
+                faces.push({
+                    indices: [backFaceStartIdx + i, backFaceStartIdx + next, bottomBevelFaceStartIdx + next, bottomBevelFaceStartIdx + i],
+                    isSide: true
+                });
+            }
         }
 
         // Calculate face normals and visibility
@@ -1830,5 +2225,340 @@ Draw.loadPlugin(function(editorUi)
             }
         };
     }
+    
+    // --- Inject properties into right-side Format panel for isoExtrude ---
+    function renderIsoExtrudeFormatPanel()
+    {
+        var fmt = editorUi.format;
+        if (!fmt || !fmt.container) return;
+        // Remove previous panel
+        var old = document.getElementById('isoExtrude-format-panel');
+        if (old && old.parentNode) old.parentNode.removeChild(old);
+
+        var cell = graph.getSelectionCell();
+        var style = (cell != null) ? graph.getCurrentCellStyle(cell) : null;
+        var shapeType = (style != null) ? style['shape'] : null;
+        if (!style || shapeType !== 'isoExtrude') return;
+
+        var panel = document.createElement('div');
+        panel.id = 'isoExtrude-format-panel';
+        panel.className = 'geStyleOptions';
+        panel.style.padding = '8px 12px';
+        panel.style.borderTop = '1px solid var(--gePrimaryBorderColor, #e0e0e0)';
+
+        // Insert panel at the bottom
+        fmt.container.appendChild(panel);
+
+        function addNumber(labelText, key, min, max, step)
+        {
+            var row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.alignItems = 'center';
+            row.style.gap = '6px';
+            row.style.margin = '6px 0';
+            var label = document.createElement('label');
+            label.style.flex = '0 0 64px';
+            mxUtils.write(label, labelText);
+            var input = document.createElement('input');
+            input.type = 'number';
+            input.style.flex = '1 1 auto';
+            if (min != null) input.min = String(min);
+            if (max != null) input.max = String(max);
+            input.step = String(step != null ? step : 1);
+            input.value = mxUtils.getValue(style, key, key === 'isoZ' ? 100 : (key === 'isoRz' ? 0 : 35));
+
+            var updateHandler = function()
+            {
+                var cur = graph.getSelectionCell();
+                var curStyle = (cur != null) ? graph.getCurrentCellStyle(cur) : null;
+                var curShape = (curStyle != null) ? curStyle['shape'] : null;
+                if (cur && graph.getModel().isVertex(cur) && curShape === 'isoExtrude')
+                {
+                    graph.getModel().beginUpdate();
+                    try
+                    {
+                        graph.setCellStyles(key, input.value, [cur]);
+                        graph.refresh(cur);
+                    }
+                    finally
+                    {
+                        graph.getModel().endUpdate();
+                    }
+                }
+            };
+
+            mxEvent.addListener(input, 'change', updateHandler);
+            mxEvent.addListener(input, 'blur', updateHandler);
+            
+            // Add mouse wheel support
+            mxEvent.addListener(input, 'wheel', function(evt)
+            {
+                var delta = evt.deltaY || -evt.wheelDelta || 0;
+                var increment = (evt.shiftKey || evt.ctrlKey) ? (step * 10) : step;
+                
+                if (delta < 0)
+                {
+                    var newValue = Math.min(max, parseInt(input.value) + increment);
+                    input.value = String(newValue);
+                    updateHandler();
+                }
+                else if (delta > 0)
+                {
+                    var newValue = Math.max(min, parseInt(input.value) - increment);
+                    input.value = String(newValue);
+                    updateHandler();
+                }
+                
+                evt.preventDefault();
+                mxEvent.consume(evt);
+            });
+            
+            mxEvent.addListener(row, 'mouseenter', function()
+            {
+                if (document.activeElement !== input && !input.disabled)
+                {
+                    input.focus();
+                }
+            });
+
+            row.appendChild(label);
+            row.appendChild(input);
+            panel.appendChild(row);
+        }
+
+        addNumber('Rot X', 'isoRx', -180, 180, 1);
+        addNumber('Rot Y', 'isoRy', -180, 180, 1);
+        addNumber('Rot Z', 'isoRz', -180, 180, 1);
+        addNumber('Depth', 'isoZ', 0, 2000, 1);
+        
+        // Add 3D Bevel controls (for isoExtrude)
+        // Add separator
+        var separator = document.createElement('div');
+        separator.style.height = '1px';
+        separator.style.backgroundColor = 'var(--gePrimaryBorderColor, #e0e0e0)';
+        separator.style.margin = '12px 0';
+        panel.appendChild(separator);
+        
+        // Title: 三维格式
+        var titleRow = document.createElement('div');
+        titleRow.style.display = 'flex';
+        titleRow.style.alignItems = 'center';
+        titleRow.style.margin = '8px 0 4px 0';
+        titleRow.style.fontWeight = '600';
+        titleRow.style.fontSize = '12px';
+        titleRow.style.color = 'var(--geTextColor, #333)';
+        mxUtils.write(titleRow, '三维格式');
+        panel.appendChild(titleRow);
+        
+        // Top Bevel Section
+        var topBevelSection = document.createElement('div');
+        topBevelSection.style.margin = '8px 0';
+        
+        var topBevelTitle = document.createElement('div');
+        topBevelTitle.style.display = 'flex';
+        topBevelTitle.style.alignItems = 'center';
+        topBevelTitle.style.marginBottom = '6px';
+        topBevelTitle.style.fontSize = '11px';
+        topBevelTitle.style.color = 'var(--geTextColor, #666)';
+        mxUtils.write(topBevelTitle, '顶部棱台');
+        topBevelSection.appendChild(topBevelTitle);
+        
+        // Top Bevel Type selector
+        var topBevelTypeRow = document.createElement('div');
+        topBevelTypeRow.style.display = 'flex';
+        topBevelTypeRow.style.alignItems = 'center';
+        topBevelTypeRow.style.gap = '6px';
+        topBevelTypeRow.style.margin = '4px 0';
+        var topBevelTypeLabel = document.createElement('label');
+        topBevelTypeLabel.style.flex = '0 0 64px';
+        topBevelTypeLabel.style.fontSize = '11px';
+        mxUtils.write(topBevelTypeLabel, '类型');
+        var topBevelTypeSelect = document.createElement('select');
+        topBevelTypeSelect.style.flex = '1 1 auto';
+        topBevelTypeSelect.style.padding = '4px';
+        topBevelTypeSelect.style.fontSize = '11px';
+        topBevelTypeSelect.innerHTML = '<option value="none">无</option><option value="circle">圆角</option>';
+        topBevelTypeSelect.value = mxUtils.getValue(style, 'topBevelType', 'none');
+        topBevelTypeRow.appendChild(topBevelTypeLabel);
+        topBevelTypeRow.appendChild(topBevelTypeSelect);
+        topBevelSection.appendChild(topBevelTypeRow);
+        
+        function addBevelNumber(section, labelText, key, min, max, step, defaultValue)
+        {
+            var row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.alignItems = 'center';
+            row.style.gap = '6px';
+            row.style.margin = '4px 0';
+            var label = document.createElement('label');
+            label.style.flex = '0 0 64px';
+            label.style.fontSize = '11px';
+            mxUtils.write(label, labelText);
+            var input = document.createElement('input');
+            input.type = 'number';
+            input.style.flex = '1 1 auto';
+            input.style.padding = '4px';
+            input.style.fontSize = '11px';
+            if (min != null) input.min = String(min);
+            if (max != null) input.max = String(max);
+            input.step = String(step != null ? step : 1);
+            input.value = mxUtils.getValue(style, key, defaultValue);
+            
+            var updateHandler = function()
+            {
+                var cur = graph.getSelectionCell();
+                var curStyle = (cur != null) ? graph.getCurrentCellStyle(cur) : null;
+                var curShape = (curStyle != null) ? curStyle['shape'] : null;
+                if (cur && graph.getModel().isVertex(cur) && curShape === 'isoExtrude')
+                {
+                    graph.getModel().beginUpdate();
+                    try
+                    {
+                        graph.setCellStyles(key, input.value, [cur]);
+                        graph.refresh(cur);
+                    }
+                    finally
+                    {
+                        graph.getModel().endUpdate();
+                    }
+                }
+            };
+            
+            mxEvent.addListener(input, 'change', updateHandler);
+            mxEvent.addListener(input, 'blur', updateHandler);
+            
+            mxEvent.addListener(input, 'wheel', function(evt)
+            {
+                var delta = evt.deltaY || -evt.wheelDelta || 0;
+                var increment = (evt.shiftKey || evt.ctrlKey) ? (step * 10) : step;
+                
+                if (delta < 0)
+                {
+                    var newValue = Math.min(max, parseFloat(input.value) + increment);
+                    input.value = String(newValue);
+                    updateHandler();
+                }
+                else if (delta > 0)
+                {
+                    var newValue = Math.max(min, parseFloat(input.value) - increment);
+                    input.value = String(newValue);
+                    updateHandler();
+                }
+                
+                evt.preventDefault();
+                mxEvent.consume(evt);
+            });
+            
+            mxEvent.addListener(row, 'mouseenter', function()
+            {
+                if (document.activeElement !== input && !input.disabled)
+                {
+                    input.focus();
+                }
+            });
+            
+            row.appendChild(label);
+            row.appendChild(input);
+            section.appendChild(row);
+        }
+        
+        addBevelNumber(topBevelSection, '宽度', 'topBevelWidth', 0, 1000, 1, 0);
+        addBevelNumber(topBevelSection, '高度', 'topBevelHeight', 0, 1000, 1, 0);
+        
+        // Top Bevel Type change handler
+        mxEvent.addListener(topBevelTypeSelect, 'change', function()
+        {
+            var cur = graph.getSelectionCell();
+            var curStyle = (cur != null) ? graph.getCurrentCellStyle(cur) : null;
+            var curShape = (curStyle != null) ? curStyle['shape'] : null;
+            if (cur && graph.getModel().isVertex(cur) && curShape === 'isoExtrude')
+            {
+                graph.getModel().beginUpdate();
+                try
+                {
+                    graph.setCellStyles('topBevelType', topBevelTypeSelect.value, [cur]);
+                    graph.refresh(cur);
+                }
+                finally
+                {
+                    graph.getModel().endUpdate();
+                }
+            }
+        });
+        
+        panel.appendChild(topBevelSection);
+        
+        // Bottom Bevel Section
+        var bottomBevelSection = document.createElement('div');
+        bottomBevelSection.style.margin = '12px 0 8px 0';
+        
+        var bottomBevelTitle = document.createElement('div');
+        bottomBevelTitle.style.display = 'flex';
+        bottomBevelTitle.style.alignItems = 'center';
+        bottomBevelTitle.style.marginBottom = '6px';
+        bottomBevelTitle.style.fontSize = '11px';
+        bottomBevelTitle.style.color = 'var(--geTextColor, #666)';
+        mxUtils.write(bottomBevelTitle, '底部棱台');
+        bottomBevelSection.appendChild(bottomBevelTitle);
+        
+        // Bottom Bevel Type selector
+        var bottomBevelTypeRow = document.createElement('div');
+        bottomBevelTypeRow.style.display = 'flex';
+        bottomBevelTypeRow.style.alignItems = 'center';
+        bottomBevelTypeRow.style.gap = '6px';
+        bottomBevelTypeRow.style.margin = '4px 0';
+        var bottomBevelTypeLabel = document.createElement('label');
+        bottomBevelTypeLabel.style.flex = '0 0 64px';
+        bottomBevelTypeLabel.style.fontSize = '11px';
+        mxUtils.write(bottomBevelTypeLabel, '类型');
+        var bottomBevelTypeSelect = document.createElement('select');
+        bottomBevelTypeSelect.style.flex = '1 1 auto';
+        bottomBevelTypeSelect.style.padding = '4px';
+        bottomBevelTypeSelect.style.fontSize = '11px';
+        bottomBevelTypeSelect.innerHTML = '<option value="none">无</option><option value="circle">圆角</option>';
+        bottomBevelTypeSelect.value = mxUtils.getValue(style, 'bottomBevelType', 'none');
+        bottomBevelTypeRow.appendChild(bottomBevelTypeLabel);
+        bottomBevelTypeRow.appendChild(bottomBevelTypeSelect);
+        bottomBevelSection.appendChild(bottomBevelTypeRow);
+        
+        addBevelNumber(bottomBevelSection, '宽度', 'bottomBevelWidth', 0, 1000, 1, 0);
+        addBevelNumber(bottomBevelSection, '高度', 'bottomBevelHeight', 0, 1000, 1, 0);
+        
+        // Bottom Bevel Type change handler
+        mxEvent.addListener(bottomBevelTypeSelect, 'change', function()
+        {
+            var cur = graph.getSelectionCell();
+            var curStyle = (cur != null) ? graph.getCurrentCellStyle(cur) : null;
+            var curShape = (curStyle != null) ? curStyle['shape'] : null;
+            if (cur && graph.getModel().isVertex(cur) && curShape === 'isoExtrude')
+            {
+                graph.getModel().beginUpdate();
+                try
+                {
+                    graph.setCellStyles('bottomBevelType', bottomBevelTypeSelect.value, [cur]);
+                    graph.refresh(cur);
+                }
+                finally
+                {
+                    graph.getModel().endUpdate();
+                }
+            }
+        });
+        
+        panel.appendChild(bottomBevelSection);
+    }
+
+    var scheduleRender = mxUtils.bind(this, function()
+    {
+        // Defer slightly to let core format panel rebuild first
+        window.setTimeout(renderIsoExtrudeFormatPanel, 0);
+    });
+
+    if (editorUi.format && editorUi.format.addListener)
+    {
+        editorUi.format.addListener('refresh', scheduleRender);
+    }
+    graph.getSelectionModel().addListener(mxEvent.CHANGE, scheduleRender);
+    graph.getModel().addListener(mxEvent.CHANGE, scheduleRender);
 });
 
