@@ -20110,9 +20110,17 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 		return [];
 	}
 
+	// 检查必需的形状是否已注册
 	if (!mxCellRenderer || !mxCellRenderer.defaultShapes || mxCellRenderer.defaultShapes['manualPolygon'] == null)
 	{
-		throw new Error(mxResources.get('svgConversionError') || 'Unable to convert SVG');
+		throw new Error(mxResources.get('svgConversionError') || 'Unable to convert SVG: manualPolygon shape not registered');
+	}
+	
+	// 检查 naturalSpline 形状是否已注册（用于开放路径）
+	var hasNaturalSpline = mxCellRenderer && mxCellRenderer.defaultShapes && mxCellRenderer.defaultShapes['naturalSpline'] != null;
+	if (!hasNaturalSpline && window.console)
+	{
+		console.warn('[SVG Convert] naturalSpline 形状未注册，开放路径将使用 polygon 替代');
 	}
 
 	var parser = new DOMParser();
@@ -20173,11 +20181,11 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 			// 只有在 viewBox 完全不存在时才使用 bbox
 			if (vbWidth == null || vbWidth === 0)
 			{
-				vbWidth = bbox.width;
+			vbWidth = bbox.width;
 			}
 			if (vbHeight == null || vbHeight === 0)
 			{
-				vbHeight = bbox.height;
+			vbHeight = bbox.height;
 			}
 			// 注意：不要覆盖 vbX 和 vbY，保持 viewBox 的原始偏移
 			// vbX 和 vbY 应该来自 viewBox 属性，而不是 bbox
@@ -20366,6 +20374,50 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 		return [parseFloat(Number(nx).toFixed(6)), parseFloat(Number(ny).toFixed(6))];
 	};
 
+	/**
+	 * 检查 path 是否闭合
+	 * @param {SVGPathElement} el - SVG path 元素
+	 * @returns {boolean} - 如果路径闭合返回 true
+	 */
+	var isPathClosed = function(el)
+	{
+		// 方法1: 检查 path 的 d 属性是否以 Z 或 z 结尾
+		var d = el.getAttribute('d');
+		if (d)
+		{
+			// 移除空白字符后检查
+			var trimmed = d.trim().replace(/\s+/g, ' ');
+			if (trimmed.charAt(trimmed.length - 1).toUpperCase() === 'Z')
+			{
+				return true;
+			}
+		}
+		
+		// 方法2: 尝试获取第一个和最后一个点，检查是否相同
+		try
+		{
+			var total = el.getTotalLength();
+			if (total > 0)
+			{
+				var firstPt = el.getPointAtLength(0);
+				var lastPt = el.getPointAtLength(total);
+				// 考虑浮点误差，如果两点距离小于阈值则认为闭合
+				var threshold = Math.max(vbWidth, vbHeight) * 0.001; // 0.1% 的尺寸
+				var dist = Math.sqrt(Math.pow(lastPt.x - firstPt.x, 2) + Math.pow(lastPt.y - firstPt.y, 2));
+				if (dist < threshold)
+				{
+					return true;
+				}
+			}
+		}
+		catch (e)
+		{
+			// 如果无法检查，默认返回 false（开放路径）
+		}
+		
+		return false;
+	};
+
 	var samplePath = function(el)
 	{
 		var pts = [];
@@ -20391,7 +20443,7 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 				console.warn('[SVG Convert] 路径长度为0，尝试备用方法');
 			}
 			// 返回空数组，让上层处理
-			return [];
+			return {points: [], isClosed: false};
 		}
 		
 		// 增加采样点数以提高精度，特别是对于复杂曲线
@@ -20416,8 +20468,8 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 				var p = el.getPointAtLength(length);
 				if (p && isFinite(p.x) && isFinite(p.y))
 				{
-					pts.push(applyMatrix({x: p.x, y: p.y}, el.getCTM ? el.getCTM() : null));
-				}
+			pts.push(applyMatrix({x: p.x, y: p.y}, el.getCTM ? el.getCTM() : null));
+		}
 			}
 			catch (e)
 			{
@@ -20435,13 +20487,111 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 			{
 				console.warn('[SVG Convert] 路径采样点不足，仅', pts.length, '个点');
 			}
-			return [];
+			return {points: [], isClosed: false};
 		}
 		
-		return sanitizePoints(pts);
+		var sanitizedPts = sanitizePoints(pts);
+		var isClosed = isPathClosed(el);
+		
+		return {points: sanitizedPts, isClosed: isClosed};
 	};
 
 	var results = [];
+
+	/**
+	 * 将路径转换为 natural spline（用于开放路径）
+	 */
+	var pushSpline = function(points, el, computed)
+	{
+		if (points == null || points.length < 2)
+		{
+			return;
+		}
+		var normalized = [];
+		for (var i = 0; i < points.length; i++)
+		{
+			normalized.push(normalizePoint(points[i]));
+		}
+		var fill = convertColor(el.getAttribute('fill'), el.getAttribute('fill-opacity'), computed ? computed.fill : null, computed ? computed.fillOpacity : null);
+		var stroke = convertColor(el.getAttribute('stroke'), el.getAttribute('stroke-opacity'), computed ? computed.stroke : null, computed ? computed.strokeOpacity : null);
+		var strokeWidth = el.getAttribute('stroke-width');
+		if ((strokeWidth == null || strokeWidth === '') && computed)
+		{
+			strokeWidth = computed.strokeWidth;
+		}
+		strokeWidth = parseFloat(strokeWidth);
+		if (!isFinite(strokeWidth))
+		{
+			strokeWidth = 1;
+		}
+		strokeWidth = Math.max(0, strokeWidth * avgScale);
+		var dash = el.getAttribute('stroke-dasharray');
+		if ((dash == null || dash === '') && computed)
+		{
+			dash = computed.strokeDasharray;
+		}
+		var dashPattern = null;
+		if (dash != null && dash !== '' && dash !== 'none')
+		{
+			var dashParts = dash.split(/\s+|,/);
+			var converted = [];
+			for (var i = 0; i < dashParts.length; i++)
+			{
+				var val = parseFloat(dashParts[i]);
+				if (isFinite(val))
+				{
+					converted.push(Number(Math.max(0, val * avgScale)).toFixed(2));
+				}
+			}
+			if (converted.length > 0)
+			{
+				dashPattern = converted.join(' ');
+			}
+		}
+		// 使用 naturalSpline 形状
+		var style = 'shape=naturalSpline;splineCoords=' + JSON.stringify(normalized) + ';';
+		// spline 通常是开放路径，不填充
+		style += 'fillColor=none;';
+		if (!stroke.color)
+		{
+			style += 'strokeColor=none;';
+		}
+		else
+		{
+			style += 'strokeColor=' + stroke.color + ';';
+			if (stroke.alpha < 1)
+			{
+				style += 'strokeOpacity=' + Math.round(stroke.alpha * 100) + ';';
+			}
+		}
+		if (strokeWidth > 0)
+		{
+			style += 'strokeWidth=' + Number(strokeWidth).toFixed(2) + ';';
+		}
+		var linecap = el.getAttribute('stroke-linecap');
+		if (!linecap && computed)
+		{
+			linecap = computed.strokeLinecap;
+		}
+		if (linecap)
+		{
+			style += 'strokeLinecap=' + linecap + ';';
+		}
+		var linejoin = el.getAttribute('stroke-linejoin');
+		if (!linejoin && computed)
+		{
+			linejoin = computed.strokeLinejoin;
+		}
+		if (linejoin)
+		{
+			style += 'strokeLinejoin=' + linejoin + ';';
+		}
+		if (dashPattern)
+		{
+			style += 'dashed=1;dashPattern=' + dashPattern + ';';
+		}
+		results.push({style: style});
+	};
 
 	var pushPolygon = function(points, el, computed)
 	{
@@ -20598,7 +20748,7 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 	
 	// 重新获取所有元素（包括 use 引用的元素）
 	elements = importedSvg.querySelectorAll(supportedElements);
-	
+
 	for (var i = 0; i < elements.length; i++)
 	{
 		var el = elements[i];
@@ -20609,10 +20759,50 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 		{
 			try
 			{
-				pts = samplePath(el);
+				var pathResult = samplePath(el);
+				pts = pathResult.points;
+				var isClosed = pathResult.isClosed;
+				
 				if (window.console && i < 5)
 				{
-					console.log('[SVG Convert] path', i, '采样点数:', pts ? pts.length : 0);
+					console.log('[SVG Convert] path', i, '采样点数:', pts ? pts.length : 0, '是否闭合:', isClosed);
+				}
+				
+				// 根据是否闭合选择转换方式
+				if (pts != null && pts.length >= 2)
+				{
+					if (isClosed)
+					{
+						// 闭合路径：使用 polygon
+						if (window.console && i < 3)
+						{
+							console.log('[SVG Convert] 使用 polygon 转换闭合路径');
+						}
+						pushPolygon(pts, el, computed);
+					}
+					else
+					{
+						// 开放路径：使用 natural spline（如果可用）
+						if (hasNaturalSpline)
+						{
+							if (window.console && i < 3)
+							{
+								console.log('[SVG Convert] 使用 natural spline 转换开放路径');
+							}
+							pushSpline(pts, el, computed);
+						}
+						else
+						{
+							// 如果没有 naturalSpline，回退到 polygon
+							if (window.console && i < 3)
+							{
+								console.warn('[SVG Convert] naturalSpline 不可用，使用 polygon 替代开放路径');
+							}
+							pushPolygon(pts, el, computed);
+						}
+					}
+					// 标记已处理，避免下面的 pushPolygon 再次处理
+					pts = null;
 				}
 			}
 			catch (e)
@@ -20625,8 +20815,9 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 				pts = null;
 			}
 		}
-		else if (tagName === 'polygon' || tagName === 'polyline')
+		else if (tagName === 'polygon')
 		{
+			// polygon 是闭合的，使用 polygon
 			pts = [];
 			if (el.points && el.points.length > 0)
 			{
@@ -20637,6 +20828,39 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 				}
 			}
 			pts = sanitizePoints(pts);
+		}
+		else if (tagName === 'polyline')
+		{
+			// polyline 是开放的，使用 natural spline
+			pts = [];
+			if (el.points && el.points.length > 0)
+			{
+				for (var j = 0; j < el.points.length; j++)
+				{
+					var point = el.points[j];
+					pts.push(applyMatrix({x: point.x, y: point.y}, el.getCTM ? el.getCTM() : null));
+				}
+			}
+			pts = sanitizePoints(pts);
+			if (pts != null && pts.length >= 2)
+			{
+				// polyline 是开放的，使用 natural spline（如果可用）
+				if (hasNaturalSpline)
+				{
+					pushSpline(pts, el, computed);
+				}
+				else
+				{
+					// 如果没有 naturalSpline，回退到 polygon
+					if (window.console)
+					{
+						console.warn('[SVG Convert] naturalSpline 不可用，polyline 使用 polygon 替代');
+					}
+					pushPolygon(pts, el, computed);
+				}
+				// 标记已处理，避免下面的 pushPolygon 再次处理
+				pts = null;
+			}
 		}
 		else if (tagName === 'rect')
 		{
@@ -20748,9 +20972,10 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 		
 		// 输出支持的 SVG 元素类型总结
 		var supportedTypes = {
-			'path': '路径 - 使用采样转换为多边形',
-			'polygon': '多边形 - 直接读取点',
-			'polyline': '折线 - 直接读取点',
+			'path (闭合)': '闭合路径 - 使用 polygon 转换',
+			'path (开放)': '开放路径 - 使用 natural spline 转换' + (hasNaturalSpline ? '' : ' (不可用时回退到 polygon)'),
+			'polygon': '多边形（闭合）- 直接读取点，使用 polygon',
+			'polyline': '折线（开放）- 直接读取点，使用 natural spline' + (hasNaturalSpline ? '' : ' (不可用时回退到 polygon)'),
 			'rect': '矩形 - 转换为4点多边形',
 			'circle': '圆形 - 转换为多边形（40段）',
 			'ellipse': '椭圆 - 转换为多边形（40段）',
