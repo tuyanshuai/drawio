@@ -40,7 +40,8 @@
 			"plugins/highlight-effect.js",
 			"plugins/isocube.js",
 			"plugins/isoextrude.js",
-			"plugins/material-library-api.js"
+			"plugins/material-library-api.js",
+			"plugins/svg-smart-color.js"
 		];
 		
 		// Check if 'minimal=1' parameter is set to load only core plugins

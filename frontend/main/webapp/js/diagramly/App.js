@@ -828,7 +828,8 @@ App.main = function(callback, createUi)
 					'plugins/highlight-effect.js',
 					'plugins/isocube.js',
 					'plugins/isoextrude.js',
-					'plugins/material-library-api.js'
+					'plugins/material-library-api.js',
+					'plugins/svg-smart-color.js'
 				];
 				
 				// Check if all=1 parameter is set

@@ -87,20 +87,20 @@ Draw.loadPlugin(function(editorUi)
         // Debug: Print stroke setup details
         if (window.console && window.console.log)
         {
-            console.log('[setup3DShapeStroke] Stroke setup result:', {
-                strokeColor: strokeColor,
-                strokeColorNone: strokeColorNone,
-                strokeWidth: strokeWidth,
-                strokeOpacity: strokeOpacity,
-                strokeEnabled: strokeEnabled,
-                defaultStrokewidth: defaultStrokewidth,
-                styleStrokeColor: mxUtils.getValue(style, mxConstants.STYLE_STROKECOLOR, null),
-                styleStrokeWidth: mxUtils.getValue(style, mxConstants.STYLE_STROKEWIDTH, null),
-                styleStrokeOpacity: mxUtils.getValue(style, 'strokeOpacity', null),
-                mxConstantsNONE: mxConstants.NONE,
-                isEqualToNONE: (strokeColor === mxConstants.NONE || 
-                               mxUtils.getValue(style, mxConstants.STYLE_STROKECOLOR, null) === mxConstants.NONE)
-            });
+            // console.log('[setup3DShapeStroke] Stroke setup result:', {
+            //     strokeColor: strokeColor,
+            //     strokeColorNone: strokeColorNone,
+            //     strokeWidth: strokeWidth,
+            //     strokeOpacity: strokeOpacity,
+            //     strokeEnabled: strokeEnabled,
+            //     defaultStrokewidth: defaultStrokewidth,
+            //     styleStrokeColor: mxUtils.getValue(style, mxConstants.STYLE_STROKECOLOR, null),
+            //     styleStrokeWidth: mxUtils.getValue(style, mxConstants.STYLE_STROKEWIDTH, null),
+            //     styleStrokeOpacity: mxUtils.getValue(style, 'strokeOpacity', null),
+            //     mxConstantsNONE: mxConstants.NONE,
+            //     isEqualToNONE: (strokeColor === mxConstants.NONE || 
+            //                    mxUtils.getValue(style, mxConstants.STYLE_STROKECOLOR, null) === mxConstants.NONE)
+            // });
         }
         
         // Return stroke info object

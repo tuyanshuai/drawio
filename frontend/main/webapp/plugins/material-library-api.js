@@ -455,12 +455,12 @@ Draw.loadPlugin(function(editorUi)
 			
 			if (window.console)
 			{
-				console.log('[Icons Library API] 创建 SVG 条目:', {
-					id: item.id,
-					title: entry.title,
-					tags: entry.tags,
-					size: entry.w + 'x' + entry.h
-				});
+				// console.log('[Icons Library API] 创建 SVG 条目:', {
+				// 	id: item.id,
+				// 	title: entry.title,
+				// 	tags: entry.tags,
+				// 	size: entry.w + 'x' + entry.h
+				// });
 			}
 			
 			if (callback)
@@ -862,11 +862,11 @@ Draw.loadPlugin(function(editorUi)
 							
 							if (window.console)
 							{
-								console.log('[Icons Library API] 添加条目:', {
-									title: entry.title,
-									tags: entry.tags,
-									hasData: !!entry.data
-								});
+								// console.log('[Icons Library API] 添加条目:', {
+								// 	title: entry.title,
+								// 	tags: entry.tags,
+								// 	hasData: !!entry.data
+								// });
 							}
 							
 							sidebar.addEntries([entry]);

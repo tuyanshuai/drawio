@@ -232,7 +232,7 @@ Draw.loadPlugin(function(editorUi)
 		
 		if (window.console && this.state && this.state.cell)
 		{
-			console.log('[Natural Spline Draw] redrawPath - coords count:', splineCoords ? splineCoords.length : 0, 'w:', w, 'h:', h);
+			// console.log('[Natural Spline Draw] redrawPath - coords count:', splineCoords ? splineCoords.length : 0, 'w:', w, 'h:', h);
 		}
 		
 		if (splineCoords && splineCoords.length >= 2)
@@ -283,7 +283,7 @@ Draw.loadPlugin(function(editorUi)
 			
 			if (window.console && this.state && this.state.cell)
 			{
-				console.log('[Natural Spline Draw] getSplineCoords - raw string:', coordsStr, 'type:', typeof coordsStr);
+				// console.log('[Natural Spline Draw] getSplineCoords - raw string:', coordsStr, 'type:', typeof coordsStr);
 			}
 			
 			// 如果已经是数组，直接返回
@@ -299,7 +299,7 @@ Draw.loadPlugin(function(editorUi)
 				
 				if (window.console && this.state && this.state.cell)
 				{
-					console.log('[Natural Spline Draw] getSplineCoords - parsed:', parsed, 'length:', parsed ? parsed.length : 0);
+					// console.log('[Natural Spline Draw] getSplineCoords - parsed:', parsed, 'length:', parsed ? parsed.length : 0);
 				}
 				
 				return parsed;
@@ -311,7 +311,7 @@ Draw.loadPlugin(function(editorUi)
 		{
 			if (window.console)
 			{
-				console.error('[Natural Spline Draw] 解析 splineCoords 失败:', e, 'coordsStr:', mxUtils.getValue(this.style, 'splineCoords', '[]'));
+				// console.error('[Natural Spline Draw] 解析 splineCoords 失败:', e, 'coordsStr:', mxUtils.getValue(this.style, 'splineCoords', '[]'));
 			}
 			return [];
 		}

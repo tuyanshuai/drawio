@@ -235,9 +235,10 @@ async def segment_image(
         # 读取图片
         image_data = await file.read()
         image = Image.open(io.BytesIO(image_data)).convert("RGB")
-        image_array = np.array(image)
+        # 确保数组是连续的且类型正确
+        image_array = np.ascontiguousarray(np.array(image, dtype=np.uint8))
         
-        logger.info(f"接收到图片: {file.filename}, 尺寸: {image_array.shape}, 类型: {file.content_type}")
+        logger.info(f"接收到图片: {file.filename}, 尺寸: {image_array.shape}, dtype: {image_array.dtype}, 类型: {file.content_type}")
         logger.info(f"参数: threshold={threshold}, min_area={min_area}, return_image={return_image}")
         
         # 保存原始图片（用于显示）

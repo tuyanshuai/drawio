@@ -2,14 +2,25 @@ fastapi==0.104.1
 uvicorn[standard]==0.24.0
 python-multipart==0.0.6
 pillow==10.1.0
-numpy==1.24.3
+# NumPy 版本：使用 1.26.4 以避免 "Could not infer dtype" 错误
+# 这个版本与 PyTorch 兼容性最好
+numpy==1.26.4
 opencv-python==4.8.1.78
-torch>=2.0.0
-torchvision>=0.15.0
+# PyTorch 版本：使用明确版本以确保兼容性
+# CPU 版本（如果使用 GPU，请根据 CUDA 版本安装对应的 PyTorch）
+torch==2.1.2
+torchvision==0.16.2
+# 如果上面版本不兼容，可以尝试以下版本组合：
+# torch==2.3.0
+# torchvision==0.18.0
+# 或
+# torch==2.0.1
+# torchvision==0.15.2
 
 # SAM 相关依赖
 # 注意：segment-anything 需要从 GitHub 安装
 # 安装命令: pip install git+https://github.com/facebookresearch/segment-anything.git
+# 或者如果网络有问题：pip install segment-anything-py
 
 # 可选：如果需要使用 GPU 加速，请安装对应的 CUDA 版本的 PyTorch
 # 访问 https://pytorch.org/get-started/locally/ 获取正确的安装命令

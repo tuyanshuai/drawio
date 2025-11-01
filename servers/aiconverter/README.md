@@ -9,6 +9,36 @@
 - 返回包含多个多边形（带填充颜色）的 JSON 数据
 - 支持自定义分割阈值和最小区域面积过滤
 
+## 快速修复环境（推荐）
+
+如果遇到 `Could not infer dtype of numpy.uint8` 或其他兼容性错误，可以使用自动修复脚本：
+
+### Windows 用户
+
+**方法 1：使用批处理脚本（推荐）**
+```cmd
+fix_environment.bat
+```
+
+**方法 2：使用 PowerShell**
+```powershell
+.\fix_environment.ps1
+```
+
+### 所有平台
+
+使用 Python 脚本（交互式）：
+```bash
+python fix_environment.py
+```
+
+修复脚本会自动：
+- 检查当前环境
+- 卸载可能冲突的旧版本包
+- 安装兼容的 NumPy (1.26.4) 和 PyTorch (2.1.2) 版本
+- 安装所有必需的依赖
+- 测试关键功能是否正常
+
 ## 安装依赖
 
 ### 1. 安装 Python 依赖
@@ -181,6 +211,32 @@ uvicorn.run(
 
 ## 故障排除
 
+### "Could not infer dtype of numpy.uint8" 错误
+
+这是 NumPy 和 PyTorch 版本兼容性问题。解决方法：
+
+1. **使用自动修复脚本（推荐）**
+   ```bash
+   # Windows
+   fix_environment.bat
+   
+   # 或运行 Python 脚本
+   python fix_environment.py
+   ```
+
+2. **手动修复**
+   ```bash
+   pip uninstall numpy torch torchvision
+   pip install numpy==1.26.4
+   pip install torch==2.1.2 torchvision==0.16.2
+   ```
+
+3. **如果上述版本不兼容，尝试其他版本组合**：
+   ```bash
+   pip install numpy==1.26.4
+   pip install torch==2.3.0 torchvision==0.18.0
+   ```
+
 ### SAM 模型加载失败
 
 - 检查模型文件是否已下载并放置在正确位置
@@ -190,9 +246,11 @@ uvicorn.run(
 
 - 确保 Python 版本 >= 3.8
 - 对于 Windows 用户，可能需要安装 Visual C++ 构建工具
+- 如果 pip 安装失败，尝试使用 `pip install --upgrade pip` 升级 pip
 
 ### GPU 不可用
 
 - 检查是否正确安装了 CUDA 版本的 PyTorch
 - 运行 `python -c "import torch; print(torch.cuda.is_available())"` 检查 CUDA 是否可用
+- CPU 版本也可以运行，只是速度较慢
 

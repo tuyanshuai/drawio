@@ -78,12 +78,14 @@ class SAMProcessor:
             sam.to(device=device)
             
             # 创建自动掩码生成器
+            # 注意：如果遇到 "Could not infer dtype" 错误，尝试将 crop_n_layers 设为 0
+            # 这样可以避免图像裁剪操作，可能会解决兼容性问题
             self.predictor = SamAutomaticMaskGenerator(
                 sam,
                 points_per_side=32,
                 pred_iou_thresh=0.86,
                 stability_score_thresh=0.92,
-                crop_n_layers=1,
+                crop_n_layers=0,  # 设为 0 避免裁剪操作，可能解决 dtype 推断问题
                 crop_n_points_downscale_factor=2,
                 min_mask_region_area=100
             )
@@ -122,7 +124,72 @@ class SAMProcessor:
         if self.predictor is None:
             raise RuntimeError("SAM 模型未加载")
         
-        logger.info(f"开始分割图像，尺寸: {image.shape}")
+        logger.info(f"开始分割图像，尺寸: {image.shape}, dtype: {image.dtype}")
+        
+        # 首先确保图像是RGB格式（H, W, 3）
+        if len(image.shape) == 2:
+            # 灰度图转RGB
+            image = np.stack([image, image, image], axis=-1)
+        elif len(image.shape) == 3 and image.shape[2] == 4:
+            # RGBA转RGB
+            image = image[:, :, :3]
+        elif len(image.shape) != 3 or image.shape[2] != 3:
+            raise ValueError(f"不支持的图像格式，形状: {image.shape}")
+        
+        # 确保 dtype 为 uint8
+        if image.dtype != np.uint8:
+            # 如果值在0-1范围，需要缩放到0-255
+            if image.max() <= 1.0:
+                image = (image * 255).astype(np.uint8)
+            else:
+                image = image.astype(np.uint8)
+        
+        # 最后确保数组在内存中是连续的（C-contiguous）
+        # 这必须在所有转换之后进行，因为之前的操作可能破坏连续性
+        # 使用 np.array() 显式指定所有参数，确保创建正确格式的数组
+        image = np.array(image, dtype=np.uint8, copy=True, order='C')
+        
+        logger.info(f"处理后的图像格式: 形状={image.shape}, dtype={image.dtype}, 连续={image.flags['C_CONTIGUOUS']}")
+        
+        # 验证数组格式
+        assert image.dtype == np.uint8, f"dtype 应该是 uint8，实际是 {image.dtype}"
+        assert len(image.shape) == 3 and image.shape[2] == 3, f"图像形状应该是 (H, W, 3)，实际是 {image.shape}"
+        assert image.flags['C_CONTIGUOUS'], "数组必须是 C-contiguous"
+        
+        # 测试 torch 转换能力（用于诊断）
+        try:
+            import torch
+            # 测试 torch.from_numpy() 能否正常工作
+            test_tensor = torch.from_numpy(image)
+            logger.info(f"Torch 转换测试成功: tensor dtype={test_tensor.dtype}, shape={test_tensor.shape}")
+            del test_tensor
+        except Exception as e:
+            logger.warning(f"Torch.from_numpy() 测试失败: {e}")
+            # 如果 torch.from_numpy() 失败，尝试通过 PIL Image 重新创建数组
+            # 这可以确保数组是"干净的"，没有任何特殊属性
+            logger.info("尝试通过 PIL Image 重新创建数组以解决兼容性问题...")
+            pil_image = Image.fromarray(image, mode='RGB')
+            # 重新从 PIL Image 创建 numpy 数组
+            image = np.ascontiguousarray(np.array(pil_image, dtype=np.uint8), dtype=np.uint8)
+            logger.info(f"通过 PIL 重新创建后的数组: 形状={image.shape}, dtype={image.dtype}, 连续={image.flags['C_CONTIGUOUS']}")
+        
+        # 最终验证：确保数组可以被 torch.from_numpy() 正确处理
+        # 如果这个失败，说明是 NumPy/PyTorch 版本兼容性问题
+        try:
+            import torch
+            final_test = torch.from_numpy(image)
+            logger.info("最终数组格式验证通过，可以安全传递给 SAM")
+            del final_test
+        except Exception as e:
+            error_msg = (
+                f"数组无法转换为 PyTorch tensor: {e}\n"
+                f"这可能是 NumPy/PyTorch 版本兼容性问题。\n"
+                f"当前 NumPy 版本: {np.__version__}\n"
+                f"建议检查 PyTorch 版本是否与 NumPy {np.__version__} 兼容，\n"
+                f"或者尝试升级/降级 NumPy 版本（建议使用 numpy==1.26.4）"
+            )
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
         
         # 执行 SAM 分割
         masks = self.predictor.generate(image)
