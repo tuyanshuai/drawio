@@ -181,15 +181,49 @@ class SAMProcessor:
             logger.info("最终数组格式验证通过，可以安全传递给 SAM")
             del final_test
         except Exception as e:
-            error_msg = (
-                f"数组无法转换为 PyTorch tensor: {e}\n"
-                f"这可能是 NumPy/PyTorch 版本兼容性问题。\n"
-                f"当前 NumPy 版本: {np.__version__}\n"
-                f"建议检查 PyTorch 版本是否与 NumPy {np.__version__} 兼容，\n"
-                f"或者尝试升级/降级 NumPy 版本（建议使用 numpy==1.26.4）"
-            )
-            logger.error(error_msg)
-            raise RuntimeError(error_msg) from e
+            # NumPy 2.x 兼容性问题：尝试使用 torch.tensor() 作为替代
+            try:
+                import torch
+                logger.warning(f"torch.from_numpy() 失败，尝试使用 torch.tensor(): {e}")
+                # 测试 torch.tensor() 是否可用
+                test_tensor = torch.tensor(image, dtype=torch.uint8)
+                logger.info("torch.tensor() 转换成功，但 SAM 可能需要 torch.from_numpy()")
+                del test_tensor
+                
+                # 如果 NumPy 版本是 2.x，给出明确的降级提示
+                if np.__version__.startswith('2.'):
+                    error_msg = (
+                        f"NumPy 2.x ({np.__version__}) 与当前 PyTorch 版本不兼容。\n"
+                        f"错误信息: {e}\n\n"
+                        f"解决方案：\n"
+                        f"1. 降级 NumPy 到 1.26.4:\n"
+                        f"   pip uninstall numpy\n"
+                        f"   pip install numpy==1.26.4\n"
+                        f"2. 或者如果网络有问题，可以：\n"
+                        f"   - 手动下载 wheel 文件从 https://pypi.org/project/numpy/1.26.4/#files\n"
+                        f"   - 运行: pip install 下载的.whl文件\n"
+                        f"3. 或者升级 PyTorch 到支持 NumPy 2.x 的版本（如果可用）"
+                    )
+                else:
+                    error_msg = (
+                        f"数组无法转换为 PyTorch tensor: {e}\n"
+                        f"这可能是 NumPy/PyTorch 版本兼容性问题。\n"
+                        f"当前 NumPy 版本: {np.__version__}\n"
+                        f"建议检查 PyTorch 版本是否与 NumPy {np.__version__} 兼容，\n"
+                        f"或者尝试升级/降级 NumPy 版本（建议使用 numpy==1.26.4）"
+                    )
+                logger.error(error_msg)
+                raise RuntimeError(error_msg) from e
+            except Exception as e2:
+                error_msg = (
+                    f"所有 tensor 转换方法都失败。\n"
+                    f"torch.from_numpy() 错误: {e}\n"
+                    f"torch.tensor() 错误: {e2}\n"
+                    f"当前 NumPy 版本: {np.__version__}\n"
+                    f"请检查环境配置或联系管理员。"
+                )
+                logger.error(error_msg)
+                raise RuntimeError(error_msg) from e2
         
         # 执行 SAM 分割
         masks = self.predictor.generate(image)

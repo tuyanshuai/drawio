@@ -847,19 +847,22 @@ Draw.loadPlugin(function(editorUi)
 			return;
 		}
 		
-		// 创建对话框
-		var div = document.createElement('div');
-		div.style.minWidth = '500px';
-		div.style.maxHeight = '80vh';
-		div.style.display = 'flex';
-		div.style.flexDirection = 'column';
+		// 创建主容器
+		var mainContainer = document.createElement('div');
+		mainContainer.style.minWidth = '500px';
+		mainContainer.style.display = 'flex';
+		mainContainer.style.flexDirection = 'column';
+		mainContainer.style.maxHeight = '70vh';
 		
 		// 内容容器（可滚动）
 		var contentWrapper = document.createElement('div');
 		contentWrapper.style.flex = '1';
 		contentWrapper.style.overflowY = 'auto';
+		contentWrapper.style.overflowX = 'hidden';
 		contentWrapper.style.padding = '20px';
 		contentWrapper.style.paddingBottom = '10px';
+		contentWrapper.style.minHeight = '0';
+		contentWrapper.style.maxHeight = '60vh'; // 限制最大高度，确保有空间显示按钮
 		
 		// 标题
 		var title = document.createElement('h3');
@@ -1175,23 +1178,9 @@ Draw.loadPlugin(function(editorUi)
 		contentWrapper.appendChild(mappingContainer);
 		
 		// 将内容容器添加到主容器
-		div.appendChild(contentWrapper);
+		mainContainer.appendChild(contentWrapper);
 		
-		// 按钮容器（固定在底部，不滚动）
-		var buttons = document.createElement('div');
-		buttons.style.textAlign = 'right';
-		buttons.style.padding = '10px 20px';
-		buttons.style.borderTop = '1px solid #ddd';
-		buttons.style.backgroundColor = '#fafafa';
-		buttons.style.flexShrink = '0';
-		
-		var cancelBtn = mxUtils.button('取消', function()
-		{
-			editorUi.hideDialog();
-		});
-		cancelBtn.className = 'geBtn';
-		buttons.appendChild(cancelBtn);
-		
+		// 创建应用函数
 		var applyFn = function()
 		{
 			var targetCount = parseInt(countInput.value);
@@ -1319,24 +1308,205 @@ Draw.loadPlugin(function(editorUi)
 			editorUi.editor.setStatus('SVG重新染色完成');
 		};
 		
-		var applyBtn = mxUtils.button('应用', function()
+		// 使用CustomDialog来确保按钮正常工作
+		// CustomDialog会在mainContainer后面添加按钮区域
+		var customDialog = new CustomDialog(editorUi, mainContainer, applyFn, function()
 		{
 			editorUi.hideDialog();
-			applyFn();
-		});
-		applyBtn.className = 'geBtn gePrimaryBtn';
-		applyBtn.style.marginLeft = '10px';
-		buttons.appendChild(applyBtn);
+		}, '应用', null, null, false, '取消', false);
 		
-		div.appendChild(buttons);
+		// 确保CustomDialog的容器使用flex布局
+		var dialogContainer = customDialog.container;
+		if (dialogContainer)
+		{
+			// 检查是否已经有flex布局
+			var computedStyle = window.getComputedStyle(dialogContainer);
+			if (!computedStyle.display || computedStyle.display === 'block')
+			{
+				dialogContainer.style.display = 'flex';
+				dialogContainer.style.flexDirection = 'column';
+				dialogContainer.style.maxHeight = '80vh';
+			}
+			
+			// 确保按钮区域有固定样式
+			var buttonsArea = null;
+			for (var i = 0; i < dialogContainer.childNodes.length; i++)
+			{
+				var child = dialogContainer.childNodes[i];
+				if (child.nodeType === 1 && child.childNodes.length > 0)
+				{
+					// 查找包含按钮的div（通常是最后一个包含.geBtn类的div）
+					var buttons = child.querySelectorAll && child.querySelectorAll('.geBtn');
+					if (buttons && buttons.length > 0)
+					{
+						buttonsArea = child;
+						break;
+					}
+				}
+			}
+			
+			if (buttonsArea)
+			{
+				buttonsArea.style.flexShrink = '0';
+				buttonsArea.style.padding = '10px 20px';
+				buttonsArea.style.borderTop = '1px solid #ddd';
+				buttonsArea.style.backgroundColor = '#fafafa';
+			}
+		}
 		
 		// 显示对话框
-		editorUi.showDialog(div, 600, 650, true, true, function()
+		editorUi.showDialog(dialogContainer, 600, 650, true, true, function()
 		{
 			if (countInput.focus)
 			{
 				countInput.focus();
 			}
+			
+			// 延迟设置样式，确保CustomDialog已经完成DOM操作
+			setTimeout(function()
+			{
+				// 确保dialogContainer使用flex布局
+				dialogContainer.style.display = 'flex';
+				dialogContainer.style.flexDirection = 'column';
+				dialogContainer.style.maxHeight = '80vh';
+				dialogContainer.style.overflow = 'hidden';
+				
+				// 设置mainContainer的flex属性
+				if (mainContainer.parentNode === dialogContainer)
+				{
+					mainContainer.style.flex = '1';
+					mainContainer.style.minHeight = '0';
+					mainContainer.style.overflow = 'hidden';
+				}
+				
+				// 设置contentWrapper确保可以滚动
+				contentWrapper.style.flex = '1';
+				contentWrapper.style.minHeight = '0';
+				contentWrapper.style.maxHeight = 'none'; // 移除最大高度限制，让flex控制
+				
+				// 查找按钮区域并设置样式
+				for (var i = 0; i < dialogContainer.childNodes.length; i++)
+				{
+					var child = dialogContainer.childNodes[i];
+					if (child.nodeType === 1 && child !== mainContainer)
+					{
+						var buttons = child.querySelectorAll && child.querySelectorAll('.geBtn');
+						if (buttons && buttons.length > 0)
+						{
+							child.style.flexShrink = '0';
+							child.style.padding = '10px 20px';
+							child.style.borderTop = '1px solid #ddd';
+							child.style.backgroundColor = '#fafafa';
+							child.style.textAlign = 'right';
+							break;
+						}
+					}
+				}
+			}, 0);
+			
+			// 添加拖拽功能
+			setTimeout(function()
+			{
+				var dialogDiv = customDialog.container;
+				if (dialogDiv && dialogDiv.parentNode)
+				{
+					var dialogWindow = dialogDiv.parentNode;
+					if (dialogWindow && dialogWindow.className && dialogWindow.className.indexOf('geDialog') >= 0)
+					{
+						// 使对话框可拖拽
+						var isDragging = false;
+						var dragStartX = 0;
+						var dragStartY = 0;
+						var dialogStartX = 0;
+						var dialogStartY = 0;
+						
+						// 创建拖拽标题栏
+						var titleBar = document.createElement('div');
+						titleBar.style.height = '30px';
+						titleBar.style.backgroundColor = '#f0f0f0';
+						titleBar.style.borderBottom = '1px solid #ddd';
+						titleBar.style.cursor = 'move';
+						titleBar.style.padding = '5px 10px';
+						titleBar.style.display = 'flex';
+						titleBar.style.alignItems = 'center';
+						titleBar.style.userSelect = 'none';
+						titleBar.style.flexShrink = '0';
+						
+						var titleText = document.createElement('div');
+						titleText.style.flex = '1';
+						mxUtils.write(titleText, '智能色 - SVG颜色分析');
+						titleBar.appendChild(titleText);
+						
+						// 将标题栏插入到对话框开头
+						if (dialogDiv.firstChild)
+						{
+							dialogDiv.insertBefore(titleBar, dialogDiv.firstChild);
+						}
+						else
+						{
+							dialogDiv.appendChild(titleBar);
+						}
+						
+						// 拖拽事件
+						var startDrag = function(e)
+						{
+							isDragging = true;
+							dragStartX = (e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0));
+							dragStartY = (e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 0));
+							
+							var rect = dialogWindow.getBoundingClientRect();
+							dialogStartX = rect.left;
+							dialogStartY = rect.top;
+							
+							var moveHandler = function(evt)
+							{
+								if (isDragging)
+								{
+									var clientX = evt.clientX || (evt.touches && evt.touches[0] ? evt.touches[0].clientX : dragStartX);
+									var clientY = evt.clientY || (evt.touches && evt.touches[0] ? evt.touches[0].clientY : dragStartY);
+									
+									var deltaX = clientX - dragStartX;
+									var deltaY = clientY - dragStartY;
+									
+									dialogWindow.style.left = (dialogStartX + deltaX) + 'px';
+									dialogWindow.style.top = (dialogStartY + deltaY) + 'px';
+									
+									mxEvent.consume(evt);
+								}
+							};
+							
+							var endHandler = function(evt)
+							{
+								isDragging = false;
+								mxEvent.removeListener(document, 'mousemove', moveHandler);
+								mxEvent.removeListener(document, 'mouseup', endHandler);
+								if (mxClient.IS_TOUCH)
+								{
+									mxEvent.removeListener(document, 'touchmove', moveHandler);
+									mxEvent.removeListener(document, 'touchend', endHandler);
+								}
+								mxEvent.consume(evt);
+							};
+							
+							mxEvent.addListener(document, 'mousemove', moveHandler);
+							mxEvent.addListener(document, 'mouseup', endHandler);
+							if (mxClient.IS_TOUCH)
+							{
+								mxEvent.addListener(document, 'touchmove', moveHandler);
+								mxEvent.addListener(document, 'touchend', endHandler);
+							}
+							
+							mxEvent.consume(e);
+						};
+						
+						mxEvent.addListener(titleBar, 'mousedown', startDrag);
+						if (mxClient.IS_TOUCH)
+						{
+							mxEvent.addListener(titleBar, 'touchstart', startDrag);
+						}
+					}
+				}
+			}, 50);
 		});
 	}
 	
