@@ -20163,15 +20163,24 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 	var importedSvg = document.importNode(svgRoot, true);
 	tempContainer.appendChild(importedSvg);
 
-	if ((!isFinite(vbWidth) || vbWidth === 0 || !isFinite(vbHeight) || vbHeight === 0) && importedSvg.getBBox)
+	// 只有在 viewBox 完全不存在时才使用 getBBox()
+	// 不要覆盖已有的 viewBox，因为它定义了正确的坐标系统
+	if ((vbWidth == null || vbWidth === 0 || vbHeight == null || vbHeight === 0) && importedSvg.getBBox)
 	{
 		try
 		{
 			var bbox = importedSvg.getBBox();
-			vbX = bbox.x;
-			vbY = bbox.y;
-			vbWidth = bbox.width;
-			vbHeight = bbox.height;
+			// 只有在 viewBox 完全不存在时才使用 bbox
+			if (vbWidth == null || vbWidth === 0)
+			{
+				vbWidth = bbox.width;
+			}
+			if (vbHeight == null || vbHeight === 0)
+			{
+				vbHeight = bbox.height;
+			}
+			// 注意：不要覆盖 vbX 和 vbY，保持 viewBox 的原始偏移
+			// vbX 和 vbY 应该来自 viewBox 属性，而不是 bbox
 		}
 		catch (e)
 		{
@@ -20193,7 +20202,45 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 	var scaleY = geo.height / vbHeight;
 	var avgScale = Math.sqrt(Math.abs(scaleX * scaleY));
 
-	var elements = importedSvg.querySelectorAll('path,polygon,polyline,rect,circle,ellipse,line');
+	// 支持的 SVG 元素类型（基本形状和路径）
+	// querySelectorAll 会递归查找所有匹配的元素，包括 g 组内的元素
+	var supportedElements = 'path,polygon,polyline,rect,circle,ellipse,line';
+	var elements = importedSvg.querySelectorAll(supportedElements);
+	
+	// 也处理 use 元素（引用元素）
+	var useElements = importedSvg.querySelectorAll('use');
+	
+	// 检查是否有未支持的元素类型
+	var allElements = importedSvg.querySelectorAll('*');
+	var unsupportedElements = {};
+	for (var elemIdx = 0; elemIdx < allElements.length; elemIdx++)
+	{
+		var elem = allElements[elemIdx];
+		var tagName = elem.tagName ? elem.tagName.toLowerCase() : '';
+		// 跳过已支持的、定义性的和元数据元素
+		if (tagName && 
+		    supportedElements.indexOf(tagName) === -1 &&
+		    tagName !== 'svg' && 
+		    tagName !== 'defs' && 
+		    tagName !== 'style' &&
+		    tagName !== 'metadata' &&
+		    tagName !== 'title' &&
+		    tagName !== 'desc' &&
+		    tagName !== 'clipPath' &&
+		    tagName !== 'g' && // g 元素会通过子元素处理
+		    tagName !== 'use' && // use 元素需要特殊处理
+		    tagName !== 'text' && // text 元素需要特殊处理
+		    tagName !== 'tspan' &&
+		    tagName !== 'image')
+		{
+			if (!unsupportedElements[tagName])
+			{
+				unsupportedElements[tagName] = 0;
+			}
+			unsupportedElements[tagName]++;
+		}
+	}
+	
 	var svgPoint = (importedSvg.createSVGPoint != null) ? importedSvg.createSVGPoint() : null;
 
 	if (window.console)
@@ -20202,6 +20249,12 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 		console.log('[SVG Convert] viewBox:', vbX, vbY, vbWidth, vbHeight);
 		console.log('[SVG Convert] 几何尺寸:', geo.width, geo.height);
 		console.log('[SVG Convert] scale:', scaleX, scaleY, avgScale);
+		console.log('[SVG Convert] 原始 viewBox 属性:', svgRoot.getAttribute('viewBox'));
+		console.log('[SVG Convert] SVG width/height:', svgRoot.getAttribute('width'), svgRoot.getAttribute('height'));
+		if (Object.keys(unsupportedElements).length > 0)
+		{
+			console.warn('[SVG Convert] 发现未直接支持的元素类型:', unsupportedElements);
+		}
 	}
 
 	var colorCanvas = document.createElement('canvas');
@@ -20300,10 +20353,17 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 
 	var normalizePoint = function(pt)
 	{
+		// 将点坐标从 SVG 坐标系转换到相对坐标 (0-1)
+		// 考虑 viewBox 的偏移 (vbX, vbY)
 		var nx = (pt.x - vbX) / vbWidth;
 		var ny = (pt.y - vbY) / vbHeight;
-		// 使用原生 toFixed 方法
-		return [parseFloat(Number(nx).toFixed(4)), parseFloat(Number(ny).toFixed(4))];
+		
+		// 确保坐标在有效范围内（允许轻微超出，因为路径可能略超出 viewBox）
+		nx = Math.max(-1, Math.min(2, nx)); // 允许轻微超出
+		ny = Math.max(-1, Math.min(2, ny));
+		
+		// 使用更高的精度（6位小数）以确保平滑的曲线
+		return [parseFloat(Number(nx).toFixed(6)), parseFloat(Number(ny).toFixed(6))];
 	};
 
 	var samplePath = function(el)
@@ -20334,10 +20394,18 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 			return [];
 		}
 		
-		var segments = Math.max(16, Math.min(128, Math.round(total / Math.max(vbWidth, vbHeight) * 32)));
+		// 增加采样点数以提高精度，特别是对于复杂曲线
+		// 根据路径长度和 SVG 尺寸动态计算采样点数
+		var svgMaxDim = Math.max(vbWidth, vbHeight);
+		var segments = Math.max(32, Math.min(256, Math.round(total / svgMaxDim * 64)));
 		if (!isFinite(segments) || segments <= 0)
 		{
-			segments = 64;
+			segments = 128; // 提高默认值
+		}
+		
+		if (window.console && segments > 200)
+		{
+			console.log('[SVG Convert] 路径采样点数:', segments, '路径长度:', total);
 		}
 		
 		for (var i = 0; i <= segments; i++)
@@ -20478,6 +20546,59 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 		results.push({style: style});
 	};
 
+	// 处理 use 元素（引用元素）
+	// use 元素引用其他元素，需要解析引用的元素
+	for (var useIdx = 0; useIdx < useElements.length; useIdx++)
+	{
+		var useEl = useElements[useIdx];
+		try
+		{
+			var href = useEl.getAttribute('href') || useEl.getAttribute('xlink:href');
+			if (href)
+			{
+				// 移除 # 前缀
+				if (href.charAt(0) === '#')
+				{
+					href = href.substring(1);
+				}
+				// 查找引用的元素
+				var referencedEl = importedSvg.ownerDocument.getElementById(href);
+				if (referencedEl)
+				{
+					// 克隆引用的元素并应用 use 的变换
+					var clone = referencedEl.cloneNode(true);
+					var x = parseFloat(useEl.getAttribute('x') || 0);
+					var y = parseFloat(useEl.getAttribute('y') || 0);
+					if (x !== 0 || y !== 0)
+					{
+						var transform = clone.getAttribute('transform') || '';
+						if (transform)
+						{
+							transform = 'translate(' + x + ',' + y + ') ' + transform;
+						}
+						else
+						{
+							transform = 'translate(' + x + ',' + y + ')';
+						}
+						clone.setAttribute('transform', transform);
+					}
+					// 将克隆的元素添加到临时容器以便处理
+					importedSvg.appendChild(clone);
+				}
+			}
+		}
+		catch (e)
+		{
+			if (window.console)
+			{
+				console.warn('[SVG Convert] 处理 use 元素失败:', e);
+			}
+		}
+	}
+	
+	// 重新获取所有元素（包括 use 引用的元素）
+	elements = importedSvg.querySelectorAll(supportedElements);
+	
 	for (var i = 0; i < elements.length; i++)
 	{
 		var el = elements[i];
@@ -20557,9 +20678,51 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 				applyMatrix({x: parseFloat(el.getAttribute('x2') || 0), y: parseFloat(el.getAttribute('y2') || 0)}, el.getCTM ? el.getCTM() : null)
 			]);
 		}
+		else
+		{
+			// 对于其他元素类型，尝试使用 getBBox 获取边界框并转换为矩形
+			// 这包括：g, use, text, image 等
+			try
+			{
+				if (el.getBBox && typeof el.getBBox === 'function')
+				{
+					var bbox = el.getBBox();
+					if (bbox && bbox.width > 0 && bbox.height > 0)
+					{
+						// 将边界框转换为矩形多边形
+						pts = sanitizePoints([
+							applyMatrix({x: bbox.x, y: bbox.y}, el.getCTM ? el.getCTM() : null),
+							applyMatrix({x: bbox.x + bbox.width, y: bbox.y}, el.getCTM ? el.getCTM() : null),
+							applyMatrix({x: bbox.x + bbox.width, y: bbox.y + bbox.height}, el.getCTM ? el.getCTM() : null),
+							applyMatrix({x: bbox.x, y: bbox.y + bbox.height}, el.getCTM ? el.getCTM() : null)
+						]);
+						
+						if (window.console)
+						{
+							console.log('[SVG Convert] 将', tagName, '元素转换为边界框多边形');
+						}
+					}
+				}
+			}
+			catch (e)
+			{
+				if (window.console)
+				{
+					console.warn('[SVG Convert] 无法处理', tagName, '元素:', e);
+				}
+			}
+		}
+		
 		if (pts != null && pts.length > 1)
 		{
 			pushPolygon(pts, el, computed);
+		}
+		else if (pts == null || pts.length <= 1)
+		{
+			if (window.console)
+			{
+				console.warn('[SVG Convert] 跳过', tagName, '元素，无法生成有效点');
+			}
 		}
 	}
 
@@ -20582,6 +20745,19 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 	if (window.console)
 	{
 		console.log('[SVG Convert] 成功生成', results.length, '个形状');
+		
+		// 输出支持的 SVG 元素类型总结
+		var supportedTypes = {
+			'path': '路径 - 使用采样转换为多边形',
+			'polygon': '多边形 - 直接读取点',
+			'polyline': '折线 - 直接读取点',
+			'rect': '矩形 - 转换为4点多边形',
+			'circle': '圆形 - 转换为多边形（40段）',
+			'ellipse': '椭圆 - 转换为多边形（40段）',
+			'line': '直线 - 转换为2点多边形',
+			'其他': '其他元素（g, use, text, image等）- 使用 getBBox() 转换为边界框矩形'
+		};
+		console.log('[SVG Convert] 支持的元素类型:', supportedTypes);
 	}
 
 	var parent = model.getParent(cell);
