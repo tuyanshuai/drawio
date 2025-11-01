@@ -914,8 +914,20 @@ Draw.loadPlugin(function(editorUi)
 			strokeColor = '#000000';
 		}
 		
+		// 保存控制点的相对坐标（用于编辑）
+		var controlRelativePoints = [];
+		for (var i = 0; i < this.points.length; i++)
+		{
+			var relX = width > 0 ? (this.points[i].x - minX) / width : 0.5;
+			var relY = height > 0 ? (this.points[i].y - minY) / height : 0.5;
+			relX = Math.max(0, Math.min(1, relX));
+			relY = Math.max(0, Math.min(1, relY));
+			controlRelativePoints.push([relX, relY]);
+		}
+		
 		var style = 'shape=naturalSpline;' +
 			'splineCoords=' + JSON.stringify(relativePoints) + ';' +
+			'controlCoords=' + JSON.stringify(controlRelativePoints) + ';' +
 			'fillColor=none;' +
 			'strokeColor=' + strokeColor + 
 			';strokeWidth=2;' +
@@ -1007,6 +1019,551 @@ Draw.loadPlugin(function(editorUi)
 		this.pointHandles = [];
 	};
 	
+	/**
+	 * 编辑曲线顶点
+	 * 从现有的曲线获取控制点，并允许用户编辑它们
+	 */
+	NaturalSplineDrawingTool.prototype.editSplineVertices = function(cell)
+	{
+		if (!cell)
+		{
+			if (window.console)
+			{
+				console.warn('[Natural Spline Draw] 编辑顶点: 未提供单元格');
+			}
+			return;
+		}
+		
+		var style = this.graph.getCurrentCellStyle(cell);
+		var shape = mxUtils.getValue(style, mxConstants.STYLE_SHAPE, null);
+		
+		// 检查是否是 naturalSpline 形状
+		if (shape !== 'naturalSpline')
+		{
+			if (window.console)
+			{
+				console.warn('[Natural Spline Draw] 编辑顶点: 不是 naturalSpline 形状');
+			}
+			return;
+		}
+		
+		// 获取曲线的几何信息
+		var geo = this.graph.getModel().getGeometry(cell);
+		if (!geo)
+		{
+			if (window.console)
+			{
+				console.warn('[Natural Spline Draw] 编辑顶点: 无法获取几何信息');
+			}
+			return;
+		}
+		
+		// 获取控制点相对坐标
+		var controlCoordsStr = mxUtils.getValue(style, 'controlCoords', '[]');
+		var controlRelativePoints = [];
+		try
+		{
+			if (typeof controlCoordsStr === 'string')
+			{
+				controlRelativePoints = JSON.parse(controlCoordsStr);
+			}
+			else if (Array.isArray(controlCoordsStr))
+			{
+				controlRelativePoints = controlCoordsStr;
+			}
+		}
+		catch (e)
+		{
+			if (window.console)
+			{
+				console.error('[Natural Spline Draw] 解析 controlCoords 失败:', e);
+			}
+		}
+		
+		if (!controlRelativePoints || controlRelativePoints.length < 2)
+		{
+			if (window.console)
+			{
+				console.warn('[Natural Spline Draw] 编辑顶点: 控制点数量不足');
+			}
+			return;
+		}
+		
+		// 转换为绝对坐标
+		this.points = [];
+		for (var i = 0; i < controlRelativePoints.length; i++)
+		{
+			var relPoint = controlRelativePoints[i];
+			this.points.push({
+				x: geo.x + relPoint[0] * geo.width,
+				y: geo.y + relPoint[1] * geo.height
+			});
+		}
+		
+		// 保存要编辑的单元格
+		this.editingCell = cell;
+		
+		// 开始编辑模式
+		this.enabled = true;
+		this.clearPreview();
+		
+		// 改变光标
+		this.graph.container.style.cursor = 'crosshair';
+		
+		// 创建点句柄并允许拖动
+		for (var i = 0; i < this.points.length; i++)
+		{
+			this.createEditablePointHandle(this.points[i].x, this.points[i].y, i);
+		}
+		
+		// 更新预览以显示当前形状
+		this.updateEditingPreview();
+		
+		// 添加鼠标监听器
+		var graph = this.graph;
+		var tool = this;
+		
+		if (this.mouseHandler)
+		{
+			this.graph.removeMouseListener(this.mouseHandler);
+		}
+		
+		this.mouseHandler = {
+			tool: this,
+			mouseDown: function(sender, me)
+			{
+				if (!this.tool.enabled || !graph.isEnabled())
+				{
+					return;
+				}
+				
+				var e = me.getEvent();
+				
+				if (mxEvent.isMiddleMouseButton(e))
+				{
+					return;
+				}
+				
+				// 右键点击完成编辑
+				if (mxEvent.isRightMouseButton(e) || mxEvent.isPopupTrigger(e))
+				{
+					if (this.tool.points.length >= 2)
+					{
+						this.tool.finishEditing();
+					}
+					else
+					{
+						this.tool.cancelEditing();
+					}
+					me.consume();
+					return;
+				}
+				
+				// 双击完成编辑
+				if (me.getEvent().detail === 2)
+				{
+					if (this.tool.points.length >= 2)
+					{
+						this.tool.finishEditing();
+					}
+					else
+					{
+						this.tool.cancelEditing();
+					}
+					me.consume();
+					return;
+				}
+			},
+			mouseMove: function(sender, me)
+			{
+				if (this.tool.enabled && this.tool.points.length > 0)
+				{
+					this.tool.updateEditingPreview();
+				}
+			},
+			mouseUp: function(sender, me)
+			{
+				// 在 mouseDown 中处理
+			}
+		};
+		
+		this.graph.addMouseListener(this.mouseHandler);
+		
+		// 监听视图变化
+		if (this.viewChangeHandler)
+		{
+			this.graph.view.removeListener(this.viewChangeHandler);
+		}
+		
+		this.viewChangeHandler = mxUtils.bind(this, function()
+		{
+			if (this.enabled && this.pointHandles.length > 0)
+			{
+				this.updatePointHandles();
+				this.updateEditingPreview();
+			}
+		});
+		
+		this.graph.view.addListener(mxEvent.SCALE, this.viewChangeHandler);
+		this.graph.view.addListener(mxEvent.SCALE_AND_TRANSLATE, this.viewChangeHandler);
+		this.graph.view.addListener(mxEvent.TRANSLATE, this.viewChangeHandler);
+		
+		// 监听 ESC 键取消编辑
+		if (this.escapeHandler)
+		{
+			this.graph.removeListener(this.escapeHandler);
+		}
+		
+		this.escapeHandler = mxUtils.bind(this, function(sender, evt)
+		{
+			if (this.enabled)
+			{
+				this.cancelEditing();
+			}
+		});
+		
+		this.graph.addListener(mxEvent.ESCAPE, this.escapeHandler);
+		
+		// 监听 Enter 键完成编辑
+		if (this.keyDownHandler)
+		{
+			mxEvent.removeListener(document, 'keydown', this.keyDownHandler);
+		}
+		
+		this.keyDownHandler = mxUtils.bind(this, function(evt)
+		{
+			if (this.enabled && graph.isEnabled())
+			{
+				var keyCode = evt.keyCode || evt.which;
+				if (keyCode === 13) // Enter
+				{
+					if (this.points.length >= 2)
+					{
+						this.finishEditing();
+						mxEvent.consume(evt);
+					}
+				}
+			}
+		});
+		
+		mxEvent.addListener(document, 'keydown', this.keyDownHandler);
+		
+		if (window.console)
+		{
+			console.log('[Natural Spline Draw] 开始编辑顶点，右键/双击/Enter完成，ESC取消');
+		}
+	};
+	
+	/**
+	 * 创建可编辑的点句柄
+	 */
+	NaturalSplineDrawingTool.prototype.createEditablePointHandle = function(x, y, index)
+	{
+		var handle = document.createElement('div');
+		handle.style.position = 'absolute';
+		handle.style.width = '10px';
+		handle.style.height = '10px';
+		handle.style.borderRadius = '50%';
+		handle.style.backgroundColor = '#FF5722';
+		handle.style.border = '2px solid white';
+		handle.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+		handle.style.cursor = 'move';
+		handle.style.zIndex = '10001';
+		handle.className = 'spline-point-handle editable';
+		handle.setAttribute('data-index', index);
+		
+		// 更新位置
+		this.updateHandlePosition(handle, x, y);
+		
+		// 添加拖动功能
+		var tool = this;
+		var isDragging = false;
+		var pointIndex = index;
+		
+		var mouseMoveHandler = function(e)
+		{
+			if (isDragging && tool.enabled)
+			{
+				e.preventDefault();
+				var offset = mxUtils.getOffset(tool.graph.container);
+				var scrollOrigin = mxUtils.getScrollOrigin(tool.graph.container);
+				var view = tool.graph.view;
+				var scale = view.scale;
+				var tr = view.translate;
+				
+				var clientX = e.clientX - offset.x + scrollOrigin.x;
+				var clientY = e.clientY - offset.y + scrollOrigin.y;
+				
+				// 转换为模型坐标
+				var modelX = (clientX / scale) - tr.x;
+				var modelY = (clientY / scale) - tr.y;
+				
+				// 检查是否与相邻点太接近
+				var minDistance = 5;
+				var canMove = true;
+				
+				if (pointIndex > 0)
+				{
+					var prevPoint = tool.points[pointIndex - 1];
+					var dx = modelX - prevPoint.x;
+					var dy = modelY - prevPoint.y;
+					var dist = Math.sqrt(dx * dx + dy * dy);
+					if (dist < minDistance)
+					{
+						canMove = false;
+					}
+				}
+				
+				if (canMove && pointIndex < tool.points.length - 1)
+				{
+					var nextPoint = tool.points[pointIndex + 1];
+					var dx = modelX - nextPoint.x;
+					var dy = modelY - nextPoint.y;
+					var dist = Math.sqrt(dx * dx + dy * dy);
+					if (dist < minDistance)
+					{
+						canMove = false;
+					}
+				}
+				
+				if (canMove && pointIndex >= 0 && pointIndex < tool.points.length)
+				{
+					tool.points[pointIndex].x = modelX;
+					tool.points[pointIndex].y = modelY;
+					
+					// 更新句柄位置
+					tool.updateHandlePosition(handle, modelX, modelY);
+					
+					// 更新预览
+					tool.updateEditingPreview();
+				}
+			}
+		};
+		
+		var mouseUpHandler = function(e)
+		{
+			if (isDragging)
+			{
+				isDragging = false;
+				document.removeEventListener('mousemove', mouseMoveHandler);
+				document.removeEventListener('mouseup', mouseUpHandler);
+			}
+		};
+		
+		handle.addEventListener('mousedown', function(e)
+		{
+			e.stopPropagation();
+			e.preventDefault();
+			isDragging = true;
+			
+			document.addEventListener('mousemove', mouseMoveHandler);
+			document.addEventListener('mouseup', mouseUpHandler);
+		});
+		
+		// 添加到 document.body
+		document.body.appendChild(handle);
+		this.pointHandles.push(handle);
+	};
+	
+	/**
+	 * 更新编辑预览
+	 */
+	NaturalSplineDrawingTool.prototype.updateEditingPreview = function()
+	{
+		if (this.points.length < 2)
+		{
+			return;
+		}
+		
+		// 生成样条曲线点
+		var curvePoints = naturalSplineInterpolation(this.points);
+		
+		if (curvePoints.length < 2)
+		{
+			return;
+		}
+		
+		// 计算边界框
+		var minX = curvePoints[0].x;
+		var minY = curvePoints[0].y;
+		var maxX = curvePoints[0].x;
+		var maxY = curvePoints[0].y;
+		
+		for (var i = 0; i < curvePoints.length; i++)
+		{
+			minX = Math.min(minX, curvePoints[i].x);
+			minY = Math.min(minY, curvePoints[i].y);
+			maxX = Math.max(maxX, curvePoints[i].x);
+			maxY = Math.max(maxY, curvePoints[i].y);
+		}
+		
+		// 确保边界框有最小尺寸
+		var minSize = 10;
+		var width = Math.max(maxX - minX, minSize);
+		var height = Math.max(maxY - minY, minSize);
+		
+		if (maxX - minX < minSize)
+		{
+			var centerX = (minX + maxX) / 2;
+			minX = centerX - minSize / 2;
+			maxX = centerX + minSize / 2;
+			width = minSize;
+		}
+		if (maxY - minY < minSize)
+		{
+			var centerY = (minY + maxY) / 2;
+			minY = centerY - minSize / 2;
+			maxY = centerY + minSize / 2;
+			height = minSize;
+		}
+		
+		// 转换为相对坐标
+		var relativePoints = [];
+		for (var i = 0; i < curvePoints.length; i++)
+		{
+			var relX = width > 0 ? (curvePoints[i].x - minX) / width : 0.5;
+			var relY = height > 0 ? (curvePoints[i].y - minY) / height : 0.5;
+			relX = Math.max(0, Math.min(1, relX));
+			relY = Math.max(0, Math.min(1, relY));
+			relativePoints.push([relX, relY]);
+		}
+		
+		// 保存控制点的相对坐标
+		var controlRelativePoints = [];
+		for (var i = 0; i < this.points.length; i++)
+		{
+			var relX = width > 0 ? (this.points[i].x - minX) / width : 0.5;
+			var relY = height > 0 ? (this.points[i].y - minY) / height : 0.5;
+			relX = Math.max(0, Math.min(1, relX));
+			relY = Math.max(0, Math.min(1, relY));
+			controlRelativePoints.push([relX, relY]);
+		}
+		
+		// 获取当前样式
+		var style = this.graph.getCurrentCellStyle(this.editingCell);
+		var strokeColor = mxUtils.getValue(style, mxConstants.STYLE_STROKECOLOR, '#000000');
+		var strokeWidth = mxUtils.getValue(style, mxConstants.STYLE_STROKEWIDTH, '2');
+		
+		if (!strokeColor || strokeColor === 'none' || strokeColor === '')
+		{
+			strokeColor = '#000000';
+		}
+		
+		var newStyle = 'shape=naturalSpline;' +
+			'splineCoords=' + JSON.stringify(relativePoints) + ';' +
+			'controlCoords=' + JSON.stringify(controlRelativePoints) + ';' +
+			'fillColor=none;' +
+			'strokeColor=' + strokeColor + 
+			';strokeWidth=' + strokeWidth + ';' +
+			'whiteSpace=wrap;';
+		
+		// 应用其他样式属性
+		var opacity = mxUtils.getValue(style, mxConstants.STYLE_OPACITY, '100');
+		if (opacity !== '100')
+		{
+			newStyle += 'opacity=' + opacity + ';';
+		}
+		
+		this.graph.getModel().beginUpdate();
+		try
+		{
+			var geo = new mxGeometry(minX, minY, width, height);
+			this.graph.getModel().setGeometry(this.editingCell, geo);
+			this.graph.getModel().setStyle(this.editingCell, newStyle);
+			this.graph.view.validate();
+			this.graph.refresh(this.editingCell);
+		}
+		finally
+		{
+			this.graph.getModel().endUpdate();
+		}
+	};
+	
+	/**
+	 * 完成编辑
+	 */
+	NaturalSplineDrawingTool.prototype.finishEditing = function()
+	{
+		if (this.points.length < 2)
+		{
+			if (window.console)
+			{
+				console.warn('[Natural Spline Draw] 至少需要2个点才能完成编辑');
+			}
+			this.cancelEditing();
+			return;
+		}
+		
+		// 最后更新一次
+		this.updateEditingPreview();
+		
+		// 选择编辑后的单元格
+		this.graph.setSelectionCell(this.editingCell);
+		
+		if (window.console)
+		{
+			console.log('[Natural Spline Draw] 完成编辑顶点');
+		}
+		
+		// 停止编辑模式
+		this.stopEditing();
+	};
+	
+	/**
+	 * 取消编辑
+	 */
+	NaturalSplineDrawingTool.prototype.cancelEditing = function()
+	{
+		if (window.console)
+		{
+			console.log('[Natural Spline Draw] 取消编辑顶点');
+		}
+		
+		// 停止编辑模式（不保存更改，因为已经在 updateEditingPreview 中实时更新了）
+		this.stopEditing();
+	};
+	
+	/**
+	 * 停止编辑模式
+	 */
+	NaturalSplineDrawingTool.prototype.stopEditing = function()
+	{
+		this.enabled = false;
+		this.editingCell = null;
+		this.points = [];
+		this.clearPreview();
+		
+		// 恢复光标
+		this.graph.container.style.cursor = '';
+		
+		// 移除鼠标监听器
+		if (this.mouseHandler)
+		{
+			this.graph.removeMouseListener(this.mouseHandler);
+			this.mouseHandler = null;
+		}
+		
+		// 移除键盘监听器
+		if (this.escapeHandler)
+		{
+			this.graph.removeListener(this.escapeHandler);
+			this.escapeHandler = null;
+		}
+		
+		if (this.keyDownHandler)
+		{
+			mxEvent.removeListener(document, 'keydown', this.keyDownHandler);
+			this.keyDownHandler = null;
+		}
+		
+		// 移除视图变化监听器
+		if (this.viewChangeHandler)
+		{
+			this.graph.view.removeListener(this.viewChangeHandler);
+			this.viewChangeHandler = null;
+		}
+	};
+	
 	// 创建自然样条曲线绘制工具实例
 	var splineTool = new NaturalSplineDrawingTool(editorUi);
 	
@@ -1018,6 +1575,47 @@ Draw.loadPlugin(function(editorUi)
 	{
 		splineTool.startDrawing();
 	});
+	
+	// 添加编辑顶点动作
+	editorUi.actions.addAction('editSplineVertices', function()
+	{
+		var cell = editorUi.editor.graph.getSelectionCell();
+		if (cell)
+		{
+			splineTool.editSplineVertices(cell);
+		}
+	});
+	
+	// 添加右键菜单项
+	if (editorUi.menus && editorUi.menus.addPopupMenuCellItems && !window._splineMenuHandlerAdded)
+	{
+		var addPopupMenuCellItems = editorUi.menus.addPopupMenuCellItems;
+		
+		editorUi.menus.addPopupMenuCellItems = function(menu, cell, evt)
+		{
+			addPopupMenuCellItems.apply(this, arguments);
+			
+			var graph = editorUi.editor.graph;
+			if (cell != null && graph.getSelectionCount() == 1 && graph.getModel().isVertex(cell))
+			{
+				var style = graph.getCurrentCellStyle(cell);
+				var shape = mxUtils.getValue(style, mxConstants.STYLE_SHAPE, null);
+				
+				// 只为 naturalSpline 形状显示编辑顶点菜单
+				if (shape === 'naturalSpline')
+				{
+					menu.addSeparator();
+					menu.addItem('编辑顶点', null, function()
+					{
+						splineTool.editSplineVertices(cell);
+					});
+				}
+			}
+		};
+		
+		// 标记为已注册，防止重复
+		window._splineMenuHandlerAdded = true;
+	}
 	
 	if (window.console)
 	{
