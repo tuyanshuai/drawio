@@ -798,8 +798,18 @@ Actions.prototype.init = function()
 		{
 			if (svgString == null || svgString.length == 0)
 			{
+				if (window.console)
+				{
+					console.error('[SVG Convert] SVG 字符串为空');
+				}
 				ui.handleError({message: mxResources.get('svgConversionError') || 'Unable to convert SVG'});
 				return;
+			}
+
+			if (window.console)
+			{
+				console.log('[SVG Convert] 开始转换，SVG长度:', svgString.length);
+				console.log('[SVG Convert] SVG预览:', svgString.substring(0, 200));
 			}
 
 			graph.getModel().beginUpdate();
@@ -809,6 +819,10 @@ Actions.prototype.init = function()
 
 				if (newCells != null && newCells.length > 0)
 				{
+					if (window.console)
+					{
+						console.log('[SVG Convert] 转换成功，生成', newCells.length, '个单元格');
+					}
 					var inserted = newCells;
 
 					if (newCells.length > 1)
@@ -818,9 +832,21 @@ Actions.prototype.init = function()
 
 					graph.setSelectionCells(inserted);
 				}
+				else
+				{
+					if (window.console)
+					{
+						console.error('[SVG Convert] 转换返回空数组');
+					}
+				}
 			}
 			catch (e)
 			{
+				if (window.console)
+				{
+					console.error('[SVG Convert] 转换异常:', e);
+					console.error('[SVG Convert] 异常堆栈:', e.stack);
+				}
 				ui.handleError(e);
 			}
 			finally
@@ -860,6 +886,12 @@ Actions.prototype.init = function()
 				}
 			}
 
+			if (!svgText)
+			{
+				ui.handleError({message: mxResources.get('svgConversionError') || 'Unable to convert SVG'});
+				return;
+			}
+
 			processSvg(svgText);
 			return;
 		}
@@ -886,10 +918,65 @@ Actions.prototype.init = function()
 			return;
 		}
 	}
-	else if (mxUtils.isNode(value) && value.nodeName != null && value.nodeName.toLowerCase() == 'svg')
+	else if (mxUtils.isNode(value) && value.nodeName != null)
 	{
-		processSvg(mxUtils.getXml(value));
-		return;
+		var nodeName = value.nodeName.toLowerCase();
+		if (nodeName == 'svg')
+		{
+			processSvg(mxUtils.getXml(value));
+			return;
+		}
+		else if (nodeName == 'svgimage')
+		{
+			var inlineSvg = mxUtils.getTextContent(value);
+			if (!inlineSvg || inlineSvg.length === 0)
+			{
+				var inlineAttr = value.getAttribute ? value.getAttribute('svgText') : null;
+				if (inlineAttr)
+				{
+					try
+					{
+						inlineSvg = decodeURIComponent(inlineAttr);
+					}
+					catch (e)
+					{
+						inlineSvg = null;
+					}
+				}
+			}
+			if (!inlineSvg || inlineSvg.length === 0)
+			{
+				var dataAttr = value.getAttribute ? value.getAttribute('svgDataUri') : null;
+				if (dataAttr != null)
+				{
+					try
+					{
+						inlineSvg = Graph.getSvgFromDataUri(dataAttr);
+					}
+					catch (e)
+					{
+						var comma = dataAttr.indexOf(',');
+						if (comma >= 0)
+						{
+							try
+							{
+								inlineSvg = decodeURIComponent(dataAttr.substring(comma + 1));
+							}
+							catch (ex)
+							{
+								inlineSvg = null;
+							}
+						}
+					}
+				}
+			}
+
+			if (inlineSvg)
+			{
+				processSvg(inlineSvg);
+				return;
+			}
+		}
 	}
 	else if (typeof value === 'string')
 	{
@@ -911,8 +998,14 @@ Actions.prototype.init = function()
 	ui.handleError({message: mxResources.get('svgConversionError') || 'Unable to convert SVG'});
 	})).isEnabled = function()
 	{
-		if (!isGraphEnabled())
+		// 不检查 graph.isEnabled()，因为在右键菜单显示时 graph 可能暂时被禁用
+		// 只要 graph 对象存在且 cell 存在即可
+		if (!graph || !graph.getModel())
 		{
+			if (window.console)
+			{
+				console.log('[convertSvgToShape] isEnabled: graph not available');
+			}
 			return false;
 		}
 
@@ -920,6 +1013,10 @@ Actions.prototype.init = function()
 
 		if (!cell || !graph.getModel().isVertex(cell))
 		{
+			if (window.console)
+			{
+				console.log('[convertSvgToShape] isEnabled: no cell or not vertex');
+			}
 			return false;
 		}
 
@@ -927,42 +1024,88 @@ Actions.prototype.init = function()
 		var style = (state != null) ? state.style : graph.getCellStyle(cell);
 		var image = (style != null) ? mxUtils.getValue(style, mxConstants.STYLE_IMAGE, null) : null;
 
-	if (image != null)
-	{
-		var lowerImage = String(image).toLowerCase();
-		if (lowerImage.indexOf('data:image/svg+xml') === 0 || /\.svg(\?.*)?$/i.test(lowerImage))
+		if (image != null)
 		{
-			return true;
-		}
-	}
-
-	var value = graph.getModel().getValue(cell);
-	
-	if (mxUtils.isNode(value) && value.nodeName != null && value.nodeName.toLowerCase() == 'svg')
-	{
-		return true;
-	}
-
-	if (typeof value === 'string')
-	{
-		var trimmed = value.trim();
-		if (trimmed.length > 4 && trimmed.charAt(0) == '<')
-		{
-			try
+			var lowerImage = String(image).toLowerCase();
+			// 支持所有 data:image/svg 格式（包括 base64 编码）
+			if (lowerImage.indexOf('data:image/svg') === 0 || /\.svg(\?.*)?$/i.test(lowerImage))
 			{
-				var doc = mxUtils.parseXml(trimmed);
-				return doc != null && doc.documentElement != null && doc.documentElement.nodeName &&
-					doc.documentElement.nodeName.toLowerCase() == 'svg';
-			}
-			catch (e)
-			{
-				// ignore parse errors
+				if (window.console)
+				{
+					console.log('[convertSvgToShape] isEnabled: SVG detected in image style');
+				}
+				return true;
 			}
 		}
-	}
 
-	return false;
+		var value = graph.getModel().getValue(cell);
+		
+		if (mxUtils.isNode(value) && value.nodeName != null)
+		{
+			var nodeName = value.nodeName.toLowerCase();
+			if (nodeName == 'svg')
+			{
+				if (window.console)
+				{
+					console.log('[convertSvgToShape] isEnabled: SVG node detected');
+				}
+				return true;
+			}
+			else if (nodeName == 'svgimage')
+			{
+				var hasInline = mxUtils.getTextContent(value);
+				if (!hasInline || hasInline.length === 0)
+				{
+					var inlineAttr = value.getAttribute ? value.getAttribute('svgText') : null;
+					if (inlineAttr)
+					{
+						hasInline = inlineAttr;
+					}
+				}
+				var dataAttr = value.getAttribute ? value.getAttribute('svgDataUri') : null;
+				var isSvg = (hasInline != null && hasInline.length > 0) || 
+				            (dataAttr != null && dataAttr.toLowerCase().indexOf('data:image/svg') === 0);
+				if (window.console)
+				{
+					console.log('[convertSvgToShape] isEnabled: SvgImage node, isSvg:', isSvg);
+				}
+				return isSvg;
+			}
+		}
+
+		if (typeof value === 'string')
+		{
+			var trimmed = value.trim();
+			if (trimmed.length > 4 && trimmed.charAt(0) == '<')
+			{
+				try
+				{
+					var doc = mxUtils.parseXml(trimmed);
+					var isSvg = doc != null && doc.documentElement != null && doc.documentElement.nodeName &&
+						doc.documentElement.nodeName.toLowerCase() == 'svg';
+					if (window.console)
+					{
+						console.log('[convertSvgToShape] isEnabled: string value, isSvg:', isSvg);
+					}
+					return isSvg;
+				}
+				catch (e)
+				{
+					// ignore parse errors
+				}
+			}
+		}
+
+		if (window.console)
+		{
+			console.log('[convertSvgToShape] isEnabled: false (no SVG detected)');
+		}
+		return false;
 	};
+	
+	// 确保 action 可见
+	this.get('convertSvgToShape').visible = true;
+	
 	this.put('insertLink', new Action('link' + '...', function()
 	{
 		if (graph.isEnabled() && !graph.isCellLocked(graph.getDefaultParent()))

@@ -10125,7 +10125,8 @@
 			
 			if (!containsModel)
 			{
-				var graph = this.editor.graph;
+		var graph = this.editor.graph;
+		var originalData = data;
 				
 				// Strips encoding bit (eg. ;base64,) for cell style
 				var semi = data.indexOf(';');
@@ -10149,8 +10150,46 @@
 					style += 'editableCssRules=.*;';
 				}
 
-				cells = [graph.insertVertex(null, null, '', dx, dy,
-					w, h, style + 'image=' + data + ';')];
+			cells = [graph.insertVertex(null, null, '', dx, dy,
+				w, h, style + 'image=' + data + ';')];
+
+			if (mimeType.substring(0, 9) == 'image/svg' && cells[0] != null)
+			{
+				var svgText = null;
+				try
+				{
+					svgText = Graph.getSvgFromDataUri(data);
+				}
+				catch (e)
+				{
+					// ignore and fallback below
+				}
+
+				if (svgText == null)
+				{
+					var commaIdx = data.indexOf(',');
+					if (commaIdx >= 0)
+					{
+						try
+						{
+							svgText = decodeURIComponent(data.substring(commaIdx + 1));
+						}
+						catch (e)
+						{
+							// ignore
+						}
+					}
+				}
+
+				var doc = mxUtils.createXmlDocument();
+			var node = doc.createElement('SvgImage');
+			node.setAttribute('svgDataUri', originalData);
+				if (svgText != null)
+				{
+					node.setAttribute('svgText', encodeURIComponent(svgText));
+				}
+				graph.getModel().setValue(cells[0], node);
+			}
 			}
 		}
 		else if (/(\.*<graphml )/.test(data)) 
@@ -20157,6 +20196,14 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 	var elements = importedSvg.querySelectorAll('path,polygon,polyline,rect,circle,ellipse,line');
 	var svgPoint = (importedSvg.createSVGPoint != null) ? importedSvg.createSVGPoint() : null;
 
+	if (window.console)
+	{
+		console.log('[SVG Convert] 找到元素数量:', elements.length);
+		console.log('[SVG Convert] viewBox:', vbX, vbY, vbWidth, vbHeight);
+		console.log('[SVG Convert] 几何尺寸:', geo.width, geo.height);
+		console.log('[SVG Convert] scale:', scaleX, scaleY, avgScale);
+	}
+
 	var colorCanvas = document.createElement('canvas');
 	colorCanvas.width = colorCanvas.height = 1;
 	var colorCtx = colorCanvas.getContext('2d');
@@ -20255,7 +20302,8 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 	{
 		var nx = (pt.x - vbX) / vbWidth;
 		var ny = (pt.y - vbY) / vbHeight;
-		return [parseFloat(mxUtils.toFixed(nx, 4)), parseFloat(mxUtils.toFixed(ny, 4))];
+		// 使用原生 toFixed 方法
+		return [parseFloat(Number(nx).toFixed(4)), parseFloat(Number(ny).toFixed(4))];
 	};
 
 	var samplePath = function(el)
@@ -20268,18 +20316,60 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 		}
 		catch (e)
 		{
+			if (window.console)
+			{
+				console.warn('[SVG Convert] getTotalLength 失败:', e);
+			}
 			total = 0;
 		}
+		
+		if (total <= 0)
+		{
+			// 如果无法获取长度，尝试使用路径解析
+			if (window.console)
+			{
+				console.warn('[SVG Convert] 路径长度为0，尝试备用方法');
+			}
+			// 返回空数组，让上层处理
+			return [];
+		}
+		
 		var segments = Math.max(16, Math.min(128, Math.round(total / Math.max(vbWidth, vbHeight) * 32)));
 		if (!isFinite(segments) || segments <= 0)
 		{
 			segments = 64;
 		}
+		
 		for (var i = 0; i <= segments; i++)
 		{
-			var p = el.getPointAtLength(Math.min(total, Math.max(0, total * i / segments)));
-			pts.push(applyMatrix({x: p.x, y: p.y}, el.getCTM ? el.getCTM() : null));
+			try
+			{
+				var length = Math.min(total, Math.max(0, total * i / segments));
+				var p = el.getPointAtLength(length);
+				if (p && isFinite(p.x) && isFinite(p.y))
+				{
+					pts.push(applyMatrix({x: p.x, y: p.y}, el.getCTM ? el.getCTM() : null));
+				}
+			}
+			catch (e)
+			{
+				if (window.console && i === 0)
+				{
+					console.warn('[SVG Convert] getPointAtLength 在位置', i, '失败:', e);
+				}
+				// 继续处理下一个点
+			}
 		}
+		
+		if (pts.length < 2)
+		{
+			if (window.console)
+			{
+				console.warn('[SVG Convert] 路径采样点不足，仅', pts.length, '个点');
+			}
+			return [];
+		}
+		
 		return sanitizePoints(pts);
 	};
 
@@ -20324,7 +20414,8 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 				var val = parseFloat(dashParts[i]);
 				if (isFinite(val))
 				{
-					converted.push(mxUtils.toFixed(Math.max(0, val * avgScale), 2));
+					// 使用原生 toFixed 方法
+					converted.push(Number(Math.max(0, val * avgScale)).toFixed(2));
 				}
 			}
 			if (converted.length > 0)
@@ -20359,7 +20450,8 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 		}
 		if (strokeWidth > 0)
 		{
-			style += 'strokeWidth=' + mxUtils.toFixed(strokeWidth, 2) + ';';
+			// 使用原生 toFixed 方法
+			style += 'strokeWidth=' + Number(strokeWidth).toFixed(2) + ';';
 		}
 		var linecap = el.getAttribute('stroke-linecap');
 		if (!linecap && computed)
@@ -20394,7 +20486,23 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 		var pts = null;
 		if (tagName === 'path')
 		{
-			pts = samplePath(el);
+			try
+			{
+				pts = samplePath(el);
+				if (window.console && i < 5)
+				{
+					console.log('[SVG Convert] path', i, '采样点数:', pts ? pts.length : 0);
+				}
+			}
+			catch (e)
+			{
+				if (window.console)
+				{
+					console.error('[SVG Convert] path', i, '采样失败:', e);
+					console.error('[SVG Convert] path d属性:', el.getAttribute('d') ? el.getAttribute('d').substring(0, 100) : 'none');
+				}
+				pts = null;
+			}
 		}
 		else if (tagName === 'polygon' || tagName === 'polyline')
 		{
@@ -20462,7 +20570,18 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 
 	if (results.length === 0)
 	{
+		if (window.console)
+		{
+			console.error('[SVG Convert] 转换失败：没有生成任何形状');
+			console.error('[SVG Convert] 元素总数:', elements.length);
+			console.error('[SVG Convert] SVG内容预览:', svgString.substring(0, 500));
+		}
 		throw new Error(mxResources.get('svgConversionError') || 'Unable to convert SVG');
+	}
+
+	if (window.console)
+	{
+		console.log('[SVG Convert] 成功生成', results.length, '个形状');
 	}
 
 	var parent = model.getParent(cell);

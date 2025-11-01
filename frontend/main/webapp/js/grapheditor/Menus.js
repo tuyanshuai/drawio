@@ -1775,12 +1775,87 @@ Menus.prototype.addPopupMenuCellEditItems = function(menu, cell, evt, parent)
 	{
 		var image = mxUtils.getValue(state.style, mxConstants.STYLE_IMAGE, null);
 		var value = graph.getModel().getValue(cell);
-		var isSvgImage = image != null && (image.substring(0, 19) == 'data:image/svg+xml' || /\.svg(\?.*)?$/i.test(image));
-		var isSvgValue = mxUtils.isNode(value) && value.nodeName != null && value.nodeName.toLowerCase() == 'svg';
+		var isSvgImage = false;
+		
+		if (image != null)
+		{
+			var lowerImage = String(image).toLowerCase();
+			// 检查 data URI 格式（支持 base64 和非 base64 编码）
+			isSvgImage = lowerImage.indexOf('data:image/svg') === 0 || /\.svg(\?.*)?$/i.test(lowerImage);
+		}
+		
+		var isSvgValue = false;
+		if (mxUtils.isNode(value) && value.nodeName != null)
+		{
+			var nodeName = value.nodeName.toLowerCase();
+			// 检查是否为 <svg> 或 <svgimage> 节点
+			if (nodeName == 'svg')
+			{
+				isSvgValue = true;
+			}
+			else if (nodeName == 'svgimage')
+			{
+				// SvgImage 节点可能包含 svgDataUri 或 svgText 属性
+				var hasInline = mxUtils.getTextContent(value);
+				if (!hasInline || hasInline.length === 0)
+				{
+					var inlineAttr = value.getAttribute ? value.getAttribute('svgText') : null;
+					if (inlineAttr)
+					{
+						hasInline = inlineAttr;
+					}
+				}
+				var dataAttr = value.getAttribute ? value.getAttribute('svgDataUri') : null;
+				isSvgValue = (hasInline != null && hasInline.length > 0) || 
+				             (dataAttr != null && dataAttr.toLowerCase().indexOf('data:image/svg') === 0);
+			}
+		}
+		
+		// 也检查字符串值是否为 SVG XML
+		if (!isSvgValue && typeof value === 'string')
+		{
+			var trimmed = value.trim();
+			if (trimmed.length > 4 && trimmed.charAt(0) == '<')
+			{
+				try
+				{
+					var doc = mxUtils.parseXml(trimmed);
+					if (doc != null && doc.documentElement != null && doc.documentElement.nodeName &&
+						doc.documentElement.nodeName.toLowerCase() == 'svg')
+					{
+						isSvgValue = true;
+					}
+				}
+				catch (e)
+				{
+					// ignore parse errors
+				}
+			}
+		}
+		
+		if (window.console)
+		{
+			console.log('[Menu] SVG检测 - image:', image ? image.substring(0, 50) : 'null', 
+			            'isSvgImage:', isSvgImage);
+			console.log('[Menu] SVG检测 - value类型:', typeof value, 
+			            'nodeName:', value && value.nodeName ? value.nodeName : 'N/A',
+			            'isSvgValue:', isSvgValue);
+		}
 		
 		if (isSvgImage || isSvgValue)
 		{
+			if (window.console)
+			{
+				console.log('[Menu] 添加"转换为可编辑形状"菜单项');
+			}
 			this.addMenuItems(menu, ['convertSvgToShape'], parent, evt);
+		}
+		else
+		{
+			if (window.console)
+			{
+				console.log('[Menu] 未检测到SVG，不添加菜单项');
+			}
 		}
 	}
 
