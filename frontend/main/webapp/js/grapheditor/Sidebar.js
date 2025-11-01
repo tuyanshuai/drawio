@@ -1832,6 +1832,61 @@ Sidebar.prototype.addGeneralPalette = function(expand)
 	 		return this.createVertexTemplate(style, 100, 100, '', 'Polygon', null, null, null, null, clickFn);
 	 	})),
 	 	
+	 	// Add natural spline shape to general palette - click to start manual drawing
+	 	this.addEntry('natural spline shape custom', mxUtils.bind(this, function()
+	 	{
+	 		var clickFn = mxUtils.bind(this, function(evt)
+	 		{
+	 			// Try to get the drawNaturalSpline action
+	 			var drawNaturalSplineAction = this.editorUi.actions.get('drawNaturalSpline');
+	 			if (drawNaturalSplineAction && drawNaturalSplineAction.funct)
+	 			{
+	 				drawNaturalSplineAction.funct(evt);
+	 				mxEvent.consume(evt);
+	 			}
+	 			else
+	 			{
+	 				// Fallback: try to access splineTool directly if action not available
+	 				if (window.splineTool && typeof window.splineTool.startDrawing === 'function')
+	 				{
+	 					window.splineTool.startDrawing();
+	 					mxEvent.consume(evt);
+	 				}
+	 			}
+	 		});
+	 		
+	 		// Check if naturalSpline shape is registered
+	 		var shapeRegistered = false;
+	 		try {
+	 			if (mxCellRenderer && mxCellRenderer.defaultShapes && mxCellRenderer.defaultShapes['naturalSpline']) {
+	 				shapeRegistered = true;
+	 			}
+	 		} catch (e) {
+	 			// Shape not registered yet
+	 		}
+	 		
+	 		if (shapeRegistered) {
+	 			// Create actual curve cell as icon preview - shows actual rendered curve
+	 			var splineCoords = [[0,0.5],[0.1,0.3],[0.2,0.15],[0.3,0.08],[0.4,0.85],[0.5,0.92],[0.6,0.15],[0.7,0.08],[0.8,0.85],[0.9,0.7],[1,0.5]];
+	 			var style = 'shape=naturalSpline;splineCoords=' + JSON.stringify(splineCoords) + ';whiteSpace=wrap;html=1;fillColor=none;strokeColor=#000000;strokeWidth=2.5;';
+	 			
+	 			var cell = new mxCell('', new mxGeometry(0, 0, 100, 50), style);
+	 			cell.vertex = true;
+	 			
+	 			return this.createVertexTemplateFromCells([cell], cell.geometry.width, cell.geometry.height, 'Natural Spline', null, null, null, null, clickFn);
+	 		} else {
+	 			// Fallback: use edge curve as placeholder until shape is registered
+	 			var cell = new mxCell('', new mxGeometry(0, 0, 50, 50), 'curved=1;endArrow=none;html=1;strokeWidth=2.5;');
+	 			cell.geometry.setTerminalPoint(new mxPoint(0, 50), true);
+	 			cell.geometry.setTerminalPoint(new mxPoint(50, 0), false);
+	 			cell.geometry.points = [new mxPoint(50, 50), new mxPoint(0, 0)];
+	 			cell.geometry.relative = true;
+	 			cell.edge = true;
+	 			
+	 			return this.createEdgeTemplateFromCells([cell], cell.geometry.width, cell.geometry.height, 'Natural Spline', null, null, null, null, clickFn);
+	 		}
+	 	})),
+	 	
 	 	 
 	  
 		this.addEntry('curve', mxUtils.bind(this, function()

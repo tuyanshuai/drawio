@@ -35,6 +35,7 @@
 		// 注意：polygon-draw.js 必须在 ai-convert.js 之前加载，因为 ai-convert 依赖 manualPolygon 形状
 		var allPlugins = [
 			"plugins/polygon-draw.js",
+			"plugins/natural-spline-draw.js",
 			"plugins/ai-convert.js",
 			"plugins/highlight-effect.js",
 			"plugins/isocube.js",
@@ -50,6 +51,7 @@
 		// 注意：polygon-draw.js 必须在 ai-convert.js 之前加载
 		var corePlugins = [
 			"plugins/polygon-draw.js",
+			"plugins/natural-spline-draw.js",
 			"plugins/isocube.js", 
 			"plugins/ai-convert.js", 
 			"plugins/highlight-effect.js"
