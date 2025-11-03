@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+  <!-- 药丸 -->
+  <ellipse cx="40" cy="50" rx="20" ry="15" fill="#4a90e2" stroke="#2c5f8f" stroke-width="2"/>
+  <ellipse cx="60" cy="50" rx="20" ry="15" fill="#e74439" stroke="#c62e24" stroke-width="2"/>
+  <path d="M 40 50 L 60 50" stroke="#fff" stroke-width="2"/>
+  <circle cx="35" cy="50" r="2" fill="#fff" opacity="0.8"/>
+  <circle cx="65" cy="50" r="2" fill="#fff" opacity="0.8"/>
+</svg>
+

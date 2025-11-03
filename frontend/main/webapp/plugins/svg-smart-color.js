@@ -2680,14 +2680,15 @@ Draw.loadPlugin(function(editorUi)
 				return;
 			}
 			
+			// 注意：允许新颜色与当前替换颜色相同（因为可能要继续替换SVG中其他位置的相同颜色）
+			// 只有当新颜色输入框为空或无效时才拒绝
 			if (newColorObj.hex.toLowerCase() === colorToReplaceHex.toLowerCase())
 			{
-				editorUi.editor.setStatus('颜色未改变');
+				// 允许继续，因为可能要继续替换SVG中其他位置的相同颜色
 				if (window.console)
 				{
-					console.log('[SVG Smart Color] 应用失败: 颜色未改变', newColorObj.hex, '===', colorToReplaceHex);
+					console.log('[SVG Smart Color] 新颜色与当前替换颜色相同，但允许继续替换:', newColorObj.hex);
 				}
-				return;
 			}
 			
 			// 判断是否是第一次应用（没有appliedSvgString表示第一次）
@@ -2720,8 +2721,28 @@ Draw.loadPlugin(function(editorUi)
 				setCurrentColor(newColorObj.hex);
 				setColorToReplaceHex(newColorObj.hex);
 				
+				// 重要：确保SVG已经正确保存到cell（updateSvgCell已经在previewSvgString设置时被调用）
+				// 但为了确保持久性，再次验证并强制保存
+				if (window.console)
+				{
+					console.log('[SVG Smart Color] 验证并确保SVG已保存到cell');
+					console.log('[SVG Smart Color] appliedSvgString长度:', appliedSvgString ? appliedSvgString.length : 'null');
+				}
+				
 				// 清除预览状态（因为已保存）
 				previewSvgString = null;
+				
+				// 强制确保cell的SVG状态正确（再次应用一次以确保持久性）
+				var baseSvgForVerification = appliedOldColor ? (appliedSvgString || originalSvgString) : originalSvgString;
+				if (appliedSvgString && appliedSvgString !== baseSvgForVerification)
+				{
+					// 再次更新以确保SVG被正确保存
+					updateSvgCell(cell, baseSvgForVerification, appliedSvgString, '', '');
+					if (window.console)
+					{
+						console.log('[SVG Smart Color] 已再次验证并保存SVG到cell，确保持久性');
+					}
+				}
 				
 				// 强制确保UI元素引用仍然有效并更新（防止格式面板刷新导致引用丢失）
 				var panel = document.getElementById('svg-local-recolor-panel');
@@ -3002,22 +3023,74 @@ Draw.loadPlugin(function(editorUi)
 			var currentCell = graph.getSelectionCell();
 			if (currentCell !== cell)
 			{
+				if (window.console)
+				{
+					console.log('[SVG Smart Color] ===== 选择改变，清理面板 =====');
+					console.log('[SVG Smart Color] previewSvgString存在:', !!previewSvgString);
+					console.log('[SVG Smart Color] appliedSvgString存在:', !!appliedSvgString);
+				}
+				
 				var panelToRemove = document.getElementById('svg-local-recolor-panel');
 				if (panelToRemove && panelToRemove.parentNode)
 				{
 					panelToRemove.parentNode.removeChild(panelToRemove);
 				}
 				graph.getSelectionModel().removeListener(selectionHandler);
-				// 如果选择改变时有预览，先撤销预览
+				
+				// 如果选择改变时有预览，先撤销预览（恢复到已应用的状态）
 				if (previewSvgString)
 				{
 					var baseSvgString = appliedSvgString || originalSvgString;
+					if (window.console)
+					{
+						console.log('[SVG Smart Color] 撤销预览，恢复到:', baseSvgString === originalSvgString ? '原始状态' : '已应用状态');
+					}
 					updateSvgCell(cell, previewSvgString, baseSvgString, '', '');
 				}
-				// 如果选择改变时已保存了修改，恢复到原始状态
+				// 重要：如果已保存了修改（appliedSvgString存在），保持已应用的SVG，不要恢复到原始状态
+				// 因为用户已经应用了修改，这些修改应该持久保存
 				else if (appliedSvgString)
 				{
-					updateSvgCell(cell, appliedSvgString, originalSvgString, '', '');
+					if (window.console)
+					{
+						console.log('[SVG Smart Color] 已应用的SVG存在，保持当前状态（不恢复）');
+						console.log('[SVG Smart Color] 确保cell显示的是已应用的SVG');
+					}
+					
+					// 确保cell显示的是已应用的SVG（可能在某些情况下cell没有正确更新）
+					// 通过重新应用一次来确保状态正确
+					graph.getModel().beginUpdate();
+					try
+					{
+						var state = graph.view.getState(cell);
+						var style = (state != null) ? state.style : graph.getCellStyle(cell);
+						var value = graph.getModel().getValue(cell);
+						var encodedSvg = 'data:image/svg+xml,' + encodeURIComponent(appliedSvgString);
+						
+						if (style && mxUtils.getValue(style, mxConstants.STYLE_IMAGE, null) && 
+						    mxUtils.getValue(style, mxConstants.STYLE_IMAGE, null).toLowerCase().indexOf('data:image/svg') === 0)
+						{
+							graph.setCellStyles(mxConstants.STYLE_IMAGE, encodedSvg, [cell]);
+						}
+						else if (mxUtils.isNode(value) && value.nodeName === 'SvgImage')
+						{
+							var svgImageNode = value.cloneNode(true);
+							svgImageNode.setAttribute('svgText', appliedSvgString);
+							svgImageNode.setAttribute('svgDataUri', encodedSvg);
+							graph.getModel().setValue(cell, svgImageNode);
+							graph.setCellStyles(mxConstants.STYLE_IMAGE, encodedSvg, [cell]);
+						}
+						graph.refresh(cell);
+					}
+					finally
+					{
+						graph.getModel().endUpdate();
+					}
+					
+					if (window.console)
+					{
+						console.log('[SVG Smart Color] ===== 已确保cell保持已应用的SVG =====');
+					}
 				}
 			}
 		};

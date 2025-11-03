@@ -372,5 +372,124 @@
     "thumbnail": null,
     "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij4NCiAgPHBhdGggZD0iTTEyIDJDNi40OCAyIDIgNi40OCAyIDEyczQuNDggMTAgMTAgMTAgMTAtNC40OCAxMC0xMFMxNy41MiAyIDEyIDJ6bS0yIDE1bC01LTUgMS40MS0xLjQxTDEwIDE0LjE3bDcuNTktNy41OUwxOSA4bC05IDl6IiBmaWxsPSIjNjA3RDhCIi8+DQo8L3N2Zz4NCg0K",
     "categoryId": "technology"
+  },
+  {
+    "id": "stethoscope",
+    "title": "听诊器",
+    "description": "听诊器图标",
+    "type": "svg",
+    "format": "svg",
+    "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+DSAgPGNpcmNsZSBjeD0iMzAiIGN5PSIyNSIgcj0iMTIiIGZpbGw9IiNlNzQ0MzkiIHN0cm9rZT0iI2M2MmUyNCIgc3Ryb2tlLXdpZHRoPSIyIi8+DSAgPGNpcmNsZSBjeD0iMzAiIGN5PSIyNSIgcj0iOCIgZmlsbD0iI2ZmZiIgb3BhY2l0eT0iMC44Ii8+DSAgPHBhdGggZD0iTSAzMCAzNyBMIDMwIDYwIEwgNTAgNjAgTCA1MCA3MCBMIDY1IDU1IEwgNjUgNDAgTCA1MCA0MCBMIDUwIDUwIEwgMzAgNTAgWiIgZmlsbD0iI2U3NDQzOSIgc3Ryb2tlPSIjYzYyZTI0IiBzdHJva2Utd2lkdGg9IjIiLz4NICA8Y2lyY2xlIGN4PSI2NSIgY3k9IjM1IiByPSI4IiBmaWxsPSIjZTc0NDM5IiBzdHJva2U9IiNjNjJlMjQiIHN0cm9rZS13aWR0aD0iMiIvPg0gIDxwYXRoIGQ9Ik0gNzMgMzUgTCA4MCAzNSBMIDgwIDQ1IEwgNzMgNDUiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2U3NDQzOSIgc3Ryb2tlLXdpZHRoPSIzIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4NPC9zdmc+",
+    "url": null,
+    "width": 100,
+    "height": 100,
+    "tags": [
+      "听诊器",
+      "医疗设备",
+      "诊断"
+    ],
+    "thumbnail": null,
+    "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDEwMCAxMDAiPjxwYXRoIGQ9Ik0gMzAgMzcgTCAzMCA2MCBMIDUwIDYwIEwgNTAgNzAgTCA2NSA1NSBMIDY1IDQwIEwgNTAgNDAgTCA1MCA1MCBMIDMwIDUwIFoiIGZpbGw9IiNlNzQ0MzkiIHN0cm9rZT0iI2M2MmUyNCIgc3Ryb2tlLXdpZHRoPSIyIi8+PC9zdmc+",
+    "categoryId": "medical"
+  },
+  {
+    "id": "heart",
+    "title": "心脏",
+    "description": "心脏图标",
+    "type": "svg",
+    "format": "svg",
+    "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+DSAgPHBhdGggZD0iTSA1MCAyMCBDIDQ1IDE1LCAzNSAxNSwgMzAgMjAgQyAyNSAyNSwgMjUgMzUsIDMwIDQwIEwgNTAgNjAgTCA3MCA0MCBDIDc1IDM1LCA3NSAyNSwgNzAgMjAgQyA2NSAxNSwgNTUgMTUsIDUwIDIwIFoiIA0gICAgICAgIGZpbGw9IiNlNzQ0MzkiIHN0cm9rZT0iI2M2MmUyNCIgc3Ryb2tlLXdpZHRoPSIyIi8+DSAgPHBhdGggZD0iTSA1MCAyNSBDIDQ3IDIyLCAzOCAyMiwgMzUgMjUgQyAzMiAyOCwgMzIgMzUsIDM1IDM4IEwgNTAgNTUgTCA2NSAzOCBDIDY4IDM1LCA2OCAyOCwgNjUgMjUgQyA2MiAyMiwgNTMgMjIsIDUwIDI1IFoiIA0gICAgICAgIGZpbGw9IiNmZjZiNmIiIG9wYWNpdHk9IjAuNSIvPg08L3N2Zz4=",
+    "url": null,
+    "width": 100,
+    "height": 100,
+    "tags": [
+      "心脏",
+      "器官",
+      "生命",
+      "医学"
+    ],
+    "thumbnail": null,
+    "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDEwMCAxMDAiPjxwYXRoIGQ9Ik0gNTAgMjAgQyA0NSAxNSwgMzUgMTUsIDMwIDIwIEMgMjUgMjUsIDI1IDM1LCAzMCA0MCBMIDUwIDYwIEwgNzAgNDAgQyA3NSAzNSwgNzUgMjUsIDcwIDIwIEMgNjUgMTUsIDU1IDE1LCA1MCAyMCBaIiBmaWxsPSIjZTc0NDM5IiBzdHJva2U9IiNjNjJlMjQiIHN0cm9rZS13aWR0aD0iMiIvPjwvc3ZnPg==",
+    "categoryId": "medical"
+  },
+  {
+    "id": "first_aid",
+    "title": "急救箱",
+    "description": "急救箱图标",
+    "type": "svg",
+    "format": "svg",
+    "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+DSAgPHJlY3QgeD0iMjAiIHk9IjI1IiB3aWR0aD0iNjAiIGhlaWdodD0iNTUiIHJ4PSI1IiBmaWxsPSIjZTc0NDM5IiBzdHJva2U9IiNjNjJlMjQiIHN0cm9rZS13aWR0aD0iMiIvPg0gIDxyZWN0IHg9IjIwIiB5PSIyNSIgd2lkdGg9IjYwIiBoZWlnaHQ9IjE1IiByeD0iNSIgZmlsbD0iI2M2MmUyNCIvPg0gIDxjaXJjbGUgY3g9IjUwIiBjeT0iNTIuNSIgcj0iMTUiIGZpbGw9IndoaXRlIiBzdHJva2U9IiNjNjJlMjQiIHN0cm9rZS13aWR0aD0iMiIvPg0gIDxwYXRoIGQ9Ik0gNTAgNDIuNSBMIDUwIDYyLjUgTSA0Mi41IDUyLjUgTCA1Ny41IDUyLjUiIHN0cm9rZT0iI2U3NDQzOSIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4NICA8cGF0aCBkPSJNIDI1IDIwIEwgMjUgMjUgTSA3NSAyMCBMIDc1IDI1IiBzdHJva2U9IiNjNjJlMjQiIHN0cm9rZS13aWR0aD0iMyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+DTwvc3ZnPg==",
+    "url": null,
+    "width": 100,
+    "height": 100,
+    "tags": [
+      "急救箱",
+      "医疗",
+      "急救",
+      "药品"
+    ],
+    "thumbnail": null,
+    "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDEwMCAxMDAiPjxyZWN0IHg9IjIwIiB5PSIyNSIgd2lkdGg9IjYwIiBoZWlnaHQ9IjU1IiByeD0iNSIgZmlsbD0iI2U3NDQzOSIgc3Ryb2tlPSIjYzYyZTI0IiBzdHJva2Utd2lkdGg9IjIiLz48L3N2Zz4=",
+    "categoryId": "medical"
+  },
+  {
+    "id": "thermometer",
+    "title": "温度计",
+    "description": "温度计图标",
+    "type": "svg",
+    "format": "svg",
+    "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+DSAgPHJlY3QgeD0iNDUiIHk9IjE1IiB3aWR0aD0iMTAiIGhlaWdodD0iNTAiIHJ4PSI1IiBmaWxsPSIjZTc0NDM5IiBzdHJva2U9IiNjNjJlMjQiIHN0cm9rZS13aWR0aD0iMiIvPg0gIDxjaXJjbGUgY3g9IjUwIiBjeT0iNzAiIHI9IjEwIiBmaWxsPSIjZTc0NDM5IiBzdHJva2U9IiNjNjJlMjQiIHN0cm9rZS13aWR0aD0iMiIvPg0gIDxwYXRoIGQ9Ik0gNTAgMjUgTCA1MCA0MCBNIDUwIDMwIEwgNDUgMzAgTSA1MCAzNSBMIDQ1IDM1IE0gNTAgNDAgTCA0NSA0MCIgDSAgICAgICAgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPg0gIDxyZWN0IHg9IjQyIiB5PSIxMCIgd2lkdGg9IjE2IiBoZWlnaHQ9IjgiIHJ4PSIyIiBmaWxsPSIjYzYyZTI0Ii8+DTwvc3ZnPg==",
+    "url": null,
+    "width": 100,
+    "height": 100,
+    "tags": [
+      "温度计",
+      "测量",
+      "体温",
+      "医疗设备"
+    ],
+    "thumbnail": null,
+    "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDEwMCAxMDAiPjxyZWN0IHg9IjQ1IiB5PSIxNSIgd2lkdGg9IjEwIiBoZWlnaHQ9IjUwIiByeD0iNSIgZmlsbD0iI2U3NDQzOSIgc3Ryb2tlPSIjYzYyZTI0IiBzdHJva2Utd2lkdGg9IjIiLz48L3N2Zz4=",
+    "categoryId": "medical"
+  },
+  {
+    "id": "syringe",
+    "title": "注射器",
+    "description": "注射器图标",
+    "type": "svg",
+    "format": "svg",
+    "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+DSAgPHJlY3QgeD0iMzAiIHk9IjM1IiB3aWR0aD0iNDAiIGhlaWdodD0iOCIgcng9IjIiIGZpbGw9IiM0YTkwZTIiIHN0cm9rZT0iIzJjNWY4ZiIgc3Ryb2tlLXdpZHRoPSIxIi8+DSAgPHJlY3QgeD0iMzAiIHk9IjQzIiB3aWR0aD0iNDAiIGhlaWdodD0iMjUiIHJ4PSIyIiBmaWxsPSIjZTBlMGUwIiBzdHJva2U9IiM5OTkiIHN0cm9rZS13aWR0aD0iMiIvPg0gIDxyZWN0IHg9IjMyIiB5PSI0NSIgd2lkdGg9IjM2IiBoZWlnaHQ9IjIxIiBmaWxsPSIjZmZmIiBvcGFjaXR5PSIwLjgiLz4NICA8cmVjdCB4PSI2OCIgeT0iNDMiIHdpZHRoPSI4IiBoZWlnaHQ9IjI1IiByeD0iMiIgZmlsbD0iIzRhOTBlMiIgc3Ryb2tlPSIjMmM1ZjhmIiBzdHJva2Utd2lkdGg9IjIiLz4NICA8cmVjdCB4PSI3MCIgeT0iNjAiIHdpZHRoPSI0IiBoZWlnaHQ9IjYiIGZpbGw9IiMyYzVmOGYiLz4NICA8Y2lyY2xlIGN4PSI1MCIgY3k9IjU1IiByPSIzIiBmaWxsPSIjZTc0NDM5Ii8+DSAgPHBhdGggZD0iTSAyNSA0NSBMIDI1IDU1IEwgMzAgNTAgWiIgZmlsbD0iIzk5OSIvPg08L3N2Zz4=",
+    "url": null,
+    "width": 100,
+    "height": 100,
+    "tags": [
+      "注射器",
+      "医疗",
+      "药物",
+      "医疗器械"
+    ],
+    "thumbnail": null,
+    "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDEwMCAxMDAiPjxyZWN0IHg9IjMwIiB5PSIzNSIgd2lkdGg9IjQwIiBoZWlnaHQ9IjgiIHJ4PSIyIiBmaWxsPSIjNGE5MGUyIiBzdHJva2U9IiMyYzVmOGYiLz48L3N2Zz4=",
+    "categoryId": "medical"
+  },
+  {
+    "id": "pill",
+    "title": "药丸",
+    "description": "药丸图标",
+    "type": "svg",
+    "format": "svg",
+    "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+DSAgPGVsbGlwc2UgY3g9IjQwIiBjeT0iNTAiIHJ4PSIyMCIgcnk9IjE1IiBmaWxsPSIjNGE5MGUyIiBzdHJva2U9IiMyYzVmOGYiIHN0cm9rZS13aWR0aD0iMiIvPg0gIDxlbGxpcHNlIGN4PSI2MCIgY3k9IjUwIiByeD0iMjAiIHJ5PSIxNSIgZmlsbD0iI2U3NDQzOSIgc3Ryb2tlPSIjYzYyZTI0IiBzdHJva2Utd2lkdGg9IjIiLz4NICA8cGF0aCBkPSJNIDQwIDUwIEwgNjAgNTAiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIyIi8+DSAgPGNpcmNsZSBjeD0iMzUiIGN5PSI1MCIgcj0iMiIgZmlsbD0iI2ZmZiIgb3BhY2l0eT0iMC44Ii8+DSAgPGNpcmNsZSBjeD0iNjUiIGN5PSI1MCIgcj0iMiIgZmlsbD0iI2ZmZiIgb3BhY2l0eT0iMC44Ii8+DTwvc3ZnPg==",
+    "url": null,
+    "width": 100,
+    "height": 100,
+    "tags": [
+      "药丸",
+      "药品",
+      "药物",
+      "医疗"
+    ],
+    "thumbnail": null,
+    "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDEwMCAxMDAiPjxlbGxpcHNlIGN4PSI0MCIgY3k9IjUwIiByeD0iMjAiIHJ5PSIxNSIgZmlsbD0iIzRhOTBlMiIgc3Ryb2tlPSIjMmM1ZjhmIi8+PC9zdmc+",
+    "categoryId": "medical"
   }
 ]

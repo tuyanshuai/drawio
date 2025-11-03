@@ -1,0 +1,12 @@
+{
+  "id": "medical",
+  "title": "医学",
+  "description": "医学相关素材，包括医疗设备、人体解剖、医疗器械等图标",
+  "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNMTIgMkM2LjQ4IDIgMiA2LjQ4IDIgMTJzNC40OCAxMCAxMCAxMCAxMC00LjQ4IDEwLTEwUzE3LjUyIDIgMTIgMnptLTEgMTVsLTUtNSAxLjQxLTEuNDFMMTEgMTQuMTdsNy41OS03LjU5TDE5IDhsLTggOHoiIGZpbGw9IiNlNzQ0MzkiLz48cGF0aCBkPSJNMTIgOGwtMiAyIDIgMiAyLTJ6IiBmaWxsPSIjZTM0MzNiIi8+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMyIgZmlsbD0iI2U3NDQzOSIgb3BhY2l0eT0iMC41Ii8+PC9zdmc+",
+  "order": 0,
+  "preload": true,
+  "version": "1.0.0",
+  "itemCount": 6,
+  "icons": []
+}
+
