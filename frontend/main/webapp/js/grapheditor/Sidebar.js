@@ -29,8 +29,9 @@ function Sidebar(editorUi, container)
 	this.wrapper = document.createElement('div');
 	this.container.appendChild(this.wrapper);
 
-	var title = this.createMoreShapes();
-	this.container.appendChild(title);
+	// 隐藏+更多图形按钮
+	// var title = this.createMoreShapes();
+	// this.container.appendChild(title);
 
 	document.body.appendChild(this.graph.container);
 	

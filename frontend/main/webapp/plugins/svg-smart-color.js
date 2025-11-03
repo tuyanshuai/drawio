@@ -37,38 +37,75 @@ Draw.loadPlugin(function(editorUi)
 			var lowerImage = String(image).toLowerCase();
 			if (lowerImage.indexOf('data:image/svg') === 0)
 			{
-				try
+				var commaIndex = image.indexOf(',');
+				if (commaIndex >= 0)
 				{
-					svgString = Graph.getSvgFromDataUri(image);
-				}
-				catch (e)
-				{
-					// Graph.getSvgFromDataUri 失败，可能不是base64编码，尝试URL解码
-					if (window.console)
-					{
-						console.warn('[SVG Smart Color] Graph.getSvgFromDataUri 失败，尝试备用方法:', e);
-					}
+					var dataPart = image.substring(commaIndex + 1);
+					var isBase64 = lowerImage.indexOf(';base64,') > 0;
 					
-					var commaIndex = image.indexOf(',');
-					if (commaIndex >= 0)
+					if (isBase64)
 					{
+						// Base64 编码的 SVG
 						try
 						{
-							// 尝试URL解码
-							svgString = decodeURIComponent(image.substring(commaIndex + 1));
+							svgString = Graph.getSvgFromDataUri(image);
 						}
-						catch (e2)
+						catch (e)
 						{
-							// URL解码也失败，尝试直接使用（可能已经是纯文本）
 							if (window.console)
 							{
-								console.warn('[SVG Smart Color] URL解码也失败:', e2);
+								console.warn('[SVG Smart Color] Base64解码失败:', e);
 							}
-							var rawContent = image.substring(commaIndex + 1);
-							// 检查是否看起来像SVG XML
-							if (rawContent.trim().charAt(0) === '<')
+							// 尝试手动解码
+							try
 							{
-								svgString = rawContent;
+								if (window.atob)
+								{
+									var decoded = window.atob(dataPart);
+									svgString = decodeURIComponent(escape(decoded));
+								}
+							}
+							catch (e2)
+							{
+								if (window.console)
+								{
+									console.warn('[SVG Smart Color] 手动Base64解码失败:', e2);
+								}
+							}
+						}
+					}
+					else
+					{
+						// URL 编码的 SVG
+						try
+						{
+							svgString = decodeURIComponent(dataPart);
+						}
+						catch (e)
+						{
+							if (window.console)
+							{
+								console.warn('[SVG Smart Color] URL解码失败:', e);
+							}
+							// 如果URL解码失败，检查是否已经是纯文本
+							if (dataPart.trim().charAt(0) === '<')
+							{
+								svgString = dataPart;
+							}
+							else
+							{
+								// 最后尝试使用 Graph.getSvgFromDataUri（可能内部处理了）
+								try
+								{
+									svgString = Graph.getSvgFromDataUri(image);
+								}
+								catch (e2)
+								{
+									if (window.console)
+									{
+										console.warn('[SVG Smart Color] Graph.getSvgFromDataUri 也失败:', e2);
+									}
+								}
 							}
 						}
 					}
@@ -104,32 +141,75 @@ Draw.loadPlugin(function(editorUi)
 					var dataUri = value.getAttribute ? value.getAttribute('svgDataUri') : null;
 					if (dataUri && dataUri.toLowerCase().indexOf('data:image/svg') === 0)
 					{
-						try
+						var comma = dataUri.indexOf(',');
+						if (comma >= 0)
 						{
-							svgString = Graph.getSvgFromDataUri(dataUri);
-						}
-						catch (e)
-						{
-							// Graph.getSvgFromDataUri 失败，尝试URL解码
-							if (window.console)
-							{
-								console.warn('[SVG Smart Color] 从svgDataUri获取SVG失败，尝试备用方法:', e);
-							}
+							var dataPart = dataUri.substring(comma + 1);
+							var isBase64 = dataUri.toLowerCase().indexOf(';base64,') > 0;
 							
-							var comma = dataUri.indexOf(',');
-							if (comma >= 0)
+							if (isBase64)
 							{
+								// Base64 编码的 SVG
 								try
 								{
-									svgString = decodeURIComponent(dataUri.substring(comma + 1));
+									svgString = Graph.getSvgFromDataUri(dataUri);
 								}
-								catch (e2)
+								catch (e)
 								{
-									// URL解码也失败，尝试直接使用
-									var rawContent = dataUri.substring(comma + 1);
-									if (rawContent.trim().charAt(0) === '<')
+									if (window.console)
 									{
-										svgString = rawContent;
+										console.warn('[SVG Smart Color] 从svgDataUri Base64解码失败:', e);
+									}
+									// 尝试手动解码
+									try
+									{
+										if (window.atob)
+										{
+											var decoded = window.atob(dataPart);
+											svgString = decodeURIComponent(escape(decoded));
+										}
+									}
+									catch (e2)
+									{
+										if (window.console)
+										{
+											console.warn('[SVG Smart Color] 手动Base64解码失败:', e2);
+										}
+									}
+								}
+							}
+							else
+							{
+								// URL 编码的 SVG
+								try
+								{
+									svgString = decodeURIComponent(dataPart);
+								}
+								catch (e)
+								{
+									if (window.console)
+									{
+										console.warn('[SVG Smart Color] 从svgDataUri URL解码失败:', e);
+									}
+									// 如果URL解码失败，检查是否已经是纯文本
+									if (dataPart.trim().charAt(0) === '<')
+									{
+										svgString = dataPart;
+									}
+									else
+									{
+										// 最后尝试使用 Graph.getSvgFromDataUri
+										try
+										{
+											svgString = Graph.getSvgFromDataUri(dataUri);
+										}
+										catch (e2)
+										{
+											if (window.console)
+											{
+												console.warn('[SVG Smart Color] Graph.getSvgFromDataUri 也失败:', e2);
+											}
+										}
 									}
 								}
 							}
@@ -827,84 +907,160 @@ Draw.loadPlugin(function(editorUi)
 	}
 	
 	/**
-	 * 根据鼠标位置的颜色进行局部改色
+	 * 启动颜色吸管工具，让用户在SVG上选择颜色
 	 */
-	function localRecolorByMousePosition(cell, evt)
+	function startColorDropper(cell, onColorSelected)
 	{
-		if (!cell || !evt)
+		if (window.console)
 		{
-			editorUi.handleError({message: '无法获取必要信息'});
+			console.log('[SVG Color Dropper] ===== 启动颜色吸管工具 =====');
+			console.log('[SVG Color Dropper] Cell:', cell);
+			console.log('[SVG Color Dropper] onColorSelected回调:', typeof onColorSelected);
+		}
+		
+		if (!cell || !onColorSelected)
+		{
+			if (window.console)
+			{
+				console.error('[SVG Color Dropper] ✗ 参数无效:', {
+					cell: cell ? '存在' : 'null',
+					onColorSelected: onColorSelected ? '存在' : 'null'
+				});
+			}
 			return;
 		}
 		
 		var svgString = getSvgContent(cell);
 		if (!svgString)
 		{
+			if (window.console)
+			{
+				console.error('[SVG Color Dropper] ✗ 无法获取SVG内容');
+			}
 			editorUi.handleError({message: '无法获取SVG内容'});
 			return;
 		}
 		
-		// 获取鼠标位置 - evt可能是mxEvent或原生事件
-		var nativeEvent = null;
-		if (evt && evt.getEvent)
+		if (window.console)
 		{
-			nativeEvent = evt.getEvent();
-		}
-		else if (evt && (evt.clientX !== undefined || evt.getClientX))
-		{
-			nativeEvent = evt;
+			console.log('[SVG Color Dropper] ✓ SVG内容获取成功，长度:', svgString.length);
 		}
 		
-		if (!nativeEvent)
+		// 创建吸管工具状态
+		var isDropping = true;
+		var cursor = graph.container.style.cursor || '';
+		
+		// 保存graph的原始状态
+		var originalEnabled = graph.enabled;
+		var originalDragEnabled = graph.dragEnabled;
+		var originalPanEnabled = graph.panEnabled;
+		
+		graph.enabled = false;
+		if (graph.setEnabled !== undefined)
 		{
-			// 尝试从graph获取最后已知的鼠标位置
-			var lastMouseEvent = graph.lastMouseEvent;
-			if (lastMouseEvent)
+			graph.setEnabled(false);
+		}
+		graph.dragEnabled = false;
+		if (graph.setDragEnabled !== undefined)
+		{
+			graph.setDragEnabled(false);
+		}
+		
+		// 禁用panning（拖拽平移）
+		if (graph.setPanEnabled !== undefined)
+		{
+			originalPanEnabled = graph.panEnabled;
+			graph.setPanEnabled(false);
+		}
+		
+		// 使用CSS样式来强制覆盖光标（覆盖所有元素，包括graph内部的）
+		var styleSheet = document.createElement('style');
+		styleSheet.id = 'svg-dropper-cursor-style';
+		styleSheet.textContent = '* { cursor: crosshair !important; }';
+		document.head.appendChild(styleSheet);
+		
+		// 也直接在container和body上设置
+		graph.container.style.setProperty('cursor', 'crosshair', 'important');
+		if (document.body)
+		{
+			document.body.style.setProperty('cursor', 'crosshair', 'important');
+		}
+		
+		// 保存并替换graph的鼠标移动处理，防止光标被改变
+		var originalMouseMove = graph.onMouseMove;
+		var originalGetCursorForCell = graph.getCursorForCell;
+		
+		// 覆盖鼠标移动处理，强制保持十字光标
+		if (graph.onMouseMove !== undefined)
+		{
+			graph.onMouseMove = function(me)
 			{
-				nativeEvent = lastMouseEvent.getEvent ? lastMouseEvent.getEvent() : lastMouseEvent;
-			}
+				// 强制设置光标
+				graph.container.style.setProperty('cursor', 'crosshair', 'important');
+				if (document.body)
+				{
+					document.body.style.setProperty('cursor', 'crosshair', 'important');
+				}
+				// 不调用原始方法，完全禁用graph的鼠标处理
+			};
 		}
 		
-		if (!nativeEvent || (nativeEvent.clientX === undefined && !nativeEvent.getClientX))
+		// 覆盖getCursorForCell方法，始终返回crosshair
+		if (graph.getCursorForCell !== undefined)
 		{
-			editorUi.handleError({message: '无法获取鼠标位置，请在SVG上点击右键'});
-			return;
+			graph.getCursorForCell = function(cell)
+			{
+				return 'crosshair';
+			};
 		}
 		
-		var mouseX = nativeEvent.clientX || (nativeEvent.getClientX ? nativeEvent.getClientX() : 0);
-		var mouseY = nativeEvent.clientY || (nativeEvent.getClientY ? nativeEvent.getClientY() : 0);
+		// 创建canvas用于颜色采样
+		var canvas = document.createElement('canvas');
+		var img = new Image();
+		var svgBlob = new Blob([svgString], {type: 'image/svg+xml;charset=utf-8'});
+		var url = URL.createObjectURL(svgBlob);
 		
-		// 获取cell的状态和位置
 		var state = graph.view.getState(cell);
 		if (!state)
 		{
-			editorUi.handleError({message: '无法获取单元格状态'});
+			URL.revokeObjectURL(url);
+			graph.container.style.cursor = cursor;
 			return;
 		}
 		
-		// 将鼠标位置转换为相对于SVG的坐标
-		var bounds = state;
-		var cellX = bounds.x;
-		var cellY = bounds.y;
-		var cellWidth = bounds.width;
-		var cellHeight = bounds.height;
+		// 使用cellBounds获取模型坐标（未缩放的graph坐标）
+		var cellBounds = state.cellBounds;
+		if (!cellBounds)
+		{
+			// 如果没有cellBounds，手动计算
+			var scale = graph.view.scale;
+			var translate = graph.view.translate;
+			cellBounds = {
+				x: state.x / scale - translate.x,
+				y: state.y / scale - translate.y,
+				width: state.width / scale,
+				height: state.height / scale
+			};
+		}
 		
-		// 获取graph容器的位置
-		var graphContainer = graph.container;
-		var containerRect = graphContainer.getBoundingClientRect();
+		var cellX = cellBounds.x;
+		var cellY = cellBounds.y;
+		var cellWidth = cellBounds.width;
+		var cellHeight = cellBounds.height;
 		
-		// 计算鼠标相对于cell的位置（考虑缩放和平移）
-		var scale = graph.view.scale;
-		var translate = graph.view.translate;
-		var relativeX = (mouseX - containerRect.left) / scale - translate.x - cellX;
-		var relativeY = (mouseY - containerRect.top) / scale - translate.y - cellY;
+		if (window.console)
+		{
+			console.log('[SVG Color Dropper] state位置 (view坐标):', state.x, state.y, state.width, state.height);
+			console.log('[SVG Color Dropper] cellBounds (模型坐标):', cellX, cellY, cellWidth, cellHeight);
+		}
 		
-		// 获取SVG的viewBox或尺寸
+		// 解析SVG获取viewBox
 		var svgDoc = mxUtils.parseXml(svgString);
 		var svgElement = svgDoc.documentElement;
 		if (!svgElement || svgElement.nodeName.toLowerCase() !== 'svg')
 		{
-			editorUi.handleError({message: '无效的SVG内容'});
+			URL.revokeObjectURL(url);
+			graph.container.style.cursor = cursor;
 			return;
 		}
 		
@@ -925,76 +1081,467 @@ Draw.loadPlugin(function(editorUi)
 			}
 		}
 		
-		// 将相对坐标转换为SVG坐标
-		var svgX = vbX + (relativeX / cellWidth) * vbWidth;
-		var svgY = vbY + (relativeY / cellHeight) * vbHeight;
-		
-		// 创建一个临时canvas来渲染SVG并获取颜色
-		var canvas = document.createElement('canvas');
-		var img = new Image();
-		var svgBlob = new Blob([svgString], {type: 'image/svg+xml;charset=utf-8'});
-		var url = URL.createObjectURL(svgBlob);
-		
+		// 准备canvas（一次性渲染）
 		img.onload = function()
 		{
-			try
+			if (window.console)
 			{
-				canvas.width = vbWidth;
-				canvas.height = vbHeight;
-				var ctx = canvas.getContext('2d');
-				ctx.drawImage(img, 0, 0, vbWidth, vbHeight);
+				console.log('[SVG Color Dropper] ===== 图像加载完成 =====');
+				console.log('[SVG Color Dropper] Canvas尺寸:', vbWidth, vbHeight);
+			}
+			
+			canvas.width = vbWidth;
+			canvas.height = vbHeight;
+			var ctx = canvas.getContext('2d');
+			
+			if (window.console)
+			{
+				console.log('[SVG Color Dropper] Canvas context创建成功');
+			}
+			
+			ctx.drawImage(img, 0, 0, vbWidth, vbHeight);
+			
+			if (window.console)
+			{
+				console.log('[SVG Color Dropper] 图像已绘制到canvas');
 				
-				// 获取鼠标位置的颜色
-				var imageData = ctx.getImageData(Math.round(svgX - vbX), Math.round(svgY - vbY), 1, 1);
-				var pixelData = imageData.data;
-				var targetColor = rgbToHex(pixelData[0], pixelData[1], pixelData[2]);
-				
-				URL.revokeObjectURL(url);
-				
-				// 调试信息1: 显示当前鼠标位置的颜色
-				if (window.console)
+				// 验证canvas内容（采样中心点）
+				try
 				{
-					console.log('[SVG Smart Color] ===== 调试信息 =====');
-					console.log('[SVG Smart Color] 1. 鼠标位置颜色:', targetColor);
-					console.log('[SVG Smart Color] 鼠标坐标 (SVG):', svgX, svgY);
-					console.log('[SVG Smart Color] 鼠标坐标 (相对cell):', relativeX, relativeY);
+					var testData = ctx.getImageData(Math.floor(vbWidth / 2), Math.floor(vbHeight / 2), 1, 1);
+					var testColor = rgbToHex(testData.data[0], testData.data[1], testData.data[2]);
+					console.log('[SVG Color Dropper] Canvas中心点颜色（验证）:', testColor);
+				}
+				catch (e)
+				{
+					console.warn('[SVG Color Dropper] 无法验证canvas内容:', e);
+				}
+			}
+			
+			// 清理函数
+			var cleanup = function()
+			{
+				isDropping = false;
+				
+				// 恢复graph的鼠标事件处理
+				if (originalMouseMove !== undefined)
+				{
+					graph.onMouseMove = originalMouseMove;
+				}
+				if (originalGetCursorForCell !== undefined)
+				{
+					graph.getCursorForCell = originalGetCursorForCell;
 				}
 				
-				// 查找SVG中所有与该颜色相同的填充色
-				var colorToReplace = parseColor(targetColor);
-				if (!colorToReplace)
+				// 恢复graph的交互状态
+				graph.enabled = originalEnabled;
+				if (graph.setEnabled !== undefined)
 				{
-					editorUi.handleError({message: '无法识别该位置的颜色'});
+					graph.setEnabled(originalEnabled);
+				}
+				graph.dragEnabled = originalDragEnabled;
+				if (graph.setDragEnabled !== undefined)
+				{
+					graph.setDragEnabled(originalDragEnabled);
+				}
+				if (graph.setPanEnabled !== undefined && originalPanEnabled !== undefined)
+				{
+					graph.setPanEnabled(originalPanEnabled);
+				}
+				
+				// 移除强制光标样式
+				var styleSheet = document.getElementById('svg-dropper-cursor-style');
+				if (styleSheet && styleSheet.parentNode)
+				{
+					styleSheet.parentNode.removeChild(styleSheet);
+				}
+				
+				// 恢复光标
+				graph.container.style.removeProperty('cursor');
+				if (cursor)
+				{
+					graph.container.style.cursor = cursor;
+				}
+				
+				// 恢复body光标
+				if (document.body)
+				{
+					document.body.style.removeProperty('cursor');
+				}
+				
+				// 移除事件监听
+				document.removeEventListener('mousemove', mouseMoveHandler, true);
+				document.removeEventListener('click', mouseClickHandler, true);
+				document.removeEventListener('contextmenu', cancelHandler, true);
+				document.removeEventListener('mousedown', mouseDownHandler, true);
+				
+				URL.revokeObjectURL(url);
+			};
+			
+			// 鼠标按下事件（用于捕获，防止graph拦截）
+			var mouseDownHandler = function(evt)
+			{
+				if (window.console)
+				{
+					console.log('[SVG Color Dropper] ===== mousedown 事件触发 =====');
+					console.log('[SVG Color Dropper] isDropping:', isDropping);
+				}
+				
+				if (!isDropping) 
+				{
+					if (window.console)
+					{
+						console.log('[SVG Color Dropper] 跳过：isDropping为false');
+					}
 					return;
 				}
 				
-				// 调试信息2: 显示更新前的SVG数据
+				// 阻止所有默认行为和事件传播，确保graph不会处理
+				evt.preventDefault();
+				evt.stopPropagation();
+				evt.stopImmediatePropagation();
+				
 				if (window.console)
 				{
-					console.log('[SVG Smart Color] 2. 更新前的SVG数据:');
-					console.log('[SVG Smart Color] SVG长度:', svgString.length);
-					console.log('[SVG Smart Color] SVG预览:', svgString.substring(0, Math.min(200, svgString.length)));
+					console.log('[SVG Color Dropper] 已阻止事件传播');
 				}
 				
-				// 在样式面板中添加颜色选择器，而不是弹出对话框
-				showLocalRecolorInFormatPanel(cell, targetColor, colorToReplace.hex, svgString);
-			}
-			catch (e)
-			{
-				URL.revokeObjectURL(url);
+				// 检查是否点击在SVG cell上
+				var mouseX = evt.clientX || mxEvent.getClientX(evt);
+				var mouseY = evt.clientY || mxEvent.getClientY(evt);
+				
 				if (window.console)
 				{
-					console.error('[SVG Smart Color] 获取颜色失败:', e);
+					console.log('[SVG Color Dropper] 鼠标位置 (client):', mouseX, mouseY);
 				}
-				editorUi.handleError({message: '获取颜色失败: ' + e.message});
+				
+				// 使用graph的方法转换坐标（graph坐标系）
+				var graphPoint = null;
+				try
+				{
+					graphPoint = graph.getPointForEvent(evt, false);
+				}
+				catch (e)
+				{
+					if (window.console)
+					{
+						console.warn('[SVG Color Dropper] getPointForEvent失败，使用手动计算:', e);
+					}
+				}
+				
+				// 如果getPointForEvent失败，手动计算
+				if (!graphPoint)
+				{
+					var graphContainer = graph.container;
+					var containerRect = graphContainer.getBoundingClientRect();
+					
+					// 获取鼠标在container中的位置
+					var containerX = mouseX - containerRect.left;
+					var containerY = mouseY - containerRect.top;
+					
+					var scale = graph.view.scale;
+					var translate = graph.view.translate;
+					
+					// 转换为graph坐标（未缩放的graph坐标系）
+					graphPoint = new mxPoint(
+						containerX / scale - translate.x,
+						containerY / scale - translate.y
+					);
+					
+					if (window.console)
+					{
+						console.log('[SVG Color Dropper] container位置:', containerRect.left, containerRect.top);
+						console.log('[SVG Color Dropper] 鼠标在container中的位置:', containerX, containerY);
+						console.log('[SVG Color Dropper] 手动计算graph坐标:', graphPoint.x, graphPoint.y);
+					}
+				}
+				else
+				{
+					if (window.console)
+					{
+						console.log('[SVG Color Dropper] graph坐标 (getPointForEvent):', graphPoint.x, graphPoint.y);
+					}
+				}
+				
+				if (window.console)
+				{
+					console.log('[SVG Color Dropper] scale:', graph.view.scale, 'translate:', graph.view.translate.x, graph.view.translate.y);
+					console.log('[SVG Color Dropper] cell位置:', cellX, cellY, '尺寸:', cellWidth, cellHeight);
+				}
+				
+				// 计算鼠标相对于cell的位置
+				var relativeX = graphPoint.x - cellX;
+				var relativeY = graphPoint.y - cellY;
+				
+				if (window.console)
+				{
+					console.log('[SVG Color Dropper] 相对cell位置:', relativeX, relativeY);
+				}
+				
+				// 检查是否在cell范围内
+				if (relativeX >= 0 && relativeX <= cellWidth && relativeY >= 0 && relativeY <= cellHeight)
+				{
+					if (window.console)
+					{
+						console.log('[SVG Color Dropper] ✓ 在cell范围内');
+					}
+					
+					// 转换为SVG坐标
+					var svgX = vbX + (relativeX / cellWidth) * vbWidth;
+					var svgY = vbY + (relativeY / cellHeight) * vbHeight;
+					
+					if (window.console)
+					{
+						console.log('[SVG Color Dropper] SVG坐标:', svgX, svgY);
+						console.log('[SVG Color Dropper] viewBox:', vbX, vbY, vbWidth, vbHeight);
+					}
+					
+					// 采样颜色
+					var sampleX = Math.max(0, Math.min(vbWidth - 1, Math.round(svgX - vbX)));
+					var sampleY = Math.max(0, Math.min(vbHeight - 1, Math.round(svgY - vbY)));
+					
+					if (window.console)
+					{
+						console.log('[SVG Color Dropper] Canvas采样位置:', sampleX, sampleY);
+						console.log('[SVG Color Dropper] Canvas尺寸:', vbWidth, vbHeight);
+						console.log('[SVG Color Dropper] ctx存在:', ctx !== null && ctx !== undefined);
+					}
+					
+					try
+					{
+						if (!ctx)
+						{
+							throw new Error('Canvas context不存在');
+						}
+						
+						if (window.console)
+						{
+							console.log('[SVG Color Dropper] 开始采样...');
+						}
+						
+						var imageData = ctx.getImageData(sampleX, sampleY, 1, 1);
+						
+						if (window.console)
+						{
+							console.log('[SVG Color Dropper] 成功获取imageData');
+						}
+						
+						var pixelData = imageData.data;
+						
+						if (window.console)
+						{
+							console.log('[SVG Color Dropper] 像素数据:', pixelData[0], pixelData[1], pixelData[2], pixelData[3]);
+						}
+						
+						var color = rgbToHex(pixelData[0], pixelData[1], pixelData[2]);
+						
+						if (window.console)
+						{
+							console.log('[SVG Color Dropper] ✓ 成功获取颜色:', color);
+							console.log('[SVG Color Dropper] 准备调用回调函数...');
+						}
+						
+						// 调用回调
+						onColorSelected(color);
+						
+						if (window.console)
+						{
+							console.log('[SVG Color Dropper] ✓ 回调已调用，开始清理...');
+						}
+						
+						// 清理
+						cleanup();
+						
+						if (window.console)
+						{
+							console.log('[SVG Color Dropper] ===== 完成 =====');
+						}
+					}
+					catch (e)
+					{
+						if (window.console)
+						{
+							console.error('[SVG Color Dropper] ✗ 错误:', e);
+							console.error('[SVG Color Dropper] 错误堆栈:', e.stack);
+						}
+						editorUi.handleError({message: '获取颜色失败: ' + e.message});
+						cleanup();
+					}
+				}
+				else
+				{
+					if (window.console)
+					{
+						console.log('[SVG Color Dropper] ✗ 不在cell范围内，取消吸管模式');
+						console.log('[SVG Color Dropper] 范围检查:', {
+							relativeX: relativeX,
+							relativeY: relativeY,
+							cellWidth: cellWidth,
+							cellHeight: cellHeight,
+							inRangeX: relativeX >= 0 && relativeX <= cellWidth,
+							inRangeY: relativeY >= 0 && relativeY <= cellHeight
+						});
+					}
+					// 点击在cell外，取消吸管模式
+					cleanup();
+				}
+			};
+			
+			// 鼠标移动事件（用于实时预览和保持光标）
+			var mouseMoveHandler = function(evt)
+			{
+				if (!isDropping) return;
+				
+				// 强制设置光标为十字形，覆盖任何其他样式
+				graph.container.style.setProperty('cursor', 'crosshair', 'important');
+				
+				// 也设置在整个文档上（防止graph内部元素覆盖）
+				if (document.body)
+				{
+					document.body.style.setProperty('cursor', 'crosshair', 'important');
+				}
+				
+				var mouseX = evt.clientX || mxEvent.getClientX(evt);
+				var mouseY = evt.clientY || mxEvent.getClientY(evt);
+				
+				// 使用graph的方法转换坐标（graph坐标系）
+				var graphPoint = null;
+				try
+				{
+					graphPoint = graph.getPointForEvent(evt, false);
+				}
+				catch (e)
+				{
+					// 如果失败，手动计算
+					var graphContainer = graph.container;
+					var containerRect = graphContainer.getBoundingClientRect();
+					
+					var containerX = mouseX - containerRect.left;
+					var containerY = mouseY - containerRect.top;
+					
+					var scale = graph.view.scale;
+					var translate = graph.view.translate;
+					
+					graphPoint = new mxPoint(
+						containerX / scale - translate.x,
+						containerY / scale - translate.y
+					);
+				}
+				
+				// 计算鼠标相对于cell的位置
+				var relativeX = graphPoint.x - cellX;
+				var relativeY = graphPoint.y - cellY;
+				
+				// 检查是否在cell范围内
+				if (relativeX >= 0 && relativeX <= cellWidth && relativeY >= 0 && relativeY <= cellHeight)
+				{
+					// 转换为SVG坐标
+					var svgX = vbX + (relativeX / cellWidth) * vbWidth;
+					var svgY = vbY + (relativeY / cellHeight) * vbHeight;
+					
+					// 采样颜色
+					var sampleX = Math.max(0, Math.min(vbWidth - 1, Math.round(svgX - vbX)));
+					var sampleY = Math.max(0, Math.min(vbHeight - 1, Math.round(svgY - vbY)));
+					
+					try
+					{
+						var imageData = ctx.getImageData(sampleX, sampleY, 1, 1);
+						var pixelData = imageData.data;
+						var color = rgbToHex(pixelData[0], pixelData[1], pixelData[2]);
+						
+						// 实时显示颜色（可选：显示提示）
+						if (window.console && window.location.search.indexOf('debug') >= 0)
+						{
+							console.log('[SVG Color Dropper] 颜色:', color);
+						}
+					}
+					catch (e)
+					{
+						// ignore
+					}
+				}
+			};
+			
+			// 点击事件（备用方案）
+			var mouseClickHandler = function(evt)
+			{
+				// 这个事件可能已经被mouseDownHandler处理了
+				// 但作为备用，我们也可以处理
+			};
+			
+			var cancelHandler = function(evt)
+			{
+				evt.preventDefault();
+				evt.stopPropagation();
+				cleanup();
+			};
+			
+			// 添加事件监听（使用捕获阶段确保优先处理）
+			document.addEventListener('mousedown', mouseDownHandler, true);
+			document.addEventListener('mousemove', mouseMoveHandler, true);
+			document.addEventListener('click', mouseClickHandler, true);
+			document.addEventListener('contextmenu', cancelHandler, true);
+			
+			if (window.console)
+			{
+				console.log('[SVG Color Dropper] ✓ 事件监听器已添加');
+				console.log('[SVG Color Dropper] 等待用户点击...');
 			}
+			
+			// 提示用户
+			editorUi.editor.setStatus('点击SVG上的颜色进行选择，右键取消');
 		};
 		
-		img.onerror = function()
+		img.onerror = function(e)
 		{
+			if (window.console)
+			{
+				console.error('[SVG Color Dropper] ✗ 图像加载失败');
+				console.error('[SVG Color Dropper] URL:', url);
+				console.error('[SVG Color Dropper] 错误:', e);
+			}
+			
 			URL.revokeObjectURL(url);
+			
+			// 恢复graph状态
+			if (originalMouseMove !== undefined)
+			{
+				graph.onMouseMove = originalMouseMove;
+			}
+			if (originalGetCursorForCell !== undefined)
+			{
+				graph.getCursorForCell = originalGetCursorForCell;
+			}
+			graph.enabled = originalEnabled;
+			if (graph.setEnabled !== undefined)
+			{
+				graph.setEnabled(originalEnabled);
+			}
+			graph.dragEnabled = originalDragEnabled;
+			if (graph.setDragEnabled !== undefined)
+			{
+				graph.setDragEnabled(originalDragEnabled);
+			}
+			
+			// 移除样式
+			var styleSheet = document.getElementById('svg-dropper-cursor-style');
+			if (styleSheet && styleSheet.parentNode)
+			{
+				styleSheet.parentNode.removeChild(styleSheet);
+			}
+			graph.container.style.cursor = cursor || '';
+			
 			editorUi.handleError({message: '无法加载SVG图像'});
 		};
+		
+		if (window.console)
+		{
+			console.log('[SVG Color Dropper] ===== 启动吸管工具 =====');
+			console.log('[SVG Color Dropper] SVG字符串长度:', svgString.length);
+			console.log('[SVG Color Dropper] SVG预览:', svgString.substring(0, Math.min(100, svgString.length)));
+			console.log('[SVG Color Dropper] Blob URL:', url);
+			console.log('[SVG Color Dropper] 等待图像加载...');
+		}
 		
 		img.src = url;
 	}
@@ -1094,29 +1641,11 @@ Draw.loadPlugin(function(editorUi)
 	/**
 	 * 在样式面板中显示局部改色选项
 	 */
-	function showLocalRecolorInFormatPanel(cell, currentColor, colorToReplaceHex, originalSvgString)
+	function showLocalRecolorInFormatPanel(cell, originalSvgString)
 	{
 		var format = editorUi.format;
 		if (!format || !format.container)
 		{
-			// 如果格式面板不存在，使用颜色选择对话框作为后备
-			editorUi.pickColor(currentColor, function(newColor)
-			{
-				if (!newColor || newColor === currentColor)
-				{
-					return;
-				}
-				
-				var newColorObj = parseColor(newColor);
-				if (!newColorObj)
-				{
-					editorUi.handleError({message: '无效的新颜色'});
-					return;
-				}
-				
-				var newSvgString = replaceColorInSvg(originalSvgString, colorToReplaceHex, newColorObj.hex);
-				updateSvgCell(cell, originalSvgString, newSvgString, colorToReplaceHex, newColorObj.hex);
-			});
 			return;
 		}
 		
@@ -1143,98 +1672,312 @@ Draw.loadPlugin(function(editorUi)
 		mxUtils.write(title, '局部改色');
 		panel.appendChild(title);
 		
-		// 当前颜色显示
-		var currentColorDiv = document.createElement('div');
-		currentColorDiv.style.marginBottom = '8px';
-		currentColorDiv.style.fontSize = '11px';
-		currentColorDiv.style.color = 'var(--geTextColor, #666)';
-		mxUtils.write(currentColorDiv, '当前颜色: ' + currentColor);
-		panel.appendChild(currentColorDiv);
+		// 当前颜色显示和吸管工具
+		var currentColor = null;
+		var colorToReplaceHex = null;
 		
-		// 颜色选择器
-		var colorRow = document.createElement('div');
-		colorRow.style.display = 'flex';
-		colorRow.style.alignItems = 'center';
-		colorRow.style.gap = '8px';
-		colorRow.style.marginBottom = '8px';
+		var currentColorRow = document.createElement('div');
+		currentColorRow.style.display = 'flex';
+		currentColorRow.style.alignItems = 'center';
+		currentColorRow.style.gap = '8px';
+		currentColorRow.style.marginBottom = '8px';
 		
-		var colorLabel = document.createElement('label');
-		colorLabel.style.fontSize = '11px';
-		colorLabel.style.flex = '0 0 60px';
-		mxUtils.write(colorLabel, '新颜色:');
-		colorRow.appendChild(colorLabel);
+		var currentColorLabel = document.createElement('label');
+		currentColorLabel.style.fontSize = '11px';
+		currentColorLabel.style.flex = '0 0 70px';
+		mxUtils.write(currentColorLabel, '选择颜色:');
+		currentColorRow.appendChild(currentColorLabel);
 		
-		// 颜色预览块
-		var colorPreview = document.createElement('div');
-		colorPreview.style.width = '30px';
-		colorPreview.style.height = '30px';
-		colorPreview.style.backgroundColor = currentColor;
-		colorPreview.style.border = '1px solid #ccc';
-		colorPreview.style.borderRadius = '3px';
-		colorPreview.style.flexShrink = '0';
-		colorRow.appendChild(colorPreview);
+		// 当前颜色预览块
+		var currentColorPreview = document.createElement('div');
+		currentColorPreview.style.width = '40px';
+		currentColorPreview.style.height = '40px';
+		currentColorPreview.style.backgroundColor = '#FFFFFF';
+		currentColorPreview.style.border = '2px solid #ccc';
+		currentColorPreview.style.borderRadius = '4px';
+		currentColorPreview.style.flexShrink = '0';
+		currentColorRow.appendChild(currentColorPreview);
 		
-		// 隐藏的颜色输入（用于触发颜色选择器）
-		var colorInput = document.createElement('input');
-		colorInput.type = 'color';
-		colorInput.value = currentColor;
-		colorInput.style.position = 'absolute';
-		colorInput.style.visibility = 'hidden';
-		colorInput.style.width = '0';
-		colorInput.style.height = '0';
+		// 当前颜色值显示
+		var currentColorValue = document.createElement('div');
+		currentColorValue.style.fontSize = '11px';
+		currentColorValue.style.color = 'var(--geTextColor, #666)';
+		currentColorValue.style.fontFamily = 'monospace';
+		currentColorValue.style.flex = '1';
+		currentColorValue.textContent = '未选择';
+		currentColorRow.appendChild(currentColorValue);
 		
-		// 颜色选择按钮
-		var colorButton = document.createElement('button');
-		colorButton.style.flex = '1';
-		colorButton.style.padding = '4px 8px';
-		colorButton.style.fontSize = '11px';
-		mxUtils.write(colorButton, '选择颜色');
-		colorButton.addEventListener('click', function()
+		// 吸管工具按钮
+		var dropperButton = document.createElement('button');
+		dropperButton.style.padding = '4px 8px';
+		dropperButton.style.fontSize = '11px';
+		dropperButton.style.cursor = 'pointer';
+		if (Editor.colorDropperImage)
 		{
-			colorInput.click();
+			var dropperIcon = document.createElement('img');
+			dropperIcon.src = Editor.colorDropperImage;
+			dropperIcon.style.width = '14px';
+			dropperIcon.style.height = '14px';
+			dropperIcon.style.verticalAlign = 'middle';
+			dropperButton.appendChild(dropperIcon);
+		}
+		else
+		{
+			mxUtils.write(dropperButton, '吸管');
+		}
+		
+		dropperButton.addEventListener('click', function()
+		{
+			startColorDropper(cell, function(selectedColor)
+			{
+				currentColor = selectedColor;
+				currentColorPreview.style.backgroundColor = selectedColor;
+				currentColorValue.textContent = selectedColor;
+				
+				// 解析选择的颜色
+				var colorToReplace = parseColor(selectedColor);
+				if (colorToReplace && colorToReplace.hex)
+				{
+					colorToReplaceHex = colorToReplace.hex;
+					// 自动设置新颜色输入框
+					colorInput.value = selectedColor.toUpperCase();
+					newColorPreview.style.backgroundColor = selectedColor;
+				}
+				
+				editorUi.editor.setStatus('已选择颜色: ' + selectedColor);
+			});
 		});
-		colorRow.appendChild(colorButton);
+		
+		currentColorRow.appendChild(dropperButton);
+		panel.appendChild(currentColorRow);
+		
+		// 新颜色选择器
+		var newColorRow = document.createElement('div');
+		newColorRow.style.display = 'flex';
+		newColorRow.style.alignItems = 'center';
+		newColorRow.style.gap = '8px';
+		newColorRow.style.marginBottom = '8px';
+		
+		var newColorLabel = document.createElement('label');
+		newColorLabel.style.fontSize = '11px';
+		newColorLabel.style.flex = '0 0 70px';
+		mxUtils.write(newColorLabel, '新颜色:');
+		newColorRow.appendChild(newColorLabel);
+		
+		// 新颜色预览块
+		var newColorPreview = document.createElement('div');
+		newColorPreview.style.width = '40px';
+		newColorPreview.style.height = '40px';
+		newColorPreview.style.backgroundColor = '#FFFFFF';
+		newColorPreview.style.border = '2px solid #ccc';
+		newColorPreview.style.borderRadius = '4px';
+		newColorPreview.style.flexShrink = '0';
+		newColorRow.appendChild(newColorPreview);
+		
+		// 颜色输入框（直接在样式面板中，不弹出对话框）
+		var colorInput = document.createElement('input');
+		colorInput.type = 'text';
+		colorInput.value = '';
+		colorInput.style.flex = '1';
+		colorInput.style.padding = '4px';
+		colorInput.style.fontSize = '11px';
+		colorInput.style.fontFamily = 'monospace';
+		colorInput.style.border = '1px solid #ccc';
+		colorInput.style.borderRadius = '3px';
 		
 		// 同步颜色输入和预览
 		colorInput.addEventListener('input', function()
 		{
-			colorPreview.style.backgroundColor = colorInput.value;
+			var colorValue = colorInput.value.trim();
+			if (colorValue.match(/^#[0-9A-Fa-f]{6}$/))
+			{
+				newColorPreview.style.backgroundColor = colorValue;
+			}
 		});
+		
+		colorInput.addEventListener('blur', function()
+		{
+			var colorValue = colorInput.value.trim();
+			if (!colorValue.match(/^#[0-9A-Fa-f]{6}$/))
+			{
+				// 尝试解析颜色
+				var parsed = parseColor(colorValue);
+				if (parsed)
+				{
+					colorInput.value = parsed.hex.toUpperCase();
+					newColorPreview.style.backgroundColor = parsed.hex;
+				}
+				else
+				{
+					colorInput.value = '';
+					newColorPreview.style.backgroundColor = '#FFFFFF';
+				}
+			}
+		});
+		
+		newColorRow.appendChild(colorInput);
+		
+		// 颜色网格选择器（常用颜色快速选择）
+		var colorGrid = document.createElement('div');
+		colorGrid.style.display = 'grid';
+		colorGrid.style.gridTemplateColumns = 'repeat(8, 1fr)';
+		colorGrid.style.gap = '4px';
+		colorGrid.style.marginBottom = '8px';
+		
+		// 常用颜色
+		var commonColors = [
+			'#000000', '#333333', '#666666', '#999999', '#CCCCCC', '#FFFFFF',
+			'#FF0000', '#FF6600', '#FFCC00', '#66FF00', '#00FF00', '#00FFCC', '#0066FF', '#6600FF',
+			'#FF0066', '#FF3366', '#FF6699', '#FF99CC', '#FFCCFF',
+			'#1E78B7', '#FF7F0E', '#2CA02C', '#D62728', '#9467BD', '#8C564B',
+			'#E377C2', '#7F7F7F', '#BCBD22', '#17BECF'
+		];
+		
+		for (var i = 0; i < commonColors.length; i++)
+		{
+			var colorBox = document.createElement('div');
+			colorBox.style.width = '24px';
+			colorBox.style.height = '24px';
+			colorBox.style.backgroundColor = commonColors[i];
+			colorBox.style.border = '1px solid #ccc';
+			colorBox.style.borderRadius = '2px';
+			colorBox.style.cursor = 'pointer';
+			colorBox.style.transition = 'transform 0.1s ease';
+			
+			colorBox.addEventListener('mouseenter', function(color)
+			{
+				return function()
+				{
+					colorBox.style.transform = 'scale(1.2)';
+					colorBox.style.zIndex = '10';
+					colorBox.style.position = 'relative';
+				};
+			}(commonColors[i]));
+			
+			colorBox.addEventListener('mouseleave', function()
+			{
+				colorBox.style.transform = 'scale(1)';
+				colorBox.style.zIndex = '1';
+			});
+			
+			colorBox.addEventListener('click', function(color)
+			{
+				return function()
+				{
+					colorInput.value = color.toUpperCase();
+					newColorPreview.style.backgroundColor = color;
+				};
+			}(commonColors[i]));
+			
+			colorGrid.appendChild(colorBox);
+		}
+		
+		panel.appendChild(newColorRow);
+		panel.appendChild(colorGrid);
+		
+		// 按钮容器
+		var buttonContainer = document.createElement('div');
+		buttonContainer.style.display = 'flex';
+		buttonContainer.style.gap = '8px';
+		buttonContainer.style.marginTop = '8px';
+		
+		// 跟踪当前应用的SVG字符串（如果已应用）
+		var appliedSvgString = null;
+		var appliedOldColor = null;
+		var appliedNewColor = null;
 		
 		// 应用按钮
 		var applyButton = document.createElement('button');
-		applyButton.style.width = '100%';
+		applyButton.style.flex = '1';
 		applyButton.style.padding = '6px';
-		applyButton.style.marginTop = '8px';
 		applyButton.style.fontSize = '11px';
 		applyButton.style.fontWeight = '600';
+		applyButton.style.backgroundColor = 'var(--gePrimaryColor, #1ba1e2)';
+		applyButton.style.color = '#fff';
+		applyButton.style.border = 'none';
+		applyButton.style.borderRadius = '3px';
+		applyButton.style.cursor = 'pointer';
 		mxUtils.write(applyButton, '应用');
 		applyButton.addEventListener('click', function()
 		{
-			var newColor = colorInput.value;
-			if (!newColor || newColor === currentColor)
+			if (!currentColor || !colorToReplaceHex)
+			{
+				editorUi.handleError({message: '请先使用吸管工具选择要替换的颜色'});
+				return;
+			}
+			
+			var newColor = colorInput.value.trim();
+			var newColorObj = parseColor(newColor);
+			
+			if (!newColorObj)
+			{
+				editorUi.handleError({message: '无效的颜色值: ' + newColor});
+				return;
+			}
+			
+			if (newColorObj.hex.toLowerCase() === colorToReplaceHex.toLowerCase())
 			{
 				editorUi.editor.setStatus('颜色未改变');
 				return;
 			}
 			
-			var newColorObj = parseColor(newColor);
-			if (!newColorObj)
-			{
-				editorUi.handleError({message: '无效的新颜色'});
-				return;
-			}
+			// 使用当前应用的SVG（如果已应用）或原始SVG作为基础
+			var baseSvgString = appliedSvgString || originalSvgString;
 			
 			// 替换SVG中所有匹配的颜色
-			var newSvgString = replaceColorInSvg(originalSvgString, colorToReplaceHex, newColorObj.hex);
+			var newSvgString = replaceColorInSvg(baseSvgString, colorToReplaceHex, newColorObj.hex);
 			
 			// 更新cell的SVG内容
-			updateSvgCell(cell, originalSvgString, newSvgString, colorToReplaceHex, newColorObj.hex);
+			updateSvgCell(cell, baseSvgString, newSvgString, colorToReplaceHex, newColorObj.hex);
+			
+			// 保存应用的SVG状态
+			appliedSvgString = newSvgString;
+			appliedOldColor = colorToReplaceHex;
+			appliedNewColor = newColorObj.hex;
+			
+			editorUi.editor.setStatus('颜色已应用');
 		});
 		
-		panel.appendChild(colorRow);
-		panel.appendChild(colorInput);
-		panel.appendChild(applyButton);
+		// 取消按钮
+		var cancelButton = document.createElement('button');
+		cancelButton.style.flex = '1';
+		cancelButton.style.padding = '6px';
+		cancelButton.style.fontSize = '11px';
+		cancelButton.style.fontWeight = '600';
+		cancelButton.style.backgroundColor = '#f5f5f5';
+		cancelButton.style.color = '#333';
+		cancelButton.style.border = '1px solid #ccc';
+		cancelButton.style.borderRadius = '3px';
+		cancelButton.style.cursor = 'pointer';
+		mxUtils.write(cancelButton, '取消');
+		cancelButton.addEventListener('click', function()
+		{
+			if (appliedSvgString)
+			{
+				// 如果已应用过修改，恢复到原始状态
+				// 直接使用原始SVG字符串恢复
+				updateSvgCell(cell, appliedSvgString, originalSvgString, '', '');
+				appliedSvgString = null;
+				appliedOldColor = null;
+				appliedNewColor = null;
+				editorUi.editor.setStatus('已恢复到原始状态');
+			}
+			else
+			{
+				// 如果没有应用过修改，只是关闭面板
+				var panelToRemove = document.getElementById('svg-local-recolor-panel');
+				if (panelToRemove && panelToRemove.parentNode)
+				{
+					panelToRemove.parentNode.removeChild(panelToRemove);
+				}
+				// 移除选择监听
+				graph.getSelectionModel().removeListener(selectionHandler);
+			}
+		});
+		
+		buttonContainer.appendChild(applyButton);
+		buttonContainer.appendChild(cancelButton);
+		panel.appendChild(buttonContainer);
 		
 		// 添加到格式面板
 		format.container.appendChild(panel);
@@ -1244,6 +1987,60 @@ Draw.loadPlugin(function(editorUi)
 		{
 			editorUi.toggleFormatPanel(true);
 		}
+		
+		// 监听选择变化，当选择改变时移除面板
+		var selectionHandler = function()
+		{
+			var currentCell = graph.getSelectionCell();
+			if (currentCell !== cell)
+			{
+				var panelToRemove = document.getElementById('svg-local-recolor-panel');
+				if (panelToRemove && panelToRemove.parentNode)
+				{
+					panelToRemove.parentNode.removeChild(panelToRemove);
+				}
+				graph.getSelectionModel().removeListener(selectionHandler);
+				// 如果选择改变时已应用了修改，恢复到原始状态
+				if (appliedSvgString)
+				{
+					updateSvgCell(cell, appliedSvgString, originalSvgString, '', '');
+				}
+			}
+		};
+		
+		graph.getSelectionModel().addListener(mxEvent.CHANGE, selectionHandler);
+	}
+	
+	// 在样式面板初始化时自动添加局部改色工具
+	if (window.StyleFormatPanel)
+	{
+		var originalStyleInit = StyleFormatPanel.prototype.init;
+		
+		StyleFormatPanel.prototype.init = function()
+		{
+			originalStyleInit.apply(this, arguments);
+			
+			var ui = this.editorUi;
+			var ss = ui.getSelectionState();
+			
+			// 检查是否是SVG元素
+			if (ss.cells.length === 1 && ss.vertices.length === 1)
+			{
+				var cell = ss.cells[0];
+				if (isSvgCell(cell))
+				{
+					var svgString = getSvgContent(cell);
+					if (svgString)
+					{
+						// 延迟添加，确保其他面板已经添加完成
+						setTimeout(function()
+						{
+							showLocalRecolorInFormatPanel(cell, svgString);
+						}, 50);
+					}
+				}
+			}
+		};
 	}
 	
 	/**
@@ -1254,6 +2051,15 @@ Draw.loadPlugin(function(editorUi)
 		if (!cell || !newSvgString)
 		{
 			return;
+		}
+		
+		// 调试信息3: 显示更新后的SVG数据
+		if (window.console)
+		{
+			console.log('[SVG Smart Color] 3. 更新后的SVG数据:');
+			console.log('[SVG Smart Color] SVG长度:', newSvgString.length);
+			console.log('[SVG Smart Color] SVG预览:', newSvgString.substring(0, Math.min(200, newSvgString.length)));
+			console.log('[SVG Smart Color] 颜色替换:', oldColorHex, '->', newColorHex);
 		}
 		
 		graph.getModel().beginUpdate();
@@ -1267,10 +2073,22 @@ Draw.loadPlugin(function(editorUi)
 			// 将SVG转换为data URI
 			var encodedSvg = 'data:image/svg+xml,' + encodeURIComponent(newSvgString);
 			
+			// 调试信息4: 显示更新方式
+			if (window.console)
+			{
+				console.log('[SVG Smart Color] 4. 更新SVG:');
+				console.log('[SVG Smart Color] 原始image样式:', image ? (image.substring(0, 50) + '...') : 'null');
+				console.log('[SVG Smart Color] value节点类型:', mxUtils.isNode(value) ? value.nodeName : typeof value);
+			}
+			
 			// 根据原始存储方式更新
 			if (image && image.toLowerCase().indexOf('data:image/svg') === 0)
 			{
 				// 更新image样式
+				if (window.console)
+				{
+					console.log('[SVG Smart Color] 使用方式: 更新image样式');
+				}
 				graph.setCellStyles(mxConstants.STYLE_IMAGE, encodedSvg, [cell]);
 			}
 			else if (mxUtils.isNode(value))
@@ -1280,12 +2098,23 @@ Draw.loadPlugin(function(editorUi)
 				if (nodeName === 'svg')
 				{
 					// 直接更新SVG节点
+					if (window.console)
+					{
+						console.log('[SVG Smart Color] 使用方式: 更新svg节点');
+					}
 					var newDoc = mxUtils.parseXml(newSvgString);
 					graph.getModel().setValue(cell, newDoc.documentElement);
+					
+					// 也更新image样式以确保显示
+					graph.setCellStyles(mxConstants.STYLE_IMAGE, encodedSvg, [cell]);
 				}
 				else if (nodeName === 'svgimage')
 				{
 					// 更新svgimage节点的属性
+					if (window.console)
+					{
+						console.log('[SVG Smart Color] 使用方式: 更新svgimage节点');
+					}
 					if (value.setAttribute)
 					{
 						value.setAttribute('svgText', encodeURIComponent(newSvgString));
@@ -1296,10 +2125,23 @@ Draw.loadPlugin(function(editorUi)
 					// 同时更新image样式以确保显示
 					graph.setCellStyles(mxConstants.STYLE_IMAGE, encodedSvg, [cell]);
 				}
+				else
+				{
+					// 未知节点类型，使用image样式
+					if (window.console)
+					{
+						console.log('[SVG Smart Color] 使用方式: 默认更新image样式 (未知节点类型:', nodeName, ')');
+					}
+					graph.setCellStyles(mxConstants.STYLE_IMAGE, encodedSvg, [cell]);
+				}
 			}
 			else
 			{
 				// 默认情况：更新image样式
+				if (window.console)
+				{
+					console.log('[SVG Smart Color] 使用方式: 默认更新image样式');
+				}
 				graph.setCellStyles(mxConstants.STYLE_IMAGE, encodedSvg, [cell]);
 			}
 			
@@ -1308,7 +2150,12 @@ Draw.loadPlugin(function(editorUi)
 			
 			// 标记为已修改
 			editorUi.editor.setModified(true);
-			editorUi.editor.setStatus('局部改色完成');
+			editorUi.editor.setStatus('局部改色完成: ' + oldColorHex + ' -> ' + newColorHex);
+			
+			if (window.console)
+			{
+				console.log('[SVG Smart Color] ===== 更新完成 =====');
+			}
 		}
 		finally
 		{
@@ -2100,10 +2947,7 @@ Draw.loadPlugin(function(editorUi)
 						{
 							showSmartColorDialog(cell);
 						});
-						menu.addItem('局部改色', null, function()
-						{
-							localRecolorByMousePosition(cell, evt);
-						});
+						// 局部改色已移到样式面板，不再需要右键菜单
 					}
 				}
 			};

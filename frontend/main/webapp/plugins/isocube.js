@@ -514,7 +514,10 @@ Draw.loadPlugin(function(editorUi)
             {
                 // Rounded bevel: create multiple small faces for smooth curves
                 // Top bevel face - use bevel corners
-                faces.push([topBevelStartIdx, topBevelStartIdx+1, topBevelStartIdx+2, topBevelStartIdx+3]);
+                // Correct order: [2,6,7,3] from +Y looking down (CCW)
+                // bevelCorners: [0]=2, [1]=3, [2]=7, [3]=6
+                // So correct face order is: [0,3,2,1] = [2,6,7,3]
+                faces.push([topBevelStartIdx, topBevelStartIdx+3, topBevelStartIdx+2, topBevelStartIdx+1]);
                 
                 // Create rounded side faces using arc vertices
                 // Each edge has numSegments+1 segments, each with numArcPoints+1 vertices
@@ -559,7 +562,10 @@ Draw.loadPlugin(function(editorUi)
             {
                 // Simple bevel: use existing logic
                 // Top bevel face (replaces original top face)
-                faces.push([topBevelStartIdx, topBevelStartIdx+1, topBevelStartIdx+2, topBevelStartIdx+3]);
+                // Correct order: [2,6,7,3] from +Y looking down (CCW)
+                // bevelCorners: [0]=2, [1]=3, [2]=7, [3]=6
+                // So correct face order is: [0,3,2,1] = [2,6,7,3]
+                faces.push([topBevelStartIdx, topBevelStartIdx+3, topBevelStartIdx+2, topBevelStartIdx+1]);
                 
                 // Top bevel side faces (4 faces connecting original top edge to bevel edge)
                 faces.push([6, 7, topBevelStartIdx+2, topBevelStartIdx+3]); // front bevel side
@@ -1252,8 +1258,10 @@ Draw.loadPlugin(function(editorUi)
                 bottomBevelCircleStartIdx = bottomBevelStartIdx + (numSamples * (13)); // 13 = numArcPoints + 1
             }
             
+            // Bottom face: use forward order (CCW when viewed from +Z) to match side face connections
+            // All circles are generated in the same angle order (0 to 2π), so use forward indexing
             var bottomBevelFaceIndices = [];
-            for (var i = numSamples - 1; i >= 0; i--)
+            for (var i = 0; i < numSamples; i++)
             {
                 bottomBevelFaceIndices.push(bottomBevelCircleStartIdx + i);
             }
@@ -1261,9 +1269,9 @@ Draw.loadPlugin(function(editorUi)
         }
         else
         {
-            // Original bottom face (CW for correct normal)
+            // Original bottom face: use forward order (CCW when viewed from +Z) to match top face
             var bottomFaceIndices = [];
-            for (var i = numSamples - 1; i >= 0; i--)
+            for (var i = 0; i < numSamples; i++)
             {
                 bottomFaceIndices.push(bottomCircleStartIdx + i);
             }
@@ -1285,17 +1293,29 @@ Draw.loadPlugin(function(editorUi)
                 
                 // Create faces connecting arc vertices
                 // Start from original top circle (topCircleStartIdx + i), connect through arc vertices
+                // Top bevel circle vertices start at: topBevelStartIdx + (numSamples * 13)
+                var topBevelCircleStartIdx = topBevelStartIdx + (numSamples * 13);
+                
                 for (var a = 0; a < currArcVerts.length - 1; a++)
                 {
                     var v1, v2, v3, v4;
                     if (a === 0)
                     {
                         // First face: connect from original top circle to first arc vertex
-                        // Use original top circle points directly
+                        // currArcVerts[0] is at original top circle position, so use original top circle vertices for consistency
                         v1 = topCircleStartIdx + i;
                         v2 = currArcVerts[a];
                         v3 = currArcVerts[a + 1];
                         v4 = topCircleStartIdx + next;
+                    }
+                    else if (a === currArcVerts.length - 2)
+                    {
+                        // Last face: connect last arc vertex to bevel circle vertex
+                        // currArcVerts[a + 1] is at bevel circle position, but we use actual bevel circle vertices for consistency
+                        v1 = currArcVerts[a];
+                        v2 = currArcVerts[a + 1];
+                        v3 = topBevelCircleStartIdx + next;
+                        v4 = topBevelCircleStartIdx + i;
                     }
                     else
                     {
@@ -1400,16 +1420,13 @@ Draw.loadPlugin(function(editorUi)
         }
         else if (hasTopBevel && hasBottomBevel)
         {
-            // Connect bevel top to bevel bottom
-            var topConnectIdx = topBevelType === 'circle' ? 
-                (topBevelStartIdx + (numSamples * 13)) : topBevelStartIdx;
-            var bottomConnectIdx = bottomBevelType === 'circle' ?
-                (bottomBevelStartIdx + (numSamples * 13)) : bottomBevelStartIdx;
+            // Connect original top circle to original bottom circle (body part)
+            // This preserves the cylinder body between the bevels
             for (var i = 0; i < numSamples; i++)
             {
                 var next = (i + 1) % numSamples;
                 faces.push({
-                    indices: [topConnectIdx + i, topConnectIdx + next, bottomConnectIdx + next, bottomConnectIdx + i],
+                    indices: [topCircleStartIdx + i, topCircleStartIdx + next, bottomCircleStartIdx + next, bottomCircleStartIdx + i],
                     isSide: true
                 });
             }
@@ -1419,6 +1436,7 @@ Draw.loadPlugin(function(editorUi)
         if (hasBottomBevel && bottomBevelType === 'circle')
         {
             // Rounded bottom bevel: create faces connecting original bottom circle to bevel circle
+            // Each sample point has arc vertices, create faces between consecutive samples
             for (var i = 0; i < numSamples; i++)
             {
                 var next = (i + 1) % numSamples;
@@ -1428,12 +1446,39 @@ Draw.loadPlugin(function(editorUi)
                 var nextArcVerts = bottomSideVertexPairs[next].arcVertices;
                 
                 // Create faces connecting arc vertices
+                // Start from original bottom circle (bottomCircleStartIdx + i), connect through arc vertices
+                // Bottom bevel circle vertices start at: bottomBevelStartIdx + (numSamples * 13)
+                var bottomBevelCircleStartIdx = bottomBevelStartIdx + (numSamples * 13);
+                
                 for (var a = 0; a < currArcVerts.length - 1; a++)
                 {
-                    var v1 = currArcVerts[a];
-                    var v2 = currArcVerts[a + 1];
-                    var v3 = nextArcVerts[a + 1];
-                    var v4 = nextArcVerts[a];
+                    var v1, v2, v3, v4;
+                    if (a === 0)
+                    {
+                        // First face: connect from original bottom circle to first arc vertex
+                        // Use original bottom circle points directly
+                        v1 = bottomCircleStartIdx + i;
+                        v2 = currArcVerts[a];
+                        v3 = currArcVerts[a + 1];
+                        v4 = bottomCircleStartIdx + next;
+                    }
+                    else if (a === currArcVerts.length - 2)
+                    {
+                        // Last face: connect last arc vertex to bevel circle vertex
+                        // currArcVerts[a + 1] is at bevel circle position, but we use actual bevel circle vertices for consistency
+                        v1 = currArcVerts[a];
+                        v2 = currArcVerts[a + 1];
+                        v3 = bottomBevelCircleStartIdx + next;
+                        v4 = bottomBevelCircleStartIdx + i;
+                    }
+                    else
+                    {
+                        // Subsequent faces: connect arc vertices
+                        v1 = currArcVerts[a];
+                        v2 = currArcVerts[a + 1];
+                        v3 = nextArcVerts[a + 1];
+                        v4 = nextArcVerts[a];
+                    }
                     
                     // Create quad face (CCW order when looking from outside)
                     faces.push({
