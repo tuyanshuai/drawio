@@ -739,16 +739,50 @@ Draw.loadPlugin(function(editorUi)
         }
         else if (hasTopBevel && hasBottomBevel)
         {
-            // Connect bevel top to bevel bottom
-            var topConnectIdx = topBevelType === 'circle' ? 
-                topBevelCircleStartIdx : topBevelStartIdx;
-            var bottomConnectIdx = bottomBevelType === 'circle' ?
-                bottomBevelCircleStartIdx : bottomBevelStartIdx;
+            // Connect original front face to original back face (body part)
+            // This preserves the shape body between the bevels
+            // Use arc vertices at original face positions to ensure proper connection
             for (var i = 0; i < numPoints; i++)
             {
                 var next = (i + 1) % numPoints;
+                
+                // For rounded bevels, use the first arc vertex (at original face position)
+                // This ensures smooth connection between bevel side faces and body side faces
+                var frontStartIdx, frontEndIdx, backStartIdx, backEndIdx;
+                
+                if (topBevelType === 'circle' && topSideVertexPairs && topSideVertexPairs.length > 0)
+                {
+                    // Use first arc vertex (index 0) which is at original front face position
+                    var topArcVerts = topSideVertexPairs[i].arcVertices;
+                    var topNextArcVerts = topSideVertexPairs[next].arcVertices;
+                    frontStartIdx = topArcVerts[0];
+                    frontEndIdx = topNextArcVerts[0];
+                }
+                else
+                {
+                    // Use original front face vertices
+                    frontStartIdx = frontFaceStartIdx + i;
+                    frontEndIdx = frontFaceStartIdx + next;
+                }
+                
+                if (bottomBevelType === 'circle' && bottomSideVertexPairs && bottomSideVertexPairs.length > 0)
+                {
+                    // Use first arc vertex (index 0) which is at original back face position
+                    var bottomArcVerts = bottomSideVertexPairs[i].arcVertices;
+                    var bottomNextArcVerts = bottomSideVertexPairs[next].arcVertices;
+                    backStartIdx = bottomArcVerts[0];
+                    backEndIdx = bottomNextArcVerts[0];
+                }
+                else
+                {
+                    // Use original back face vertices
+                    backStartIdx = backFaceStartIdx + i;
+                    backEndIdx = backFaceStartIdx + next;
+                }
+                
+                // Create side face connecting front to back (CCW order when looking from outside)
                 faces.push({
-                    indices: [topConnectIdx + i, topConnectIdx + next, bottomConnectIdx + next, bottomConnectIdx + i],
+                    indices: [frontStartIdx, frontEndIdx, backEndIdx, backStartIdx],
                     isSide: true
                 });
             }

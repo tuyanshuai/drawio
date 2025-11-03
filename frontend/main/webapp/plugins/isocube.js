@@ -517,7 +517,36 @@ Draw.loadPlugin(function(editorUi)
                 // Correct order: [2,6,7,3] from +Y looking down (CCW)
                 // bevelCorners: [0]=2, [1]=3, [2]=7, [3]=6
                 // So correct face order is: [0,3,2,1] = [2,6,7,3]
-                faces.push([topBevelStartIdx, topBevelStartIdx+3, topBevelStartIdx+2, topBevelStartIdx+1]);
+                var topBevelFaceIndices = [topBevelStartIdx, topBevelStartIdx+3, topBevelStartIdx+2, topBevelStartIdx+1];
+                if (window.console && window.console.log) {
+                    var vertices = topBevelFaceIndices.map(function(idx) {
+                        return v3[idx] ? {
+                            x: v3[idx].x.toFixed(2),
+                            y: v3[idx].y.toFixed(2),
+                            z: v3[idx].z.toFixed(2)
+                        } : null;
+                    });
+                    var bevelCornersInfo = bevelCorners.map(function(c, i) {
+                        return {idx: i, x: c.x.toFixed(2), y: c.y.toFixed(2), z: c.z.toFixed(2)};
+                    });
+                    var originalTopFaceInfo = [2,6,7,3].map(function(vIdx) {
+                        return v3[vIdx] ? {
+                            idx: vIdx,
+                            x: v3[vIdx].x.toFixed(2),
+                            y: v3[vIdx].y.toFixed(2),
+                            z: v3[vIdx].z.toFixed(2)
+                        } : null;
+                    });
+                    console.log('[isoCube] Top bevel face (circle):');
+                    console.log('  indices:', JSON.stringify(topBevelFaceIndices));
+                    console.log('  vertices:');
+                    vertices.forEach(function(v, i) { console.log('    [' + i + ']:', JSON.stringify(v)); });
+                    console.log('  bevelCorners:');
+                    bevelCornersInfo.forEach(function(c, i) { console.log('    [' + i + ']:', JSON.stringify(c)); });
+                    console.log('  originalTopFace:');
+                    originalTopFaceInfo.forEach(function(v, i) { console.log('    [' + i + ']:', JSON.stringify(v)); });
+                }
+                faces.push(topBevelFaceIndices);
                 
                 // Create rounded side faces using arc vertices
                 // Each edge has numSegments+1 segments, each with numArcPoints+1 vertices
@@ -565,7 +594,36 @@ Draw.loadPlugin(function(editorUi)
                 // Correct order: [2,6,7,3] from +Y looking down (CCW)
                 // bevelCorners: [0]=2, [1]=3, [2]=7, [3]=6
                 // So correct face order is: [0,3,2,1] = [2,6,7,3]
-                faces.push([topBevelStartIdx, topBevelStartIdx+3, topBevelStartIdx+2, topBevelStartIdx+1]);
+                var topBevelFaceIndices = [topBevelStartIdx, topBevelStartIdx+3, topBevelStartIdx+2, topBevelStartIdx+1];
+                if (window.console && window.console.log) {
+                    var vertices = topBevelFaceIndices.map(function(idx) {
+                        return v3[idx] ? {
+                            x: v3[idx].x.toFixed(2),
+                            y: v3[idx].y.toFixed(2),
+                            z: v3[idx].z.toFixed(2)
+                        } : null;
+                    });
+                    var bevelCornersInfo = bevelCorners.map(function(c, i) {
+                        return {idx: i, x: c.x.toFixed(2), y: c.y.toFixed(2), z: c.z.toFixed(2)};
+                    });
+                    var originalTopFaceInfo = [2,6,7,3].map(function(vIdx) {
+                        return v3[vIdx] ? {
+                            idx: vIdx,
+                            x: v3[vIdx].x.toFixed(2),
+                            y: v3[vIdx].y.toFixed(2),
+                            z: v3[vIdx].z.toFixed(2)
+                        } : null;
+                    });
+                    console.log('[isoCube] Top bevel face (simple):');
+                    console.log('  indices:', JSON.stringify(topBevelFaceIndices));
+                    console.log('  vertices:');
+                    vertices.forEach(function(v, i) { console.log('    [' + i + ']:', JSON.stringify(v)); });
+                    console.log('  bevelCorners:');
+                    bevelCornersInfo.forEach(function(c, i) { console.log('    [' + i + ']:', JSON.stringify(c)); });
+                    console.log('  originalTopFace:');
+                    originalTopFaceInfo.forEach(function(v, i) { console.log('    [' + i + ']:', JSON.stringify(v)); });
+                }
+                faces.push(topBevelFaceIndices);
                 
                 // Top bevel side faces (4 faces connecting original top edge to bevel edge)
                 faces.push([6, 7, topBevelStartIdx+2, topBevelStartIdx+3]); // front bevel side
@@ -594,7 +652,40 @@ Draw.loadPlugin(function(editorUi)
             {
                 // Rounded bottom bevel: create multiple small faces for smooth curves
                 // Bottom bevel face - use bevel corners
-                faces.push([bottomBevelStartIdx, bottomBevelStartIdx+1, bottomBevelStartIdx+2, bottomBevelStartIdx+3]);
+                // Original bottom face order: [0,1,5,4] from -Y looking up (CCW)
+                // bevelBottomCorners: [0]=0, [1]=1, [2]=5, [3]=4
+                // For correct normal direction when viewed from outside, use reverse order like top face
+                // Original: [0,1,5,4] -> bevelBottomCorners [0,1,2,3] -> reverse to [0,3,2,1] for correct normal
+                var bottomBevelFaceIndices = [bottomBevelStartIdx, bottomBevelStartIdx+3, bottomBevelStartIdx+2, bottomBevelStartIdx+1];
+                if (window.console && window.console.log) {
+                    var vertices = bottomBevelFaceIndices.map(function(idx) {
+                        return v3[idx] ? {
+                            x: v3[idx].x.toFixed(2),
+                            y: v3[idx].y.toFixed(2),
+                            z: v3[idx].z.toFixed(2)
+                        } : null;
+                    });
+                    var bevelBottomCornersInfo = bevelBottomCorners.map(function(c, i) {
+                        return {idx: i, x: c.x.toFixed(2), y: c.y.toFixed(2), z: c.z.toFixed(2)};
+                    });
+                    var originalBottomFaceInfo = [0,1,5,4].map(function(vIdx) {
+                        return v3[vIdx] ? {
+                            idx: vIdx,
+                            x: v3[vIdx].x.toFixed(2),
+                            y: v3[vIdx].y.toFixed(2),
+                            z: v3[vIdx].z.toFixed(2)
+                        } : null;
+                    });
+                    console.log('[isoCube] Bottom bevel face (circle):');
+                    console.log('  indices:', JSON.stringify(bottomBevelFaceIndices));
+                    console.log('  vertices:');
+                    vertices.forEach(function(v, i) { console.log('    [' + i + ']:', JSON.stringify(v)); });
+                    console.log('  bevelBottomCorners:');
+                    bevelBottomCornersInfo.forEach(function(c, i) { console.log('    [' + i + ']:', JSON.stringify(c)); });
+                    console.log('  originalBottomFace:');
+                    originalBottomFaceInfo.forEach(function(v, i) { console.log('    [' + i + ']:', JSON.stringify(v)); });
+                }
+                faces.push(bottomBevelFaceIndices);
                 
                 // Create rounded side faces using arc vertices
                 // Each edge has numSegments+1 segments, each with numArcPoints+1 vertices
@@ -640,7 +731,40 @@ Draw.loadPlugin(function(editorUi)
             {
                 // Simple bottom bevel: use existing logic
                 // Bottom bevel face (replaces original bottom face)
-                faces.push([bottomBevelStartIdx, bottomBevelStartIdx+1, bottomBevelStartIdx+2, bottomBevelStartIdx+3]);
+                // Original bottom face order: [0,1,5,4] from -Y looking up (CCW)
+                // bevelBottomCorners: [0]=0, [1]=1, [2]=5, [3]=4
+                // For correct normal direction when viewed from outside, use reverse order like top face
+                // Original: [0,1,5,4] -> bevelBottomCorners [0,1,2,3] -> reverse to [0,3,2,1] for correct normal
+                var bottomBevelFaceIndices = [bottomBevelStartIdx, bottomBevelStartIdx+3, bottomBevelStartIdx+2, bottomBevelStartIdx+1];
+                if (window.console && window.console.log) {
+                    var vertices = bottomBevelFaceIndices.map(function(idx) {
+                        return v3[idx] ? {
+                            x: v3[idx].x.toFixed(2),
+                            y: v3[idx].y.toFixed(2),
+                            z: v3[idx].z.toFixed(2)
+                        } : null;
+                    });
+                    var bevelBottomCornersInfo = bevelBottomCorners.map(function(c, i) {
+                        return {idx: i, x: c.x.toFixed(2), y: c.y.toFixed(2), z: c.z.toFixed(2)};
+                    });
+                    var originalBottomFaceInfo = [0,1,5,4].map(function(vIdx) {
+                        return v3[vIdx] ? {
+                            idx: vIdx,
+                            x: v3[vIdx].x.toFixed(2),
+                            y: v3[vIdx].y.toFixed(2),
+                            z: v3[vIdx].z.toFixed(2)
+                        } : null;
+                    });
+                    console.log('[isoCube] Bottom bevel face (simple):');
+                    console.log('  indices:', JSON.stringify(bottomBevelFaceIndices));
+                    console.log('  vertices:');
+                    vertices.forEach(function(v, i) { console.log('    [' + i + ']:', JSON.stringify(v)); });
+                    console.log('  bevelBottomCorners:');
+                    bevelBottomCornersInfo.forEach(function(c, i) { console.log('    [' + i + ']:', JSON.stringify(c)); });
+                    console.log('  originalBottomFace:');
+                    originalBottomFaceInfo.forEach(function(v, i) { console.log('    [' + i + ']:', JSON.stringify(v)); });
+                }
+                faces.push(bottomBevelFaceIndices);
                 
                 // Bottom bevel side faces (4 faces connecting original bottom edge to bevel edge)
                 // Order must be CCW when looking from outside (below)
@@ -927,6 +1051,12 @@ Draw.loadPlugin(function(editorUi)
 
     IsoCylinderShape.prototype.paintVertexShape = function(c, x, y, w, h)
     {
+        // Debug: Log function entry
+        if (window.console && window.console.log)
+        {
+            console.log('[IsoCylinder Debug] ===== paintVertexShape called =====');
+        }
+        
         var style = this.style || {};
         var d = parseFloat(mxUtils.getValue(style, 'isoZ', Math.min(w, h) * 0.6));
         var rx = mxUtils.toRadians(parseFloat(mxUtils.getValue(style, 'isoRx', 35)));
@@ -944,6 +1074,14 @@ Draw.loadPlugin(function(editorUi)
         
         var hasTopBevel = topBevelType !== 'none' && topBevelType !== '' && topBevelWidth > 0 && topBevelHeight > 0;
         var hasBottomBevel = bottomBevelType !== 'none' && bottomBevelType !== '' && bottomBevelWidth > 0 && bottomBevelHeight > 0;
+        
+        // Debug: Log bevel parameters
+        if (window.console && window.console.log)
+        {
+            console.log('[IsoCylinder Debug] Bevel parameters:');
+            console.log('  topBevelType:', topBevelType, 'hasTopBevel:', hasTopBevel, 'width:', topBevelWidth.toFixed(2), 'height:', topBevelHeight.toFixed(2));
+            console.log('  bottomBevelType:', bottomBevelType, 'hasBottomBevel:', hasBottomBevel, 'width:', bottomBevelWidth.toFixed(2), 'height:', bottomBevelHeight.toFixed(2));
+        }
 
         var cx = x + w / 2;
         var cy = y + h / 2;
@@ -1102,6 +1240,31 @@ Draw.loadPlugin(function(editorUi)
         // Update bottomCircleStartIdx after top bevel is added (if any)
         // Bottom circle is added after all top bevel vertices
         bottomCircleStartIdx = v3.length;
+        
+        // Debug: Log vertex indices
+        if (window.console && window.console.log)
+        {
+            console.log('[IsoCylinder Debug] Vertex indices:');
+            console.log('  topCircleStartIdx:', topCircleStartIdx);
+            if (hasTopBevel)
+            {
+                console.log('  topBevelStartIdx:', topBevelStartIdx);
+                if (topBevelType === 'circle')
+                {
+                    console.log('  topBevelCircleStartIdx:', topBevelStartIdx + (numSamples * 13));
+                }
+            }
+            console.log('  bottomCircleStartIdx:', bottomCircleStartIdx);
+            if (hasBottomBevel)
+            {
+                console.log('  bottomBevelStartIdx:', bottomBevelStartIdx);
+                if (bottomBevelType === 'circle')
+                {
+                    console.log('  bottomBevelCircleStartIdx:', bottomBevelStartIdx + (numSamples * 13));
+                }
+            }
+            console.log('  Total vertices:', v3.length);
+        }
         
         // Add original bottom circle vertices
         for (var i = 0; i < numSamples; i++)
@@ -1422,13 +1585,98 @@ Draw.loadPlugin(function(editorUi)
         {
             // Connect original top circle to original bottom circle (body part)
             // This preserves the cylinder body between the bevels
+            // Use arc vertices at original circle positions to ensure proper connection
+            
+            // Debug: Log body side face creation
+            if (window.console && window.console.log)
+            {
+                console.log('[IsoCylinder Debug] Creating middle body side faces:');
+                console.log('  hasTopBevel:', hasTopBevel, 'topBevelType:', topBevelType);
+                console.log('  hasBottomBevel:', hasBottomBevel, 'bottomBevelType:', bottomBevelType);
+                console.log('  topSideVertexPairs length:', topSideVertexPairs ? topSideVertexPairs.length : 0);
+                console.log('  bottomSideVertexPairs length:', bottomSideVertexPairs ? bottomSideVertexPairs.length : 0);
+            }
+            
             for (var i = 0; i < numSamples; i++)
             {
                 var next = (i + 1) % numSamples;
-                faces.push({
-                    indices: [topCircleStartIdx + i, topCircleStartIdx + next, bottomCircleStartIdx + next, bottomCircleStartIdx + i],
+                
+                // For rounded bevels, use the first arc vertex (at original circle position)
+                // This ensures smooth connection between bevel side faces and body side faces
+                var topStartIdx, topEndIdx, bottomStartIdx, bottomEndIdx;
+                
+                if (topBevelType === 'circle' && topSideVertexPairs && topSideVertexPairs.length > 0)
+                {
+                    // Use first arc vertex (index 0) which is at original top circle position
+                    var topArcVerts = topSideVertexPairs[i].arcVertices;
+                    var topNextArcVerts = topSideVertexPairs[next].arcVertices;
+                    topStartIdx = topArcVerts[0];
+                    topEndIdx = topNextArcVerts[0];
+                    
+                    // Debug: Log first few body faces
+                    if (i < 3 && window.console && window.console.log)
+                    {
+                        console.log('  Body face', i, ': top arc vertices', topArcVerts[0], topNextArcVerts[0]);
+                    }
+                }
+                else
+                {
+                    // Use original top circle vertices
+                    topStartIdx = topCircleStartIdx + i;
+                    topEndIdx = topCircleStartIdx + next;
+                    
+                    // Debug: Log first few body faces
+                    if (i < 3 && window.console && window.console.log)
+                    {
+                        console.log('  Body face', i, ': top circle vertices', topStartIdx, topEndIdx);
+                    }
+                }
+                
+                if (bottomBevelType === 'circle' && bottomSideVertexPairs && bottomSideVertexPairs.length > 0)
+                {
+                    // Use first arc vertex (index 0) which is at original bottom circle position
+                    var bottomArcVerts = bottomSideVertexPairs[i].arcVertices;
+                    var bottomNextArcVerts = bottomSideVertexPairs[next].arcVertices;
+                    bottomStartIdx = bottomArcVerts[0];
+                    bottomEndIdx = bottomNextArcVerts[0];
+                    
+                    // Debug: Log first few body faces
+                    if (i < 3 && window.console && window.console.log)
+                    {
+                        console.log('  Body face', i, ': bottom arc vertices', bottomArcVerts[0], bottomNextArcVerts[0]);
+                    }
+                }
+                else
+                {
+                    // Use original bottom circle vertices
+                    bottomStartIdx = bottomCircleStartIdx + i;
+                    bottomEndIdx = bottomCircleStartIdx + next;
+                    
+                    // Debug: Log first few body faces
+                    if (i < 3 && window.console && window.console.log)
+                    {
+                        console.log('  Body face', i, ': bottom circle vertices', bottomStartIdx, bottomEndIdx);
+                    }
+                }
+                
+                // Create side face connecting top to bottom (CCW order when looking from outside)
+                var bodyFace = {
+                    indices: [topStartIdx, topEndIdx, bottomEndIdx, bottomStartIdx],
                     isSide: true
-                });
+                };
+                faces.push(bodyFace);
+                
+                // Debug: Log first few body faces
+                if (i < 3 && window.console && window.console.log)
+                {
+                    console.log('  Body face', i, 'indices:', bodyFace.indices);
+                }
+            }
+            
+            // Debug: Log summary
+            if (window.console && window.console.log)
+            {
+                console.log('[IsoCylinder Debug] Created', numSamples, 'middle body side faces');
             }
         }
         
@@ -1502,6 +1750,18 @@ Draw.loadPlugin(function(editorUi)
             }
         }
 
+        // Debug: Log total faces before visibility calculation
+        if (window.console && window.console.log)
+        {
+            console.log('[IsoCylinder Debug] Total faces created:', faces.length);
+            var bodyFaces = faces.filter(function(f) { return f.isSide && !f.isTop && !f.isBottom; });
+            console.log('[IsoCylinder Debug] Body side faces:', bodyFaces.length);
+            if (bodyFaces.length > 0)
+            {
+                console.log('[IsoCylinder Debug] First body face indices:', bodyFaces[0].indices);
+            }
+        }
+        
         // Calculate face normals and visibility
         var viewDir = {x: 0, y: 0, z: -1};
         var faceInfo = [];
@@ -1542,8 +1802,25 @@ Draw.loadPlugin(function(editorUi)
                 indices: idx,
                 normal: {x: nx, y: ny, z: nz},
                 z: avgZ,
-                visible: vis
+                visible: vis,
+                isSide: face.isSide,
+                isTop: face.isTop,
+                isBottom: face.isBottom
             });
+            
+            // Debug: Log visibility for first few body side faces
+            if (face.isSide && !face.isTop && !face.isBottom && fi < 3 && window.console && window.console.log)
+            {
+                console.log('[IsoCylinder Debug] Body face', fi, 'visible:', vis, 'normal:', nx.toFixed(3), ny.toFixed(3), nz.toFixed(3), 'avgZ:', avgZ.toFixed(3));
+            }
+        }
+        
+        // Debug: Log visibility summary
+        if (window.console && window.console.log)
+        {
+            var bodyFaceInfos = faceInfo.filter(function(f) { return f.isSide && !f.isTop && !f.isBottom; });
+            var visibleBodyFaces = bodyFaceInfos.filter(function(f) { return f.visible; });
+            console.log('[IsoCylinder Debug] Body side faces - total:', bodyFaceInfos.length, 'visible:', visibleBodyFaces.length, 'hidden:', bodyFaceInfos.length - visibleBodyFaces.length);
         }
 
         // Sort back-to-front
@@ -1678,7 +1955,16 @@ Draw.loadPlugin(function(editorUi)
         
         if (!fillEnabled && !strokeEnabled) return;
 
+        // Debug: Log rendering summary
+        if (window.console && window.console.log)
+        {
+            var bodyFaceInfos = faceInfo.filter(function(f) { return f.isSide && !f.isTop && !f.isBottom; });
+            var visibleBodyFaces = bodyFaceInfos.filter(function(f) { return f.visible; });
+            console.log('[IsoCylinder Debug] Rendering - total faces:', faceInfo.length, 'body side faces:', bodyFaceInfos.length, 'visible body:', visibleBodyFaces.length);
+        }
+        
         // Render faces
+        var bodyFaceRenderCount = 0;
         for (var fi2 = 0; fi2 < faceInfo.length; fi2++)
         {
             var f = faceInfo[fi2];
@@ -1686,6 +1972,13 @@ Draw.loadPlugin(function(editorUi)
             var n = f.normal; var nmag = Math.sqrt(n.x*n.x+n.y*n.y+n.z*n.z) || 1;
             var nx=n.x/nmag, ny=n.y/nmag, nz=n.z/nmag;
             var ndotl = Math.max(0, -(nx*light.x + ny*light.y + nz*light.z));
+            
+            // Debug: Count rendered body faces
+            if (f.isSide && !f.isTop && !f.isBottom && f.visible)
+            {
+                bodyFaceRenderCount++;
+            }
+            
             if (fillEnabled)
             {
                 // Always apply shading for better 3D appearance
@@ -1718,6 +2011,16 @@ Draw.loadPlugin(function(editorUi)
                 }
                 c.close();
                 c.stroke();
+            }
+        }
+        
+        // Debug: Log final rendering summary
+        if (window.console && window.console.log)
+        {
+            console.log('[IsoCylinder Debug] Rendered', bodyFaceRenderCount, 'body side faces');
+            if (bodyFaceRenderCount === 0)
+            {
+                console.warn('[IsoCylinder Debug] WARNING: No body side faces were rendered!');
             }
         }
     };

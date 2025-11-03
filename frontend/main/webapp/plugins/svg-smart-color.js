@@ -436,9 +436,228 @@ Draw.loadPlugin(function(editorUi)
 	}
 	
 	/**
-	 * 分析SVG中的颜色及其区域面积
+	 * 分析SVG中的颜色及其区域面积（异步版本，使用Canvas）
+	 * 使用Canvas渲染SVG为PNG，然后统计每种颜色的像素面积
+	 * @returns {Promise<Array>} 返回颜色数组的Promise
+	 */
+	function analyzeSvgColorsAsync(svgString)
+	{
+		return new Promise(function(resolve, reject)
+		{
+			if (!svgString)
+			{
+				resolve([]);
+				return;
+			}
+			
+			try
+			{
+				var doc = mxUtils.parseXml(svgString);
+				var svgElement = doc.documentElement;
+				
+				if (!svgElement || svgElement.nodeName.toLowerCase() !== 'svg')
+				{
+					resolve([]);
+					return;
+				}
+				
+				// 获取viewBox或尺寸
+				var viewBox = svgElement.getAttribute('viewBox');
+				var width = parseFloat(svgElement.getAttribute('width')) || 100;
+				var height = parseFloat(svgElement.getAttribute('height')) || 100;
+				
+				var vbX = 0, vbY = 0, vbWidth = width, vbHeight = height;
+				if (viewBox)
+				{
+					var vb = viewBox.split(/\s+|,/);
+					if (vb.length >= 4)
+					{
+						vbX = parseFloat(vb[0]) || 0;
+						vbY = parseFloat(vb[1]) || 0;
+						vbWidth = parseFloat(vb[2]) || width;
+						vbHeight = parseFloat(vb[3]) || height;
+					}
+				}
+				
+				// 将SVG转换为Blob URL
+				var svgBlob = new Blob([svgString], {type: 'image/svg+xml;charset=utf-8'});
+				var url = URL.createObjectURL(svgBlob);
+				
+				// 创建Image对象加载SVG
+				var img = new Image();
+				img.onload = function()
+				{
+					try
+					{
+						// 创建Canvas
+						var canvas = document.createElement('canvas');
+						// 使用合理的分辨率（最大2048px，保持比例）
+						var maxResolution = 2048;
+						var scale = Math.min(1, maxResolution / Math.max(vbWidth, vbHeight));
+						canvas.width = Math.round(vbWidth * scale);
+						canvas.height = Math.round(vbHeight * scale);
+						
+						var ctx = canvas.getContext('2d');
+						
+						// 绘制白色背景（确保透明区域有颜色）
+						ctx.fillStyle = '#FFFFFF';
+						ctx.fillRect(0, 0, canvas.width, canvas.height);
+						
+						// 绘制SVG到Canvas
+						ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+						
+						// 获取像素数据
+						var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+						var pixels = imageData.data;
+						
+						// 统计颜色及其像素数量（面积）
+						var colorMap = {}; // color -> {color, area (像素数), count}
+						
+						// 遍历所有像素
+						for (var i = 0; i < pixels.length; i += 4)
+						{
+							var r = pixels[i];
+							var g = pixels[i + 1];
+							var b = pixels[i + 2];
+							var a = pixels[i + 3];
+							
+							// 跳过完全透明的像素
+							if (a < 128)
+							{
+								continue;
+							}
+							
+							// 将颜色转换为hex
+							var hex = rgbToHex(r, g, b);
+							
+							// 初始化或更新颜色统计
+							if (!colorMap[hex])
+							{
+								colorMap[hex] = {
+									color: {r: r, g: g, b: b, hex: hex},
+									area: 0,
+									count: 0
+								};
+							}
+							
+							// 增加该颜色的像素数量（面积）
+							colorMap[hex].area += 1;
+							colorMap[hex].count += 1;
+						}
+						
+						// 转换为数组并按面积（像素数）排序
+						var colors = [];
+						for (var key in colorMap)
+						{
+							if (colorMap.hasOwnProperty(key))
+							{
+								colors.push(colorMap[key]);
+							}
+						}
+						
+						colors.sort(function(a, b)
+						{
+							return b.area - a.area;
+						});
+						
+						// 清理
+						URL.revokeObjectURL(url);
+						if (window.console)
+						{
+							console.log('[SVG Smart Color] 颜色分析完成（Canvas方法），共发现', colors.length, '种颜色');
+						}
+						
+						resolve(colors);
+					}
+					catch (e)
+					{
+						if (window.console)
+						{
+							console.error('[SVG Smart Color] Canvas分析出错:', e);
+						}
+						URL.revokeObjectURL(url);
+						// 回退到备用方法
+						analyzeSvgColorsFallback(svgString).then(resolve).catch(reject);
+					}
+				};
+				
+				img.onerror = function()
+				{
+					if (window.console)
+					{
+						console.error('[SVG Smart Color] SVG加载失败，使用备用方法');
+					}
+					URL.revokeObjectURL(url);
+					// 回退到备用方法
+					analyzeSvgColorsFallback(svgString).then(resolve).catch(reject);
+				};
+				
+				img.src = url;
+			}
+			catch (e)
+			{
+				if (window.console)
+				{
+					console.error('[SVG Smart Color] 分析SVG颜色时出错:', e);
+				}
+				reject(e);
+			}
+		});
+	}
+	
+	/**
+	 * 分析SVG中的颜色及其区域面积（同步版本，兼容旧代码）
+	 * 为了保持API兼容性，直接使用Canvas异步方法，但在调用方使用Promise
 	 */
 	function analyzeSvgColors(svgString)
+	{
+		// 为了兼容，直接返回异步版本
+		// 调用方需要改为使用 analyzeSvgColorsAsync
+		// 这里暂时使用备用方法作为同步返回
+		if (!svgString)
+		{
+			return [];
+		}
+		
+		// 直接使用备用方法（同步）
+		// 注意：为了获得准确的结果，调用方应该使用 analyzeSvgColorsAsync
+		try
+		{
+			return analyzeSvgColorsFallbackSync(svgString);
+		}
+		catch (e)
+		{
+			if (window.console)
+			{
+				console.error('[SVG Smart Color] 分析失败:', e);
+			}
+			return [];
+		}
+	}
+	
+	/**
+	 * 备用方法：当Canvas方法失败时使用的简化分析方法（返回Promise）
+	 */
+	function analyzeSvgColorsFallback(svgString)
+	{
+		return new Promise(function(resolve, reject)
+		{
+			try
+			{
+				var result = analyzeSvgColorsFallbackSync(svgString);
+				resolve(result);
+			}
+			catch (e)
+			{
+				reject(e);
+			}
+		});
+	}
+	
+	/**
+	 * 备用方法：同步版本的DOM遍历分析方法
+	 */
+	function analyzeSvgColorsFallbackSync(svgString)
 	{
 		if (!svgString)
 		{
@@ -909,13 +1128,14 @@ Draw.loadPlugin(function(editorUi)
 	/**
 	 * 启动颜色吸管工具，让用户在SVG上选择颜色
 	 */
-	function startColorDropper(cell, onColorSelected)
+	function startColorDropper(cell, onColorSelected, svgStringOverride)
 	{
 		if (window.console)
 		{
 			console.log('[SVG Color Dropper] ===== 启动颜色吸管工具 =====');
 			console.log('[SVG Color Dropper] Cell:', cell);
 			console.log('[SVG Color Dropper] onColorSelected回调:', typeof onColorSelected);
+			console.log('[SVG Color Dropper] svgStringOverride:', svgStringOverride ? '提供' : '未提供');
 		}
 		
 		if (!cell || !onColorSelected)
@@ -930,7 +1150,8 @@ Draw.loadPlugin(function(editorUi)
 			return;
 		}
 		
-		var svgString = getSvgContent(cell);
+		// 如果提供了SVG字符串覆盖，使用它；否则从cell获取
+		var svgString = svgStringOverride || getSvgContent(cell);
 		if (!svgString)
 		{
 			if (window.console)
@@ -944,6 +1165,10 @@ Draw.loadPlugin(function(editorUi)
 		if (window.console)
 		{
 			console.log('[SVG Color Dropper] ✓ SVG内容获取成功，长度:', svgString.length);
+			if (svgStringOverride)
+			{
+				console.log('[SVG Color Dropper] 使用提供的SVG字符串（可能是已应用的SVG）');
+			}
 		}
 		
 		// 创建吸管工具状态
@@ -1673,8 +1898,217 @@ Draw.loadPlugin(function(editorUi)
 		panel.appendChild(title);
 		
 		// 当前颜色显示和吸管工具
+		// 使用cell的ID作为key，将颜色值存储在外部，防止格式面板刷新时丢失
+		var storageKey = 'svg-recolor-' + (cell.id || 'default');
 		var currentColor = null;
 		var colorToReplaceHex = null;
+		
+		// 尝试从存储中恢复颜色值（如果格式面板被刷新）
+		if (window[storageKey])
+		{
+			currentColor = window[storageKey].currentColor;
+			colorToReplaceHex = window[storageKey].colorToReplaceHex;
+		}
+		
+		// 保存颜色值的函数（包括新颜色）
+		var saveColorValues = function()
+		{
+			if (!window[storageKey])
+			{
+				window[storageKey] = {};
+			}
+			window[storageKey].currentColor = currentColor;
+			window[storageKey].colorToReplaceHex = colorToReplaceHex;
+			// 也保存新颜色值
+			if (colorInput && colorInput.value)
+			{
+				window[storageKey].newColorInput = colorInput.value.trim();
+			}
+			if (newColorPreview && newColorPreview.style && newColorPreview.style.backgroundColor)
+			{
+				window[storageKey].newColorPreview = newColorPreview.style.backgroundColor;
+			}
+		};
+		
+		// 深度绑定：设置currentColor并同步UI和存储
+		var setCurrentColor = function(newColor, skipSave)
+		{
+			if (window.console)
+			{
+				console.log('[SVG Smart Color] setCurrentColor: 从', currentColor, '更新到', newColor);
+			}
+			currentColor = newColor;
+			
+			// 确保UI元素引用有效（重新查找，防止引用丢失）
+			var panel = document.getElementById('svg-local-recolor-panel');
+			if (panel)
+			{
+				var preview = panel.querySelector('[data-color-preview="current"]');
+				var value = panel.querySelector('[data-color-value="current"]');
+				if (preview)
+				{
+					currentColorPreview = preview;
+				}
+				if (value)
+				{
+					currentColorValue = value;
+				}
+			}
+			
+			// 立即更新UI
+			if (currentColorPreview && currentColorPreview.style)
+			{
+				currentColorPreview.style.backgroundColor = currentColor;
+				if (window.console)
+				{
+					console.log('[SVG Smart Color] setCurrentColor: 已更新preview颜色为', currentColor);
+				}
+			}
+			else if (window.console)
+			{
+				console.warn('[SVG Smart Color] setCurrentColor: currentColorPreview不存在，无法更新UI');
+			}
+			
+			if (currentColorValue)
+			{
+				currentColorValue.textContent = currentColor;
+				if (window.console)
+				{
+					console.log('[SVG Smart Color] setCurrentColor: 已更新value文本为', currentColor);
+				}
+			}
+			else if (window.console)
+			{
+				console.warn('[SVG Smart Color] setCurrentColor: currentColorValue不存在，无法更新UI');
+			}
+			
+			// 保存到外部存储（除非明确跳过）
+			if (!skipSave)
+			{
+				saveColorValues();
+			}
+			
+			if (window.console)
+			{
+				console.log('[SVG Smart Color] setCurrentColor完成: UI已更新，存储已保存');
+				console.log('[SVG Smart Color] setCurrentColor验证:', {
+					currentColor变量: currentColor,
+					preview显示: currentColorPreview ? currentColorPreview.style.backgroundColor : 'N/A',
+					value显示: currentColorValue ? currentColorValue.textContent : 'N/A'
+				});
+			}
+		};
+		
+		// 深度绑定：设置colorToReplaceHex并同步存储
+		var setColorToReplaceHex = function(newColor)
+		{
+			if (window.console)
+			{
+				console.log('[SVG Smart Color] setColorToReplaceHex: 从', colorToReplaceHex, '更新到', newColor);
+			}
+			colorToReplaceHex = newColor;
+			saveColorValues();
+		};
+		
+		// 防止forceSyncUI被频繁调用的标志
+		var isSyncing = false;
+		
+		// 强制同步UI与内存变量（核心函数）
+		var forceSyncUI = function()
+		{
+			// 防止重复调用
+			if (isSyncing)
+			{
+				return;
+			}
+			isSyncing = true;
+			
+			try
+			{
+				// 先从外部存储恢复内存变量（优先使用内存变量，如果没有则从存储恢复）
+				if (window[storageKey])
+				{
+					if (window[storageKey].currentColor)
+					{
+						var storedColor = window[storageKey].currentColor;
+						if (!currentColor || currentColor !== storedColor)
+						{
+							currentColor = storedColor;
+						}
+					}
+					if (window[storageKey].colorToReplaceHex)
+					{
+						var storedHex = window[storageKey].colorToReplaceHex;
+						if (!colorToReplaceHex || colorToReplaceHex !== storedHex)
+						{
+							colorToReplaceHex = storedHex;
+						}
+					}
+				}
+				
+				// 直接更新UI，不调用setCurrentColor避免循环
+				if (currentColor)
+				{
+					if (currentColorPreview && currentColorPreview.style)
+					{
+						currentColorPreview.style.backgroundColor = currentColor;
+					}
+					if (currentColorValue)
+					{
+						currentColorValue.textContent = currentColor;
+					}
+				}
+				
+				// 强制更新新颜色显示（从外部存储或内存）
+				var newColorValue = null;
+				if (colorInput && colorInput.value)
+				{
+					newColorValue = colorInput.value.trim();
+				}
+				else if (window[storageKey] && window[storageKey].newColorInput)
+				{
+					newColorValue = window[storageKey].newColorInput;
+					if (colorInput)
+					{
+						colorInput.value = newColorValue;
+					}
+				}
+				
+				var newColorPreviewValue = null;
+				if (newColorPreview && newColorPreview.style && newColorPreview.style.backgroundColor)
+				{
+					newColorPreviewValue = newColorPreview.style.backgroundColor;
+				}
+				else if (window[storageKey] && window[storageKey].newColorPreview)
+				{
+					newColorPreviewValue = window[storageKey].newColorPreview;
+					if (newColorPreview)
+					{
+						newColorPreview.style.backgroundColor = newColorPreviewValue;
+					}
+				}
+				
+				// 如果有新颜色值但没有预览值，尝试从输入框生成预览
+				if (newColorValue && !newColorPreviewValue && newColorPreview)
+				{
+					var parsed = parseColor(newColorValue);
+					if (parsed && parsed.hex)
+					{
+						newColorPreview.style.backgroundColor = parsed.hex;
+					}
+				}
+			}
+			finally
+			{
+				isSyncing = false;
+			}
+		};
+		
+		// 恢复UI显示的函数（使用强制同步）
+		var restoreColorDisplay = function()
+		{
+			forceSyncUI();
+		};
 		
 		var currentColorRow = document.createElement('div');
 		currentColorRow.style.display = 'flex';
@@ -1707,6 +2141,9 @@ Draw.loadPlugin(function(editorUi)
 		currentColorValue.textContent = '未选择';
 		currentColorRow.appendChild(currentColorValue);
 		
+		// 注意：currentColor和colorToReplaceHex在应用后必须保持不变
+		// 只有通过吸管工具选择新颜色时才会更新
+		
 		// 吸管工具按钮
 		var dropperButton = document.createElement('button');
 		dropperButton.style.padding = '4px 8px';
@@ -1728,24 +2165,120 @@ Draw.loadPlugin(function(editorUi)
 		
 		dropperButton.addEventListener('click', function()
 		{
-			startColorDropper(cell, function(selectedColor)
+			// 获取当前SVG内容（优先使用已应用的SVG，这样可以从更新后的颜色中采样）
+			// 重要：如果有已应用的SVG，应该使用它，因为替换后的颜色已经应用到了SVG中
+			// 如果当前有预览，先清除预览（恢复到已应用或原始状态），因为我们要从已应用的SVG中采样
+			if (previewSvgString)
 			{
-				currentColor = selectedColor;
-				currentColorPreview.style.backgroundColor = selectedColor;
-				currentColorValue.textContent = selectedColor;
+				var baseSvgString = appliedSvgString || originalSvgString;
+				updateSvgCell(cell, previewSvgString, baseSvgString, '', '');
+				previewSvgString = null;
+			}
+			
+			// 优先使用已应用的SVG（替换后的颜色），这样可以从新的颜色中采样
+			// 重要：应用颜色替换后，原来的颜色已经被新颜色替换了，所以应该从新颜色中采样
+			var currentSvgString = appliedSvgString || originalSvgString;
+			
+			if (window.console)
+			{
+				console.log('[SVG Smart Color] 吸管工具启动，使用SVG:', 
+					appliedSvgString ? '已应用的SVG（包含替换后的颜色）' : '原始SVG');
+				console.log('[SVG Smart Color] appliedSvgString存在:', appliedSvgString ? '是' : '否');
+				console.log('[SVG Smart Color] 这样可以从替换后的颜色中继续采样');
+			}
+			
+			// 如果已有应用的SVG，需要确保cell显示的是已应用的SVG，这样用户看到的和采样的是一致的
+			// startColorDropper会使用传入的svgStringOverride来渲染canvas，但cell的显示也需要同步
+			if (appliedSvgString)
+			{
+				// 确保cell显示的是已应用的SVG
+				var state = graph.view.getState(cell);
+				var style = (state != null) ? state.style : graph.getCellStyle(cell);
+				var value = graph.getModel().getValue(cell);
+				var currentImage = (style != null) ? mxUtils.getValue(style, mxConstants.STYLE_IMAGE, null) : null;
+				
+				// 检查当前cell显示的SVG是否已经是已应用的SVG
+				var needsUpdate = false;
+				var encodedSvg = 'data:image/svg+xml,' + encodeURIComponent(appliedSvgString);
+				
+				// 如果当前显示的SVG与已应用的SVG不同，需要更新
+				if (currentImage && currentImage.toLowerCase().indexOf('data:image/svg') === 0)
+				{
+					// 简单比较：如果长度差异较大，说明可能需要更新
+					// 或者检查当前image是否包含新颜色的特征
+					// 为了简单，我们总是确保cell显示已应用的SVG
+					needsUpdate = true;
+				}
+				
+				if (needsUpdate)
+				{
+					graph.getModel().beginUpdate();
+					try
+					{
+						if (style && currentImage && currentImage.toLowerCase().indexOf('data:image/svg') === 0)
+						{
+							graph.setCellStyles(mxConstants.STYLE_IMAGE, encodedSvg, [cell]);
+						}
+						else if (mxUtils.isNode(value) && value.nodeName === 'SvgImage')
+						{
+							var svgImageNode = value.cloneNode(true);
+							svgImageNode.setAttribute('svgText', appliedSvgString);
+							svgImageNode.setAttribute('svgDataUri', encodedSvg);
+							graph.getModel().setValue(cell, svgImageNode);
+							graph.setCellStyles(mxConstants.STYLE_IMAGE, encodedSvg, [cell]);
+						}
+						else if (mxUtils.isNode(value) && value.nodeName === 'svg')
+						{
+							var svgDoc = mxUtils.parseXml(appliedSvgString);
+							if (svgDoc && svgDoc.documentElement)
+							{
+								var importedSvg = graph.getModel().getModel().importNode(svgDoc.documentElement, true);
+								graph.getModel().setValue(cell, importedSvg);
+								graph.setCellStyles(mxConstants.STYLE_IMAGE, encodedSvg, [cell]);
+							}
+						}
+						graph.refresh(cell);
+						graph.view.invalidate(cell);
+						if (graph.view.validate)
+						{
+							graph.view.validate();
+						}
+					}
+					finally
+					{
+						graph.getModel().endUpdate();
+					}
+				}
+			}
+			
+			// 创建一个包装函数，确保使用当前SVG字符串
+			var wrappedOnColorSelected = function(selectedColor)
+			{
+				// 使用深度绑定设置currentColor
+				setCurrentColor(selectedColor);
 				
 				// 解析选择的颜色
 				var colorToReplace = parseColor(selectedColor);
 				if (colorToReplace && colorToReplace.hex)
 				{
-					colorToReplaceHex = colorToReplace.hex;
-					// 自动设置新颜色输入框
-					colorInput.value = selectedColor.toUpperCase();
-					newColorPreview.style.backgroundColor = selectedColor;
+					setColorToReplaceHex(colorToReplace.hex);
+					// 不清除colorInput，让用户可以选择不同的新颜色
 				}
 				
-				editorUi.editor.setStatus('已选择颜色: ' + selectedColor);
-			});
+				editorUi.editor.setStatus('已选择颜色: ' + selectedColor + ' (从' + (appliedSvgString ? '替换后的SVG' : '原始SVG') + '中采样)');
+				
+				if (window.console)
+				{
+					console.log('[SVG Smart Color] 吸管工具采样完成，选择的颜色:', selectedColor);
+					console.log('[SVG Smart Color] 来源:', appliedSvgString ? '替换后的SVG' : '原始SVG');
+					console.log('[SVG Smart Color] 现在可以继续替换这个颜色:', selectedColor);
+				}
+			};
+			
+			// 传递当前SVG字符串给startColorDropper，确保使用更新后的颜色
+			// 如果有已应用的SVG，使用它（这样可以从替换后的新颜色中采样）
+			// 否则使用原始SVG
+			startColorDropper(cell, wrappedOnColorSelected, currentSvgString);
 		});
 		
 		currentColorRow.appendChild(dropperButton);
@@ -1788,12 +2321,20 @@ Draw.loadPlugin(function(editorUi)
 		// 同步颜色输入和预览
 		colorInput.addEventListener('input', function()
 		{
-			var colorValue = colorInput.value.trim();
-			if (colorValue.match(/^#[0-9A-Fa-f]{6}$/))
-			{
-				newColorPreview.style.backgroundColor = colorValue;
-			}
-		});
+				var colorValue = colorInput.value.trim();
+				if (colorValue.match(/^#[0-9A-Fa-f]{6}$/))
+				{
+					// 保存当前值
+					var savedValue = colorValue;
+					newColorPreview.style.backgroundColor = colorValue;
+					
+					// 保存到外部存储
+					saveColorValues();
+					
+					// 立即预览（注意：不会更新currentColor，只有应用按钮才更新）
+					applyPreview();
+				}
+			});
 		
 		colorInput.addEventListener('blur', function()
 		{
@@ -1806,11 +2347,20 @@ Draw.loadPlugin(function(editorUi)
 				{
 					colorInput.value = parsed.hex.toUpperCase();
 					newColorPreview.style.backgroundColor = parsed.hex;
+					// 立即预览
+					applyPreview();
 				}
 				else
 				{
 					colorInput.value = '';
 					newColorPreview.style.backgroundColor = '#FFFFFF';
+					// 如果之前有预览，恢复到基础状态
+					if (previewSvgString)
+					{
+						var baseSvgString = appliedSvgString || originalSvgString;
+						updateSvgCell(cell, previewSvgString, baseSvgString, '', '');
+						previewSvgString = null;
+					}
 				}
 			}
 		});
@@ -1864,8 +2414,122 @@ Draw.loadPlugin(function(editorUi)
 			{
 				return function()
 				{
-					colorInput.value = color.toUpperCase();
+					// 设置新颜色输入框和预览
+					var colorHex = color.toUpperCase();
+					colorInput.value = colorHex;
 					newColorPreview.style.backgroundColor = color;
+					
+					if (window.console)
+					{
+						console.log('[SVG Smart Color] 点击颜色网格，设置颜色:', colorHex);
+						console.log('[SVG Smart Color] 当前状态:', {
+							currentColor: currentColor,
+							colorToReplaceHex: colorToReplaceHex,
+							appliedSvgString存在: !!appliedSvgString
+						});
+					}
+					
+					// 确保颜色值不会被清除 - 在预览前后都保存
+					var savedInputValue = colorHex;
+					var savedPreviewColor = color;
+					
+					// 保存到外部存储
+					saveColorValues();
+					
+					// 立即预览
+					applyPreview();
+					
+					// 延迟一下，确保applyPreview已经设置好previewSvgString
+					setTimeout(function()
+					{
+						// 重要：如果有已选择的颜色（currentColor和colorToReplaceHex存在），自动应用并更新currentColor
+						// 这样用户点击颜色后就能立即看到效果并继续操作
+						if (window.console)
+						{
+							console.log('[SVG Smart Color] 检查自动应用条件:', {
+								previewSvgString存在: !!previewSvgString,
+								currentColor: currentColor,
+								colorToReplaceHex: colorToReplaceHex,
+								colorHex: colorHex
+							});
+						}
+						
+						if (previewSvgString && currentColor && colorToReplaceHex)
+						{
+							// 解析新颜色
+							var newColorObj = parseColor(colorHex);
+							if (newColorObj && newColorObj.hex.toLowerCase() !== colorToReplaceHex.toLowerCase())
+							{
+								var isFirstApply = !appliedSvgString;
+								
+								if (window.console)
+								{
+									if (isFirstApply)
+									{
+										console.log('[SVG Smart Color] ===== 自动应用：第一次更新颜色 =====');
+										console.log('[SVG Smart Color] 第一次：从原始SVG的颜色', colorToReplaceHex, '更新到', newColorObj.hex);
+									}
+									else
+									{
+										console.log('[SVG Smart Color] ===== 自动应用：第二次（或后续）更新颜色 =====');
+										console.log('[SVG Smart Color] 后续更新：从已应用的颜色', colorToReplaceHex, '更新到', newColorObj.hex);
+									}
+									console.log('[SVG Smart Color] 更新currentColor和colorToReplaceHex为新颜色');
+								}
+								
+								// 保存预览状态为已应用状态
+								appliedSvgString = previewSvgString;
+								appliedOldColor = colorToReplaceHex;
+								appliedNewColor = newColorObj.hex;
+								
+								// 更新currentColor和colorToReplaceHex为新颜色
+								setCurrentColor(newColorObj.hex);
+								setColorToReplaceHex(newColorObj.hex);
+								
+								// 清除预览状态（因为已自动应用）
+								previewSvgString = null;
+								
+								// 强制确保UI元素引用仍然有效并更新
+								var panel = document.getElementById('svg-local-recolor-panel');
+								if (panel)
+								{
+									var preview = panel.querySelector('[data-color-preview="current"]');
+									var value = panel.querySelector('[data-color-value="current"]');
+									if (preview)
+									{
+										currentColorPreview = preview;
+										currentColorPreview.style.backgroundColor = currentColor;
+									}
+									if (value)
+									{
+										currentColorValue = value;
+										currentColorValue.textContent = currentColor;
+									}
+								}
+								
+								editorUi.editor.setStatus('颜色已自动应用，可以继续使用吸管工具选择新颜色');
+								
+								if (window.console)
+								{
+									console.log('[SVG Smart Color] 自动应用完成，currentColor已更新为:', currentColor);
+									console.log('[SVG Smart Color] colorToReplaceHex已更新为:', colorToReplaceHex);
+									console.log('[SVG Smart Color] 此时两个颜色相同:', currentColor === colorToReplaceHex);
+									if (isFirstApply)
+									{
+										console.log('[SVG Smart Color] ===== 第一次自动应用完成，SVG已更新，可以继续替换新颜色 =====');
+									}
+									else
+									{
+										console.log('[SVG Smart Color] ===== 第二次自动应用完成，SVG已第二次更新 =====');
+									}
+								}
+							}
+						}
+						else if (window.console)
+						{
+							console.log('[SVG Smart Color] 自动应用条件不满足，跳过自动应用');
+						}
+					}, 50);
 				};
 			}(commonColors[i]));
 			
@@ -1875,18 +2539,99 @@ Draw.loadPlugin(function(editorUi)
 		panel.appendChild(newColorRow);
 		panel.appendChild(colorGrid);
 		
+		// 跟踪当前应用的SVG字符串（如果已应用）- 这是已保存的状态
+		var appliedSvgString = null;
+		var appliedOldColor = null;
+		var appliedNewColor = null;
+		
+		// 跟踪预览状态的SVG字符串（临时预览，未保存）
+		var previewSvgString = null;
+		
+		// 预览函数：立即应用颜色替换但不保存
+		var applyPreview = function()
+		{
+			// 重要：在预览之前检查并记录当前颜色状态
+			if (!currentColor || !colorToReplaceHex)
+			{
+				if (window.console)
+				{
+					console.log('[SVG Smart Color] applyPreview: currentColor或colorToReplaceHex为空，无法预览');
+					console.log('[SVG Smart Color] currentColor:', currentColor);
+					console.log('[SVG Smart Color] colorToReplaceHex:', colorToReplaceHex);
+				}
+				return;
+			}
+			
+			// 重要：在预览过程中，确保currentColor和colorToReplaceHex不被改变
+			// 保存当前值作为备份，防止被意外修改
+			var savedCurrentColor = currentColor;
+			var savedColorToReplaceHex = colorToReplaceHex;
+			
+			// 保存新颜色输入框和预览块的值，防止被清除
+			var savedNewColorInput = colorInput ? colorInput.value.trim() : '';
+			var savedNewColorPreview = newColorPreview ? newColorPreview.style.backgroundColor : '';
+			
+			var newColor = savedNewColorInput;
+			var newColorObj = parseColor(newColor);
+			
+			if (!newColorObj)
+			{
+				// 如果解析失败，恢复原值
+				if (colorInput)
+				{
+					colorInput.value = savedNewColorInput;
+				}
+				if (newColorPreview)
+				{
+					newColorPreview.style.backgroundColor = savedNewColorPreview;
+				}
+				return;
+			}
+			
+			if (newColorObj.hex.toLowerCase() === colorToReplaceHex.toLowerCase())
+			{
+				return;
+			}
+			
+			// 使用已保存的SVG（如果已应用）或原始SVG作为基础
+			var baseSvgString = appliedSvgString || originalSvgString;
+			
+			// 替换SVG中所有匹配的颜色
+			var newSvgString = replaceColorInSvg(baseSvgString, savedColorToReplaceHex, newColorObj.hex);
+			
+			// 更新预览
+			updateSvgCell(cell, baseSvgString, newSvgString, savedColorToReplaceHex, newColorObj.hex);
+			previewSvgString = newSvgString;
+			
+			// 确保currentColor和colorToReplaceHex保持不变（防止被意外修改）
+			currentColor = savedCurrentColor;
+			colorToReplaceHex = savedColorToReplaceHex;
+			
+			// 保存颜色值到外部存储
+			saveColorValues();
+			
+			// 重要：确保新颜色输入框和预览块的值被保留
+			// 立即恢复（如果UI元素存在）
+			if (colorInput && savedNewColorInput)
+			{
+				colorInput.value = savedNewColorInput;
+			}
+			if (newColorPreview && savedNewColorPreview)
+			{
+				newColorPreview.style.backgroundColor = savedNewColorPreview;
+			}
+			
+			// 注意：applyPreview只预览，不更新currentColor
+			// currentColor只有在应用按钮点击时才更新
+		};
+		
 		// 按钮容器
 		var buttonContainer = document.createElement('div');
 		buttonContainer.style.display = 'flex';
 		buttonContainer.style.gap = '8px';
 		buttonContainer.style.marginTop = '8px';
 		
-		// 跟踪当前应用的SVG字符串（如果已应用）
-		var appliedSvgString = null;
-		var appliedOldColor = null;
-		var appliedNewColor = null;
-		
-		// 应用按钮
+		// 应用按钮（保存当前预览）
 		var applyButton = document.createElement('button');
 		applyButton.style.flex = '1';
 		applyButton.style.padding = '6px';
@@ -1900,9 +2645,25 @@ Draw.loadPlugin(function(editorUi)
 		mxUtils.write(applyButton, '应用');
 		applyButton.addEventListener('click', function()
 		{
+			if (window.console)
+			{
+				console.log('[SVG Smart Color] ===== 应用按钮被点击 =====');
+				console.log('[SVG Smart Color] 当前状态:', {
+					currentColor: currentColor,
+					colorToReplaceHex: colorToReplaceHex,
+					previewSvgString存在: !!previewSvgString,
+					appliedSvgString存在: !!appliedSvgString,
+					colorInput值: colorInput ? colorInput.value.trim() : 'N/A'
+				});
+			}
+			
 			if (!currentColor || !colorToReplaceHex)
 			{
 				editorUi.handleError({message: '请先使用吸管工具选择要替换的颜色'});
+				if (window.console)
+				{
+					console.error('[SVG Smart Color] 应用失败: currentColor或colorToReplaceHex为空');
+				}
 				return;
 			}
 			
@@ -1912,33 +2673,197 @@ Draw.loadPlugin(function(editorUi)
 			if (!newColorObj)
 			{
 				editorUi.handleError({message: '无效的颜色值: ' + newColor});
+				if (window.console)
+				{
+					console.error('[SVG Smart Color] 应用失败: 无效的颜色值', newColor);
+				}
 				return;
 			}
 			
 			if (newColorObj.hex.toLowerCase() === colorToReplaceHex.toLowerCase())
 			{
 				editorUi.editor.setStatus('颜色未改变');
+				if (window.console)
+				{
+					console.log('[SVG Smart Color] 应用失败: 颜色未改变', newColorObj.hex, '===', colorToReplaceHex);
+				}
 				return;
 			}
 			
-			// 使用当前应用的SVG（如果已应用）或原始SVG作为基础
-			var baseSvgString = appliedSvgString || originalSvgString;
+			// 判断是否是第一次应用（没有appliedSvgString表示第一次）
+			var isFirstApply = !appliedSvgString;
 			
-			// 替换SVG中所有匹配的颜色
-			var newSvgString = replaceColorInSvg(baseSvgString, colorToReplaceHex, newColorObj.hex);
-			
-			// 更新cell的SVG内容
-			updateSvgCell(cell, baseSvgString, newSvgString, colorToReplaceHex, newColorObj.hex);
-			
-			// 保存应用的SVG状态
-			appliedSvgString = newSvgString;
-			appliedOldColor = colorToReplaceHex;
-			appliedNewColor = newColorObj.hex;
-			
-			editorUi.editor.setStatus('颜色已应用');
+			// 如果当前有预览，保存预览状态
+			if (previewSvgString)
+			{
+				appliedSvgString = previewSvgString;
+				appliedOldColor = colorToReplaceHex;
+				appliedNewColor = newColorObj.hex;
+				
+				if (window.console)
+				{
+					if (isFirstApply)
+					{
+						console.log('[SVG Smart Color] ===== 应用按钮：第一次更新颜色 =====');
+						console.log('[SVG Smart Color] 第一次：从原始SVG的颜色', colorToReplaceHex, '更新到', newColorObj.hex);
+					}
+					else
+					{
+						console.log('[SVG Smart Color] ===== 应用按钮：第二次（或后续）更新颜色 =====');
+						console.log('[SVG Smart Color] 后续更新：从已应用的颜色', colorToReplaceHex, '更新到', newColorObj.hex);
+					}
+					console.log('[SVG Smart Color] 更新currentColor和colorToReplaceHex为新颜色');
+				}
+				
+				// 重要：更新currentColor和colorToReplaceHex为新颜色，这样吸管工具可以继续从新颜色采样
+				// 使用深度绑定函数确保UI和变量完全同步
+				setCurrentColor(newColorObj.hex);
+				setColorToReplaceHex(newColorObj.hex);
+				
+				// 清除预览状态（因为已保存）
+				previewSvgString = null;
+				
+				// 强制确保UI元素引用仍然有效并更新（防止格式面板刷新导致引用丢失）
+				var panel = document.getElementById('svg-local-recolor-panel');
+				if (panel)
+				{
+					// 重新查找UI元素并更新引用
+					var preview = panel.querySelector('[data-color-preview="current"]');
+					var value = panel.querySelector('[data-color-value="current"]');
+					if (preview)
+					{
+						currentColorPreview = preview;
+						currentColorPreview.style.backgroundColor = currentColor;
+					}
+					if (value)
+					{
+						currentColorValue = value;
+						currentColorValue.textContent = currentColor;
+					}
+					
+					if (window.console)
+					{
+						console.log('[SVG Smart Color] UI元素引用已更新:', {
+							preview存在: !!currentColorPreview,
+							value存在: !!currentColorValue,
+							preview颜色: currentColorPreview ? currentColorPreview.style.backgroundColor : 'N/A',
+							value文本: currentColorValue ? currentColorValue.textContent : 'N/A'
+						});
+					}
+				}
+				
+				editorUi.editor.setStatus('颜色已保存，可以继续使用吸管工具选择新颜色');
+				
+				// 延迟验证，确保UI已经更新
+				setTimeout(function()
+				{
+					// 再次验证UI元素引用并强制更新
+					var panel = document.getElementById('svg-local-recolor-panel');
+					if (panel)
+					{
+						var preview = panel.querySelector('[data-color-preview="current"]');
+						var value = panel.querySelector('[data-color-value="current"]');
+						if (preview)
+						{
+							currentColorPreview = preview;
+							currentColorPreview.style.backgroundColor = currentColor;
+						}
+						if (value)
+						{
+							currentColorValue = value;
+							currentColorValue.textContent = currentColor;
+						}
+					}
+					
+					if (window.console)
+					{
+						console.log('[SVG Smart Color] 应用完成，最终验证:');
+						console.log('[SVG Smart Color] currentColor变量:', currentColor);
+						console.log('[SVG Smart Color] colorToReplaceHex变量:', colorToReplaceHex);
+						console.log('[SVG Smart Color] preview显示颜色:', currentColorPreview ? currentColorPreview.style.backgroundColor : 'N/A');
+						console.log('[SVG Smart Color] value显示文本:', currentColorValue ? currentColorValue.textContent : 'N/A');
+						console.log('[SVG Smart Color] 此时两个颜色相同:', currentColor === colorToReplaceHex);
+						if (isFirstApply)
+						{
+							console.log('[SVG Smart Color] ===== 第一次更新完成，SVG已更新，可以继续替换新颜色 =====');
+						}
+						else
+						{
+							console.log('[SVG Smart Color] ===== 第二次更新完成，SVG已第二次更新 =====');
+						}
+					}
+				}, 100);
+			}
+			else
+			{
+				// 如果没有预览，直接应用
+				applyPreview();
+				if (previewSvgString)
+				{
+					appliedSvgString = previewSvgString;
+					appliedOldColor = colorToReplaceHex;
+					appliedNewColor = newColorObj.hex;
+					
+					if (window.console)
+					{
+						if (isFirstApply)
+						{
+							console.log('[SVG Smart Color] ===== 应用按钮：第一次更新颜色（无预览直接应用） =====');
+						}
+						else
+						{
+							console.log('[SVG Smart Color] ===== 应用按钮：第二次（或后续）更新颜色（无预览直接应用） =====');
+						}
+						console.log('[SVG Smart Color] 旧颜色:', colorToReplaceHex);
+						console.log('[SVG Smart Color] 新颜色:', newColorObj.hex);
+					}
+					
+					// 重要：更新currentColor和colorToReplaceHex为新颜色
+					// 使用深度绑定函数确保UI和变量完全同步
+					setCurrentColor(newColorObj.hex);
+					setColorToReplaceHex(newColorObj.hex);
+					
+					previewSvgString = null;
+					
+					// 强制确保UI元素引用仍然有效并更新（防止格式面板刷新导致引用丢失）
+					var panel = document.getElementById('svg-local-recolor-panel');
+					if (panel)
+					{
+						// 重新查找UI元素并更新引用
+						var preview = panel.querySelector('[data-color-preview="current"]');
+						var value = panel.querySelector('[data-color-value="current"]');
+						if (preview)
+						{
+							currentColorPreview = preview;
+							currentColorPreview.style.backgroundColor = currentColor;
+						}
+						if (value)
+						{
+							currentColorValue = value;
+							currentColorValue.textContent = currentColor;
+						}
+					}
+					
+					editorUi.editor.setStatus('颜色已保存，可以继续使用吸管工具选择新颜色');
+					
+					if (window.console)
+					{
+						console.log('[SVG Smart Color] 应用完成，currentColor已更新为:', currentColor);
+						console.log('[SVG Smart Color] colorToReplaceHex已更新为:', colorToReplaceHex);
+						if (isFirstApply)
+						{
+							console.log('[SVG Smart Color] ===== 第一次更新完成 =====');
+						}
+						else
+						{
+							console.log('[SVG Smart Color] ===== 第二次更新完成 =====');
+						}
+					}
+				}
+			}
 		});
 		
-		// 取消按钮
+		// 取消按钮（撤销预览或已保存的修改）
 		var cancelButton = document.createElement('button');
 		cancelButton.style.flex = '1';
 		cancelButton.style.padding = '6px';
@@ -1952,19 +2877,26 @@ Draw.loadPlugin(function(editorUi)
 		mxUtils.write(cancelButton, '取消');
 		cancelButton.addEventListener('click', function()
 		{
-			if (appliedSvgString)
+			// 如果有预览，先撤销预览
+			if (previewSvgString)
 			{
-				// 如果已应用过修改，恢复到原始状态
-				// 直接使用原始SVG字符串恢复
+				var baseSvgString = appliedSvgString || originalSvgString;
+				updateSvgCell(cell, previewSvgString, baseSvgString, '', '');
+				previewSvgString = null;
+				editorUi.editor.setStatus('预览已取消');
+			}
+			// 如果已保存过修改，恢复到原始状态
+			else if (appliedSvgString)
+			{
 				updateSvgCell(cell, appliedSvgString, originalSvgString, '', '');
 				appliedSvgString = null;
 				appliedOldColor = null;
 				appliedNewColor = null;
 				editorUi.editor.setStatus('已恢复到原始状态');
 			}
+			// 如果没有预览和已保存的修改，关闭面板
 			else
 			{
-				// 如果没有应用过修改，只是关闭面板
 				var panelToRemove = document.getElementById('svg-local-recolor-panel');
 				if (panelToRemove && panelToRemove.parentNode)
 				{
@@ -1981,6 +2913,82 @@ Draw.loadPlugin(function(editorUi)
 		
 		// 添加到格式面板
 		format.container.appendChild(panel);
+		
+		// 恢复UI显示（如果颜色值已存在）
+		restoreColorDisplay();
+		
+		// 监听格式面板的刷新，在刷新后恢复UI显示
+		var originalRefresh = format.refresh;
+		if (originalRefresh)
+		{
+			format.refresh = function()
+			{
+				originalRefresh.apply(this, arguments);
+				// 延迟恢复UI，等待面板重新创建
+				setTimeout(function()
+				{
+					// 从外部存储恢复内存变量
+					if (window[storageKey])
+					{
+						if (window[storageKey].currentColor)
+						{
+							currentColor = window[storageKey].currentColor;
+						}
+						if (window[storageKey].colorToReplaceHex)
+						{
+							colorToReplaceHex = window[storageKey].colorToReplaceHex;
+						}
+					}
+					
+					// 尝试找到重新创建的UI元素并更新引用
+					var panel = document.getElementById('svg-local-recolor-panel');
+					if (panel)
+					{
+						var preview = panel.querySelector('[data-color-preview="current"]');
+						var value = panel.querySelector('[data-color-value="current"]');
+						if (preview) currentColorPreview = preview;
+						if (value) currentColorValue = value;
+						
+						var input = panel.querySelector('input[data-color-input="new"]') || 
+						           panel.querySelector('input[type="text"]');
+						if (input) colorInput = input;
+						
+						var newPreview = panel.querySelector('div[data-color-preview="new"]');
+						if (!newPreview)
+						{
+							var previews = panel.querySelectorAll('div[style*="width: 40px"][style*="height: 40px"]');
+							for (var j = 0; j < previews.length; j++)
+							{
+								if (previews[j] !== currentColorPreview)
+								{
+									newColorPreview = previews[j];
+									break;
+								}
+							}
+						}
+						else
+						{
+							newColorPreview = newPreview;
+						}
+					}
+					
+					// 强制同步UI
+					forceSyncUI();
+				}, 100);
+			};
+		}
+		
+		// 给UI元素添加标识，方便刷新后查找
+		currentColorPreview.setAttribute('data-color-preview', 'current');
+		currentColorValue.setAttribute('data-color-value', 'current');
+		if (colorInput)
+		{
+			colorInput.setAttribute('data-color-input', 'new');
+		}
+		if (newColorPreview)
+		{
+			newColorPreview.setAttribute('data-color-preview', 'new');
+		}
 		
 		// 确保格式面板可见
 		if (!editorUi.isFormatPanelVisible())
@@ -2000,8 +3008,14 @@ Draw.loadPlugin(function(editorUi)
 					panelToRemove.parentNode.removeChild(panelToRemove);
 				}
 				graph.getSelectionModel().removeListener(selectionHandler);
-				// 如果选择改变时已应用了修改，恢复到原始状态
-				if (appliedSvgString)
+				// 如果选择改变时有预览，先撤销预览
+				if (previewSvgString)
+				{
+					var baseSvgString = appliedSvgString || originalSvgString;
+					updateSvgCell(cell, previewSvgString, baseSvgString, '', '');
+				}
+				// 如果选择改变时已保存了修改，恢复到原始状态
+				else if (appliedSvgString)
 				{
 					updateSvgCell(cell, appliedSvgString, originalSvgString, '', '');
 				}
@@ -2046,7 +3060,7 @@ Draw.loadPlugin(function(editorUi)
 	/**
 	 * 更新cell的SVG内容
 	 */
-	function updateSvgCell(cell, originalSvgString, newSvgString, oldColorHex, newColorHex)
+	function updateSvgCell(cell, currentSvgString, newSvgString, oldColorHex, newColorHex)
 	{
 		if (!cell || !newSvgString)
 		{
@@ -2082,14 +3096,35 @@ Draw.loadPlugin(function(editorUi)
 			}
 			
 			// 根据原始存储方式更新
+			// 检查是否有SvgImage节点，如果有则需要同时更新节点属性
+			var hasSvgImageNode = mxUtils.isNode(value) && 
+				value.nodeName && value.nodeName.toLowerCase() === 'svgimage';
+			
 			if (image && image.toLowerCase().indexOf('data:image/svg') === 0)
 			{
 				// 更新image样式
 				if (window.console)
 				{
-					console.log('[SVG Smart Color] 使用方式: 更新image样式');
+					console.log('[SVG Smart Color] 使用方式: 更新image样式' + (hasSvgImageNode ? ' (同时更新SvgImage节点)' : ''));
 				}
 				graph.setCellStyles(mxConstants.STYLE_IMAGE, encodedSvg, [cell]);
+				
+				// 如果value是SvgImage节点，也需要更新节点属性
+				if (hasSvgImageNode && value.setAttribute)
+				{
+					if (window.console)
+					{
+						console.log('[SVG Smart Color] 同时更新SvgImage节点属性');
+					}
+					// SvgImage节点需要存储SVG字符串（未编码）
+					// 对于恢复操作，应该使用newSvgString（这是要恢复到的目标SVG）
+					var svgTextToStore = newSvgString;
+					
+					var svgImageNode = value.cloneNode(true);
+					svgImageNode.setAttribute('svgText', svgTextToStore);
+					svgImageNode.setAttribute('svgDataUri', encodedSvg);
+					graph.getModel().setValue(cell, svgImageNode);
+				}
 			}
 			else if (mxUtils.isNode(value))
 			{
@@ -2145,12 +3180,22 @@ Draw.loadPlugin(function(editorUi)
 				graph.setCellStyles(mxConstants.STYLE_IMAGE, encodedSvg, [cell]);
 			}
 			
-			// 刷新cell
+			// 刷新cell - 使用多种方式确保视图更新
 			graph.refresh(cell);
+			graph.view.invalidate(cell);
+			
+			// 强制重新验证视图以确保显示更新
+			if (graph.view.validate)
+			{
+				graph.view.validate();
+			}
 			
 			// 标记为已修改
 			editorUi.editor.setModified(true);
-			editorUi.editor.setStatus('局部改色完成: ' + oldColorHex + ' -> ' + newColorHex);
+			if (oldColorHex && newColorHex)
+			{
+				editorUi.editor.setStatus('局部改色完成: ' + oldColorHex + ' -> ' + newColorHex);
+			}
 			
 			if (window.console)
 			{
@@ -2160,6 +3205,16 @@ Draw.loadPlugin(function(editorUi)
 		finally
 		{
 			graph.getModel().endUpdate();
+			
+			// 再次刷新以确保视图更新（在endUpdate之后）
+			setTimeout(function()
+			{
+				graph.refresh(cell);
+				if (graph.view.invalidate)
+				{
+					graph.view.invalidate(cell);
+				}
+			}, 10);
 		}
 	}
 	
@@ -2175,21 +3230,24 @@ Draw.loadPlugin(function(editorUi)
 			return;
 		}
 		
-		// 分析颜色
-		var colors = analyzeSvgColors(svgString);
+		// 显示加载提示
+		editorUi.editor.setStatus('正在分析SVG颜色...');
 		
-		if (colors.length === 0)
+		// 分析颜色（使用异步Canvas方法）
+		analyzeSvgColorsAsync(svgString).then(function(colors)
 		{
-			editorUi.handleError({message: '未在SVG中发现颜色'});
-			return;
-		}
-		
-		// 创建主容器
-		var mainContainer = document.createElement('div');
-		mainContainer.style.minWidth = '500px';
-		mainContainer.style.display = 'flex';
-		mainContainer.style.flexDirection = 'column';
-		mainContainer.style.maxHeight = '70vh';
+			if (colors.length === 0)
+			{
+				editorUi.handleError({message: '未在SVG中发现颜色'});
+				return;
+			}
+			
+			// 创建主容器
+			var mainContainer = document.createElement('div');
+			mainContainer.style.minWidth = '500px';
+			mainContainer.style.display = 'flex';
+			mainContainer.style.flexDirection = 'column';
+			mainContainer.style.maxHeight = '70vh';
 		
 		// 内容容器（可滚动）
 		var contentWrapper = document.createElement('div');
@@ -2236,21 +3294,29 @@ Draw.loadPlugin(function(editorUi)
 		var displayCount = Math.min(colors.length, 20); // 显示前20种颜色
 		
 		// 计算面积范围（用于归一化球的大小）
+		// 球的面积应该与颜色的面积成正比，所以球的半径应该与颜色面积的平方根成正比
 		var maxArea = colors.length > 0 ? colors[0].area : 1;
 		var minArea = colors.length > 0 ? colors[colors.length - 1].area : 0;
-		var areaRange = maxArea - minArea || 1; // 避免除零
 		
-		// 球的大小范围（像素）
-		var minBallSize = 20; // 最小球大小
-		var maxBallSize = 80; // 最大球大小
-		var sizeRange = maxBallSize - minBallSize;
+		// 如果最小面积和最大面积相同或接近，使用绝对面积来计算
+		// 避免除零并确保即使面积相近也能显示差异
+		var totalArea = 0;
+		for (var j = 0; j < displayCount; j++)
+		{
+			totalArea += colors[j].area;
+		}
+		
+		// 球的大小范围（半径，像素）
+		var minBallRadius = 10; // 最小球半径（对应最小面积）
+		var maxBallRadius = 40; // 最大球半径（对应最大面积）
+		var radiusRange = maxBallRadius - minBallRadius;
 		
 		// 创建基线（对齐基准线）
 		var baseline = document.createElement('div');
 		baseline.style.width = '100%';
 		baseline.style.height = '1px';
 		baseline.style.backgroundColor = 'transparent';
-		baseline.style.marginBottom = maxBallSize + 'px';
+		baseline.style.marginBottom = (maxBallRadius * 2) + 'px';
 		baseline.style.position = 'relative';
 		
 		for (var i = 0; i < displayCount; i++)
@@ -2258,10 +3324,35 @@ Draw.loadPlugin(function(editorUi)
 			var colorItem = colors[i];
 			
 			// 计算球的大小（基于面积）
-			// 使用平方根缩放，让大小差异更明显
-			var normalizedArea = (colorItem.area - minArea) / areaRange;
-			var ballSize = minBallSize + Math.sqrt(normalizedArea) * sizeRange;
-			ballSize = Math.max(minBallSize, Math.min(maxBallSize, ballSize));
+			// 球的面积应该与颜色的面积成正比，所以球的半径与颜色面积的平方根成正比
+			var ballRadius;
+			if (maxArea > minArea)
+			{
+				// 归一化面积（0到1之间）
+				var normalizedArea = (colorItem.area - minArea) / (maxArea - minArea);
+				// 球的半径与面积平方根成正比：r ∝ √area
+				// 所以 normalizedRadius = √normalizedArea
+				var normalizedRadius = Math.sqrt(normalizedArea);
+				ballRadius = minBallRadius + normalizedRadius * radiusRange;
+			}
+			else
+			{
+				// 所有面积相同，使用相对面积（基于总面积的占比）
+				if (totalArea > 0)
+				{
+					var areaRatio = colorItem.area / totalArea;
+					var normalizedRadius = Math.sqrt(areaRatio * displayCount);
+					ballRadius = minBallRadius + normalizedRadius * radiusRange;
+				}
+				else
+				{
+					ballRadius = minBallRadius;
+				}
+			}
+			
+			// 确保半径在有效范围内
+			ballRadius = Math.max(minBallRadius, Math.min(maxBallRadius, ballRadius));
+			var ballSize = ballRadius * 2; // 球的直径
 			
 			// 创建球容器（相对于基线的定位）
 			var ballContainer = document.createElement('div');
@@ -2909,6 +4000,14 @@ Draw.loadPlugin(function(editorUi)
 				}
 			}, 50);
 		});
+		}).catch(function(error)
+		{
+			if (window.console)
+			{
+				console.error('[SVG Smart Color] 分析颜色失败:', error);
+			}
+			editorUi.handleError({message: '分析SVG颜色失败: ' + (error.message || '未知错误')});
+		});
 	}
 	
 	// 添加右键菜单项
@@ -3015,4 +4114,5 @@ Draw.loadPlugin(function(editorUi)
 		console.log('[SVG Smart Color] 插件已加载');
 	}
 });
+
 
