@@ -60,11 +60,16 @@ function loadLibrary(categoryId) {
 
 // 加载科目素材列表（从统一的 items.json 中筛选）
 function loadItems(categoryId) {
+  // 每次请求时重新加载 items.json 以确保获取最新数据
+  loadAllItems();
   return allItems.filter(item => item.categoryId === categoryId);
 }
 
 // 获取所有素材库列表
 function getLibraries(req, res) {
+  // 重新加载 items.json 以确保获取最新数据
+  loadAllItems();
+  
   const libraries = [];
   
   try {
@@ -74,8 +79,8 @@ function getLibraries(req, res) {
       if (category.isDirectory()) {
         const library = loadLibrary(category.name);
         if (library) {
-          // 更新 itemCount
-          const items = loadItems(category.name);
+          // 更新 itemCount（从最新的 items.json 数据中筛选）
+          const items = allItems.filter(item => item.categoryId === category.name);
           library.itemCount = items.length;
           libraries.push(library);
         }

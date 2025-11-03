@@ -947,6 +947,8 @@ Draw.loadPlugin(function(editorUi)
 							{
 								// 所有项加载完成后才清除搜索库设置
 								sidebar.setCurrentSearchEntryLibrary();
+								
+								// 不需要更新高度，CSS已设置固定高度
 							}
 						}
 						else
@@ -974,6 +976,8 @@ Draw.loadPlugin(function(editorUi)
 						if (loadedCount >= totalCount)
 						{
 							sidebar.setCurrentSearchEntryLibrary();
+							
+							// 不需要更新高度，CSS已设置固定高度
 						}
 					}));
 				}
@@ -984,6 +988,18 @@ Draw.loadPlugin(function(editorUi)
 					if (loadedCount >= totalCount)
 					{
 						sidebar.setCurrentSearchEntryLibrary();
+						
+						// 延迟更新滚动容器高度
+						setTimeout(function()
+						{
+							if (window.geIconsLibraryScrollContainer)
+							{
+								var scrollHeight = window.geIconsLibraryScrollContainer.scrollHeight;
+								var availableHeight = sidebar.container ? sidebar.container.clientHeight : window.innerHeight;
+								var maxHeight = Math.max(400, availableHeight - 100);
+								window.geIconsLibraryScrollContainer.style.setProperty('max-height', Math.min(scrollHeight + 50, maxHeight) + 'px', 'important');
+							}
+						}, 100);
 					}
 				}
 			}))(items[i]);
@@ -1049,10 +1065,57 @@ Draw.loadPlugin(function(editorUi)
 		// 创建调色板
 		sidebar.addPalette('icons', '图标库', true, function(content)
 		{
+			// 注入CSS样式以支持滚动
+			if (!document.getElementById('geIconsLibraryScrollStyle'))
+			{
+				var style = document.createElement('style');
+				style.id = 'geIconsLibraryScrollStyle';
+				style.textContent = 
+					'.geIconsLibraryScrollContainer { ' +
+					'	overflow-y: auto !important; ' +
+					'	overflow-x: hidden !important; ' +
+					'	max-height: 600px !important; ' +
+					'	height: auto !important; ' +
+					'	-webkit-overflow-scrolling: touch !important; ' +
+					'	min-height: 200px !important; ' +
+					'} ' +
+					'#geIconsPalette .geSidebar { ' +
+					'	overflow: visible !important; ' +
+					'} ' +
+					'#geIconsPalette { ' +
+					'	overflow: visible !important; ' +
+					'}';
+				document.head.appendChild(style);
+			}
+			
+			// 为content添加ID以便CSS选择器使用
+			if (content.id === '')
+			{
+				content.id = 'geIconsPalette';
+			}
+			
+			// 覆盖 .geSidebar 的 overflow: hidden 样式
+			content.style.setProperty('overflow', 'visible', 'important');
+			content.style.setProperty('overflow-y', 'visible', 'important');
+			content.style.setProperty('overflow-x', 'visible', 'important');
+			
+			// 创建一个内部滚动容器
+			var scrollContainer = document.createElement('div');
+			scrollContainer.className = 'geIconsLibraryScrollContainer';
+			// CSS 已经设置了样式，这里只设置必要的属性
+			scrollContainer.style.position = 'relative';
+			
+			// 添加搜索框容器（固定在顶部）
+			var searchContainer = document.createElement('div');
+			searchContainer.style.position = 'sticky';
+			searchContainer.style.top = '0';
+			searchContainer.style.backgroundColor = 'var(--geBackgroundColor, #fff)';
+			searchContainer.style.zIndex = '10';
+			searchContainer.style.borderBottom = '1px solid var(--gePrimaryBorderColor, #e0e0e0)';
+			
 			// 添加搜索框
 			var searchDiv = document.createElement('div');
 			searchDiv.style.padding = '10px';
-			searchDiv.style.borderBottom = '1px solid var(--gePrimaryBorderColor, #e0e0e0)';
 			
 			var searchInput = document.createElement('input');
 			searchInput.type = 'text';
@@ -1078,7 +1141,8 @@ Draw.loadPlugin(function(editorUi)
 			});
 			
 			searchDiv.appendChild(searchInput);
-			content.appendChild(searchDiv);
+			searchContainer.appendChild(searchDiv);
+			scrollContainer.appendChild(searchContainer);
 			
 			// 加载分类列表
 			var loadingDiv = document.createElement('div');
@@ -1086,7 +1150,7 @@ Draw.loadPlugin(function(editorUi)
 			loadingDiv.style.textAlign = 'center';
 			loadingDiv.style.color = '#999';
 			loadingDiv.textContent = mxResources.get('loading') || '加载中...';
-			content.appendChild(loadingDiv);
+			scrollContainer.appendChild(loadingDiv);
 			
 			ApiClient.getLibraries(mxUtils.bind(this, function(libraries)
 			{
@@ -1103,7 +1167,8 @@ Draw.loadPlugin(function(editorUi)
 					emptyDiv.style.textAlign = 'center';
 					emptyDiv.style.color = '#999';
 					emptyDiv.textContent = '暂无图标库';
-					content.appendChild(emptyDiv);
+					scrollContainer.appendChild(emptyDiv);
+					content.appendChild(scrollContainer);
 					return;
 				}
 				
@@ -1128,6 +1193,12 @@ Draw.loadPlugin(function(editorUi)
 					var categoryDiv = document.createElement('div');
 					categoryDiv.className = 'geSidebar';
 					categoryDiv.style.display = 'none';
+					// 允许分类内容区域滚动（覆盖 .geSidebar 的 overflow: hidden）
+					categoryDiv.style.overflowY = 'auto';
+					categoryDiv.style.overflowX = 'hidden';
+					categoryDiv.style.maxHeight = '400px'; // 限制分类内容区域的最大高度
+					categoryDiv.style.overflow = 'auto'; // 确保可以滚动
+					categoryDiv.style.position = 'relative'; // 确保定位正确
 					
 					// 添加折叠处理
 					sidebar.addFoldingHandler(categoryTitle, categoryDiv, function(catId, catInfo)
@@ -1141,8 +1212,18 @@ Draw.loadPlugin(function(editorUi)
 					var categoryOuter = document.createElement('div');
 					categoryOuter.appendChild(categoryTitle);
 					categoryOuter.appendChild(categoryDiv);
-					content.appendChild(categoryOuter);
+					scrollContainer.appendChild(categoryOuter);
 				}
+				
+				// 将滚动容器添加到内容区域
+				content.appendChild(scrollContainer);
+				
+				// 保存 scrollContainer 的引用，以便后续更新
+				window.geIconsLibraryScrollContainer = scrollContainer;
+				
+				// CSS 已经设置了固定高度，不需要动态更新
+				// 只需要确保 overflow-y 始终是 auto
+				scrollContainer.style.setProperty('overflow-y', 'auto', 'important');
 				
 				// 预加载常用分类
 				if (config.preload.enabled)
@@ -1176,7 +1257,8 @@ Draw.loadPlugin(function(editorUi)
 				errorDiv.style.textAlign = 'center';
 				errorDiv.style.color = '#f00';
 				errorDiv.textContent = (mxResources.get('error') || '错误') + ': ' + (error.message || '加载失败');
-				content.appendChild(errorDiv);
+				scrollContainer.appendChild(errorDiv);
+				content.appendChild(scrollContainer);
 			}));
 		});
 	}
