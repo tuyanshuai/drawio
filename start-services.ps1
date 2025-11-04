@@ -3,6 +3,7 @@
 # - 前端服务: 8080 (frontend/main/webapp/index.html)
 # - AI Converter: 8081 (servers/aiconverter)
 # - Icon Library: 8082 (servers/iconlibrary)
+# - NanoBanana: 8083 (servers/nanobanana)
 
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host "  启动 Draw.io 开发服务" -ForegroundColor Cyan
@@ -92,6 +93,25 @@ $iconlibraryJob = Start-Job -ScriptBlock {
 Write-Host "✓ Icon Library 服务已启动: http://localhost:8082" -ForegroundColor Green
 Write-Host ""
 
+# 启动 NanoBanana 代理服务 (8083端口)
+Write-Host "[5/5] 启动 NanoBanana 代理服务 (端口 8083)..." -ForegroundColor Yellow
+$nanobananaDir = Join-Path $scriptDir "servers\nanobanana"
+if (-not (Test-Path $nanobananaDir)) {
+    Write-Host "错误: NanoBanana 目录不存在: $nanobananaDir" -ForegroundColor Red
+    Stop-Job $frontendJob, $aiconverterJob, $iconlibraryJob
+    Remove-Job $frontendJob, $aiconverterJob, $iconlibraryJob
+    exit 1
+}
+
+$nanobananaJob = Start-Job -ScriptBlock {
+    param($dir, $pythonCmd)
+    Set-Location $dir
+    & $pythonCmd app.py
+} -ArgumentList $nanobananaDir, $pythonCmd
+
+Write-Host "✓ NanoBanana 代理服务已启动: http://localhost:8083" -ForegroundColor Green
+Write-Host ""
+
 # 等待服务启动
 Write-Host "等待服务启动..." -ForegroundColor Yellow
 Start-Sleep -Seconds 3
@@ -103,9 +123,10 @@ Write-Host "  所有服务已启动!" -ForegroundColor Green
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "服务地址:" -ForegroundColor White
-Write-Host "  • 前端服务:     http://localhost:8080" -ForegroundColor Cyan
-Write-Host "  • AI Converter: http://localhost:8081" -ForegroundColor Cyan
-Write-Host "  • Icon Library: http://localhost:8082" -ForegroundColor Cyan
+Write-Host "  • 前端服务:        http://localhost:8080" -ForegroundColor Cyan
+Write-Host "  • AI Converter:    http://localhost:8081" -ForegroundColor Cyan
+Write-Host "  • Icon Library:    http://localhost:8082" -ForegroundColor Cyan
+Write-Host "  • NanoBanana:       http://localhost:8083" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "按 Ctrl+C 停止所有服务" -ForegroundColor Yellow
 Write-Host ""
@@ -119,8 +140,9 @@ try {
         $frontendState = Get-Job -Id $frontendJob.Id | Select-Object -ExpandProperty State
         $aiconverterState = Get-Job -Id $aiconverterJob.Id | Select-Object -ExpandProperty State
         $iconlibraryState = Get-Job -Id $iconlibraryJob.Id | Select-Object -ExpandProperty State
+        $nanobananaState = Get-Job -Id $nanobananaJob.Id | Select-Object -ExpandProperty State
         
-        if ($frontendState -eq "Failed" -or $aiconverterState -eq "Failed" -or $iconlibraryState -eq "Failed") {
+        if ($frontendState -eq "Failed" -or $aiconverterState -eq "Failed" -or $iconlibraryState -eq "Failed" -or $nanobananaState -eq "Failed") {
             Write-Host ""
             Write-Host "警告: 检测到服务异常退出" -ForegroundColor Red
             break
@@ -131,8 +153,8 @@ try {
     Write-Host "正在停止所有服务..." -ForegroundColor Yellow
 } finally {
     # 清理资源
-    Stop-Job $frontendJob, $aiconverterJob, $iconlibraryJob -ErrorAction SilentlyContinue
-    Remove-Job $frontendJob, $aiconverterJob, $iconlibraryJob -ErrorAction SilentlyContinue
+    Stop-Job $frontendJob, $aiconverterJob, $iconlibraryJob, $nanobananaJob -ErrorAction SilentlyContinue
+    Remove-Job $frontendJob, $aiconverterJob, $iconlibraryJob, $nanobananaJob -ErrorAction SilentlyContinue
     Write-Host "所有服务已停止" -ForegroundColor Green
 }
 

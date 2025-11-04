@@ -37,6 +37,7 @@
 			"plugins/polygon-draw.js",
 			"plugins/natural-spline-draw.js",
 			"plugins/ai-convert.js",
+			"plugins/text-to-image.js",
 			"plugins/highlight-effect.js",
 			"plugins/isocube.js",
 			"plugins/isoextrude.js",
@@ -55,7 +56,8 @@
 			"plugins/polygon-draw.js",
 			"plugins/natural-spline-draw.js",
 			"plugins/isocube.js", 
-			"plugins/ai-convert.js", 
+			"plugins/ai-convert.js",
+			"plugins/text-to-image.js",
 			"plugins/highlight-effect.js"
 		];
 		
