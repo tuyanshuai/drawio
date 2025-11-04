@@ -634,6 +634,309 @@ Draw.loadPlugin(function(editorUi)
 		});
 	}
 	
+	/**
+	 * 检查cell是否为SVG图片
+	 */
+	function isSvgImage(cell)
+	{
+		if (!cell || !graph.getModel().isVertex(cell))
+		{
+			return false;
+		}
+		
+		var state = graph.view.getState(cell);
+		var style = (state != null) ? state.style : graph.getCellStyle(cell);
+		var image = (style != null) ? mxUtils.getValue(style, mxConstants.STYLE_IMAGE, null) : null;
+		var value = graph.getModel().getValue(cell);
+		
+		// 检查image样式
+		if (image != null)
+		{
+			var lowerImage = String(image).toLowerCase();
+			if (lowerImage.indexOf('data:image/svg') === 0 || /\.svg(\?.*)?$/i.test(lowerImage))
+			{
+				return true;
+			}
+		}
+		
+		// 检查value节点
+		if (mxUtils.isNode(value))
+		{
+			var nodeName = value.nodeName ? value.nodeName.toLowerCase() : '';
+			if (nodeName === 'svg')
+			{
+				return true;
+			}
+			else if (nodeName === 'svgimage')
+			{
+				var svgText = value.getAttribute ? value.getAttribute('svgText') : null;
+				var dataUri = value.getAttribute ? value.getAttribute('svgDataUri') : null;
+				if (svgText || (dataUri && dataUri.toLowerCase().indexOf('data:image/svg') === 0))
+				{
+					return true;
+				}
+			}
+		}
+		
+		// 检查字符串value
+		if (typeof value === 'string')
+		{
+			var trimmed = value.trim();
+			if (trimmed.length > 4 && trimmed.charAt(0) === '<')
+			{
+				try
+				{
+					var doc = mxUtils.parseXml(trimmed);
+					if (doc && doc.documentElement && doc.documentElement.nodeName && 
+						doc.documentElement.nodeName.toLowerCase() === 'svg')
+					{
+						return true;
+					}
+				}
+				catch (e)
+				{
+					// ignore
+				}
+			}
+		}
+		
+		return false;
+	}
+	
+	/**
+	 * 获取SVG内容
+	 */
+	function getSvgContent(cell)
+	{
+		if (!cell)
+		{
+			return null;
+		}
+		
+		var state = graph.view.getState(cell);
+		var style = (state != null) ? state.style : graph.getCellStyle(cell);
+		var image = (style != null) ? mxUtils.getValue(style, mxConstants.STYLE_IMAGE, null) : null;
+		var value = graph.getModel().getValue(cell);
+		var svgString = null;
+		
+		// 尝试从image样式获取
+		if (image != null)
+		{
+			var lowerImage = String(image).toLowerCase();
+			if (lowerImage.indexOf('data:image/svg') === 0)
+			{
+				var commaIndex = image.indexOf(',');
+				if (commaIndex >= 0)
+				{
+					var dataPart = image.substring(commaIndex + 1);
+					var isBase64 = lowerImage.indexOf(';base64,') > 0;
+					
+					if (isBase64)
+					{
+						try
+						{
+							svgString = Graph.getSvgFromDataUri(image);
+						}
+						catch (e)
+						{
+							try
+							{
+								if (window.atob)
+								{
+									var decoded = window.atob(dataPart);
+									svgString = decodeURIComponent(escape(decoded));
+								}
+							}
+							catch (e2)
+							{
+								// ignore
+							}
+						}
+					}
+					else
+					{
+						try
+						{
+							svgString = decodeURIComponent(dataPart);
+						}
+						catch (e)
+						{
+							if (dataPart.trim().charAt(0) === '<')
+							{
+								svgString = dataPart;
+							}
+						}
+					}
+				}
+			}
+		}
+		
+		// 尝试从value节点获取
+		if (!svgString && mxUtils.isNode(value))
+		{
+			var nodeName = value.nodeName ? value.nodeName.toLowerCase() : '';
+			if (nodeName === 'svg')
+			{
+				svgString = mxUtils.getXml(value);
+			}
+			else if (nodeName === 'svgimage')
+			{
+				var svgText = value.getAttribute ? value.getAttribute('svgText') : null;
+				if (svgText)
+				{
+					try
+					{
+						svgString = decodeURIComponent(svgText);
+					}
+					catch (e)
+					{
+						svgString = svgText;
+					}
+				}
+				else
+				{
+					var dataUri = value.getAttribute ? value.getAttribute('svgDataUri') : null;
+					if (dataUri && dataUri.toLowerCase().indexOf('data:image/svg') === 0)
+					{
+						try
+						{
+							svgString = Graph.getSvgFromDataUri(dataUri);
+						}
+						catch (e)
+						{
+							// ignore
+						}
+					}
+				}
+			}
+		}
+		
+		// 尝试从字符串value获取
+		if (!svgString && typeof value === 'string')
+		{
+			var trimmed = value.trim();
+			if (trimmed.length > 4 && trimmed.charAt(0) === '<')
+			{
+				try
+				{
+					var doc = mxUtils.parseXml(trimmed);
+					if (doc && doc.documentElement && doc.documentElement.nodeName && 
+						doc.documentElement.nodeName.toLowerCase() === 'svg')
+					{
+						svgString = trimmed;
+					}
+				}
+				catch (e)
+				{
+					// ignore
+				}
+			}
+		}
+		
+		return svgString;
+	}
+	
+	/**
+	 * 编辑SVG代码
+	 */
+	function editSvgCode(cell)
+	{
+		var svgString = getSvgContent(cell);
+		
+		if (!svgString)
+		{
+			editorUi.handleError({message: '无法获取SVG内容'});
+			return;
+		}
+		
+		// 创建编辑对话框
+		var div = document.createElement('div');
+		div.style.padding = '10px';
+		
+		var textarea = document.createElement('textarea');
+		textarea.style.width = '600px';
+		textarea.style.height = '400px';
+		textarea.style.fontFamily = 'monospace';
+		textarea.style.fontSize = '12px';
+		textarea.value = svgString;
+		div.appendChild(textarea);
+		
+		var applyFn = function()
+		{
+			var newSvg = textarea.value.trim();
+			
+			if (!newSvg || newSvg.length === 0)
+			{
+				editorUi.handleError({message: 'SVG内容不能为空'});
+				return;
+			}
+			
+			// 验证SVG格式
+			try
+			{
+				var doc = mxUtils.parseXml(newSvg);
+				if (!doc || !doc.documentElement || doc.documentElement.nodeName.toLowerCase() !== 'svg')
+				{
+					editorUi.handleError({message: '无效的SVG格式'});
+					return;
+				}
+			}
+			catch (e)
+			{
+				editorUi.handleError({message: 'SVG格式错误: ' + (e.message || '未知错误')});
+				return;
+			}
+			
+			// 更新SVG内容
+			var svgDataUri = svgToDataUri(newSvg);
+			if (svgDataUri)
+			{
+				replaceImageWithSvg(cell, svgDataUri);
+				editorUi.hideDialog();
+			}
+			else
+			{
+				editorUi.handleError({message: 'SVG转换失败'});
+			}
+		};
+		
+		editorUi.showDialog(new CustomDialog(editorUi, div, applyFn, function()
+		{
+			editorUi.hideDialog();
+		}, '应用', null, null, false, '取消', false).container, 640, 480, true, true);
+		
+		// 聚焦到文本框
+		setTimeout(function()
+		{
+			textarea.focus();
+			textarea.select();
+		}, 100);
+	}
+	
+	/**
+	 * 导出SVG文件
+	 */
+	function exportSvgFile(cell)
+	{
+		var svgString = getSvgContent(cell);
+		
+		if (!svgString)
+		{
+			editorUi.handleError({message: '无法获取SVG内容'});
+			return;
+		}
+		
+		// 确保SVG包含XML声明
+		if (!svgString.startsWith('<?xml'))
+		{
+			svgString = Graph.xmlDeclaration + '\n' + svgString;
+		}
+		
+		// 保存文件
+		var filename = 'svg-export.svg';
+		editorUi.saveData(filename, 'svg', svgString, 'image/svg+xml');
+	}
+	
 	// 添加右键菜单项
 	var initMenuHandler = function()
 	{
@@ -647,12 +950,39 @@ Draw.loadPlugin(function(editorUi)
 				
 				if (cell != null && graph.getSelectionCount() == 1 && graph.getModel().isVertex(cell))
 				{
+					// 栅格图片转SVG
 					if (isRasterImage(cell))
 					{
 						menu.addSeparator();
 						menu.addItem('转为可编辑SVG', null, function()
 						{
 							convertImageToSvgAction(cell);
+						});
+					}
+					// SVG图片功能
+					else if (isSvgImage(cell))
+					{
+						menu.addSeparator();
+						
+						// 转换为形状
+						if (editorUi.actions.get('convertSvgToShape'))
+						{
+							menu.addItem('转换为形状', null, function()
+							{
+								editorUi.actions.get('convertSvgToShape').funct();
+							});
+						}
+						
+						// 编辑SVG代码
+						menu.addItem('编辑SVG代码', null, function()
+						{
+							editSvgCode(cell);
+						});
+						
+						// 导出SVG文件
+						menu.addItem('导出SVG', null, function()
+						{
+							exportSvgFile(cell);
 						});
 					}
 				}
