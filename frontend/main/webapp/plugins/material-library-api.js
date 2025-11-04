@@ -1074,10 +1074,9 @@ Draw.loadPlugin(function(editorUi)
 					'.geIconsLibraryScrollContainer { ' +
 					'	overflow-y: auto !important; ' +
 					'	overflow-x: hidden !important; ' +
-					'	max-height: 600px !important; ' +
 					'	height: auto !important; ' +
 					'	-webkit-overflow-scrolling: touch !important; ' +
-					'	min-height: 200px !important; ' +
+					'	min-height: 400px !important; ' +
 					'} ' +
 					'#geIconsPalette .geSidebar { ' +
 					'	overflow: visible !important; ' +
@@ -1221,9 +1220,75 @@ Draw.loadPlugin(function(editorUi)
 				// 保存 scrollContainer 的引用，以便后续更新
 				window.geIconsLibraryScrollContainer = scrollContainer;
 				
-				// CSS 已经设置了固定高度，不需要动态更新
-				// 只需要确保 overflow-y 始终是 auto
-				scrollContainer.style.setProperty('overflow-y', 'auto', 'important');
+				// 动态计算并设置最大高度，基于实际可用空间
+				var updateMaxHeight = function()
+				{
+					// 获取侧边栏容器的实际高度
+					var containerHeight = sidebar.container ? sidebar.container.clientHeight : 0;
+					var wrapperHeight = sidebar.wrapper ? sidebar.wrapper.clientHeight : 0;
+					var contentHeight = content ? content.clientHeight : 0;
+					
+					// 优先使用 content 的父容器高度，然后是 wrapper，最后是 container，最后使用窗口高度
+					var availableHeight = contentHeight > 0 ? contentHeight : 
+					                     (wrapperHeight > 0 ? wrapperHeight : 
+					                     (containerHeight > 0 ? containerHeight : window.innerHeight));
+					
+					// 如果从 content 获取的高度太小，尝试使用窗口高度减去一些固定值
+					if (availableHeight < 300)
+					{
+						availableHeight = window.innerHeight - 100;
+					}
+					
+					// 获取搜索框的实际高度（如果存在）
+					var searchBoxHeight = 0;
+					var searchContainer = scrollContainer.querySelector('.geIconsLibrarySearchContainer');
+					if (searchContainer)
+					{
+						searchBoxHeight = searchContainer.offsetHeight || 0;
+					}
+					
+					// 使用几乎整个可用高度：减去搜索框高度和最小边距
+					var reservedHeight = searchBoxHeight + 15;
+					var maxHeight = availableHeight - reservedHeight;
+					
+					// 确保最小高度为400px，最大不超过可用高度
+					maxHeight = Math.max(400, Math.min(maxHeight, availableHeight - 10));
+					
+					// 调试日志（开发时使用）
+					if (window.console && window.console.log)
+					{
+						console.log('图标库高度计算:', {
+							containerHeight: containerHeight,
+							wrapperHeight: wrapperHeight,
+							contentHeight: contentHeight,
+							availableHeight: availableHeight,
+							searchBoxHeight: searchBoxHeight,
+							maxHeight: maxHeight
+						});
+					}
+					
+					scrollContainer.style.setProperty('max-height', maxHeight + 'px', 'important');
+					scrollContainer.style.setProperty('overflow-y', 'auto', 'important');
+				};
+				
+				// 初始设置
+				setTimeout(function()
+				{
+					updateMaxHeight();
+				}, 300);
+				
+				// 延迟再次设置，确保DOM完全渲染
+				setTimeout(function()
+				{
+					updateMaxHeight();
+				}, 1000);
+				
+				// 在窗口大小变化时，重新计算高度
+				var resizeHandler = function()
+				{
+					updateMaxHeight();
+				};
+				window.addEventListener('resize', resizeHandler);
 				
 				// 预加载常用分类
 				if (config.preload.enabled)
