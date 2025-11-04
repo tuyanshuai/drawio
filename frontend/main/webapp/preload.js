@@ -41,7 +41,8 @@
 			"plugins/isocube.js",
 			"plugins/isoextrude.js",
 			"plugins/material-library-api.js",
-			"plugins/svg-smart-color.js"
+			"plugins/svg-smart-color.js",
+			"plugins/image-to-svg.js"
 		];
 		
 		// Check if 'minimal=1' parameter is set to load only core plugins
