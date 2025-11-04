@@ -831,6 +831,13 @@ Draw.loadPlugin(function(editorUi)
 		}
 		
 		var items = data.items;
+		var categoryId = data.categoryId || (items.length > 0 ? items[0].categoryId : null);
+		
+		// 初始化该分类的图标ID列表
+		if (categoryId && !categoryItemsMap[categoryId])
+		{
+			categoryItemsMap[categoryId] = [];
+		}
 		
 		// 设置当前搜索库（在整个加载过程中保持）
 		sidebar.setCurrentSearchEntryLibrary('icons', 'icons');
@@ -927,6 +934,23 @@ Draw.loadPlugin(function(editorUi)
 								}
 							}
 							
+							// 保存图标数据到全局索引
+							var itemId = item.id || ('icon_' + entry.title + '_' + Date.now());
+							allLoadedItems[itemId] = {
+								id: itemId,
+								title: entry.title || item.title || '',
+								description: item.description || '',
+								tags: entry.tags || item.tags || '',
+								categoryId: item.categoryId || categoryId || '',
+								data: entry.data
+							};
+							
+							// 添加到分类的图标列表
+							if (categoryId && categoryItemsMap[categoryId])
+							{
+								categoryItemsMap[categoryId].push(itemId);
+							}
+							
 							var template = sidebar.createVertexTemplate(
 								'shape=image;verticalLabelPosition=bottom;verticalAlign=top;imageAspect=0;aspect=fixed;image=' + imageData,
 								entry.w,
@@ -938,6 +962,8 @@ Draw.loadPlugin(function(editorUi)
 							
 							if (template)
 							{
+								// 添加 data-item-id 属性，用于搜索过滤
+								template.setAttribute('data-item-id', itemId);
 								contentDiv.appendChild(template);
 							}
 							
@@ -1015,37 +1041,231 @@ Draw.loadPlugin(function(editorUi)
 	// ========== 搜索功能 ==========
 	var searchTerm = '';
 	var searchResults = [];
+	var allLoadedItems = {};  // 存储所有已加载的图标数据，key 为 item.id，value 为 item 对象
+	var categoryItemsMap = {};  // 存储每个分类的图标ID列表，key 为 categoryId，value 为 item.id 数组
 	
 	/**
 	 * 执行搜索
 	 */
 	function performSearch(term)
 	{
-		searchTerm = term.toLowerCase();
-		searchResults = [];
+		searchTerm = (term || '').toLowerCase().trim();
 		
-		if (!term || term.length === 0)
+		// 调试日志
+		console.log('[图标库搜索] 搜索词:', searchTerm);
+		console.log('[图标库搜索] 已加载图标数量:', Object.keys(allLoadedItems).length);
+		
+		if (!searchTerm || searchTerm.length === 0)
 		{
-			// 清除搜索，显示所有分类
-			updateSearchResults();
+			// 清除搜索，显示所有分类和图标
+			clearSearch();
 			return;
 		}
 		
-		// 遍历所有已加载的分类，搜索匹配的素材
-		// 注意：这里需要从搜索索引中查找，实际的搜索功能由 sidebar 的搜索系统处理
-		updateSearchResults();
+		// 搜索匹配的图标
+		searchResults = [];
+		var matchingItemIds = [];
+		
+		// 遍历所有已加载的图标
+		for (var itemId in allLoadedItems)
+		{
+			var item = allLoadedItems[itemId];
+			var searchText = '';
+			
+			// 搜索标题、描述、标签
+			if (item.title) searchText += ' ' + item.title.toLowerCase();
+			if (item.description) searchText += ' ' + item.description.toLowerCase();
+			if (item.tags) searchText += ' ' + item.tags.toLowerCase();
+			if (item.id) searchText += ' ' + item.id.toLowerCase();
+			if (item.categoryId) searchText += ' ' + item.categoryId.toLowerCase();
+			
+			// 检查是否匹配
+			if (searchText.indexOf(searchTerm) !== -1)
+			{
+				searchResults.push(item);
+				matchingItemIds.push(itemId);
+			}
+		}
+		
+		console.log('[图标库搜索] 匹配结果数量:', matchingItemIds.length);
+		
+		// 更新显示
+		updateSearchResults(matchingItemIds);
 	}
 	
 	/**
-	 * 更新搜索结果
+	 * 更新搜索结果显示
 	 */
-	function updateSearchResults()
+	function updateSearchResults(matchingItemIds)
 	{
-		// 实际的搜索过滤由 sidebar 的搜索系统处理
-		// 这里只需要触发搜索更新
-		if (sidebar.updateSearchResults)
+		if (!window.geIconsLibraryScrollContainer)
 		{
-			sidebar.updateSearchResults(searchTerm);
+			console.log('[图标库搜索] 错误: scrollContainer 不存在');
+			return;
+		}
+		
+		var scrollContainer = window.geIconsLibraryScrollContainer;
+		
+		// 获取所有直接子元素（分类容器应该是直接子元素）
+		var children = scrollContainer.children;
+		var categoryOuters = [];
+		
+		// 收集所有分类容器（排除搜索框）
+		for (var i = 0; i < children.length; i++)
+		{
+			var child = children[i];
+			if (child.classList && child.classList.contains('geIconsLibrarySearchContainer'))
+			{
+				continue;
+			}
+			categoryOuters.push(child);
+		}
+		
+		console.log('[图标库搜索] 找到分类容器数量:', categoryOuters.length);
+		
+		// 遍历所有分类容器
+		for (var i = 0; i < categoryOuters.length; i++)
+		{
+			var categoryOuter = categoryOuters[i];
+			
+			// 获取分类标题和内容区域
+			var categoryTitle = categoryOuter.querySelector('.geSidebarTitle') || categoryOuter.firstElementChild;
+			var categoryDiv = categoryOuter.querySelector('.geSidebar') || categoryOuter.querySelector('div[class*="geSidebar"]');
+			
+			if (!categoryDiv)
+			{
+				// 如果找不到，尝试查找所有子div
+				var divs = categoryOuter.querySelectorAll('div');
+				for (var d = 0; d < divs.length; d++)
+				{
+					if (divs[d].classList && divs[d].classList.contains('geSidebar'))
+					{
+						categoryDiv = divs[d];
+						break;
+					}
+				}
+			}
+			
+			if (!categoryDiv)
+			{
+				console.log('[图标库搜索] 警告: 找不到分类内容区域');
+				continue;
+			}
+			
+			// 获取分类ID（从分类标题的文本或其他属性中获取）
+			var categoryId = null;
+			if (categoryTitle)
+			{
+				var titleText = categoryTitle.textContent || categoryTitle.innerText || '';
+				// 尝试从 categoryData 中查找匹配的分类
+				for (var catId in categoryData)
+				{
+					var catInfo = categoryData[catId];
+					if (catInfo.title && titleText.indexOf(catInfo.title) !== -1)
+					{
+						categoryId = catId;
+						break;
+					}
+				}
+			}
+			
+			if (searchTerm && searchTerm.length > 0)
+			{
+				// 搜索模式：只显示匹配的分类和图标
+				var hasMatchingItems = false;
+				
+				if (categoryId && categoryItemsMap[categoryId])
+				{
+					// 检查该分类是否有匹配的图标
+					for (var j = 0; j < categoryItemsMap[categoryId].length; j++)
+					{
+						var itemId = categoryItemsMap[categoryId][j];
+						if (matchingItemIds.indexOf(itemId) !== -1)
+						{
+							hasMatchingItems = true;
+							break;
+						}
+					}
+				}
+				
+				// 显示/隐藏分类
+				if (hasMatchingItems)
+				{
+					categoryOuter.style.display = '';
+					categoryDiv.style.display = '';
+					
+					// 显示/隐藏分类中的图标
+					var templates = categoryDiv.querySelectorAll('.geSidebarEntry, [data-item-id]');
+					var visibleCount = 0;
+					for (var k = 0; k < templates.length; k++)
+					{
+						var template = templates[k];
+						var templateId = template.getAttribute('data-item-id');
+						
+						if (templateId && matchingItemIds.indexOf(templateId) !== -1)
+						{
+							template.style.display = '';
+							visibleCount++;
+						}
+						else
+						{
+							template.style.display = 'none';
+						}
+					}
+					console.log('[图标库搜索] 分类', categoryId, '显示', visibleCount, '个图标');
+				}
+				else
+				{
+					categoryOuter.style.display = 'none';
+				}
+			}
+			else
+			{
+				// 非搜索模式：显示所有
+				categoryOuter.style.display = '';
+				var templates = categoryDiv.querySelectorAll('.geSidebarEntry, [data-item-id]');
+				for (var k = 0; k < templates.length; k++)
+				{
+					templates[k].style.display = '';
+				}
+			}
+		}
+	}
+	
+	/**
+	 * 清除搜索
+	 */
+	function clearSearch()
+	{
+		if (!window.geIconsLibraryScrollContainer)
+		{
+			return;
+		}
+		
+		var scrollContainer = window.geIconsLibraryScrollContainer;
+		var categoryOuters = scrollContainer.querySelectorAll('div');
+		
+		// 显示所有分类和图标
+		for (var i = 0; i < categoryOuters.length; i++)
+		{
+			var categoryOuter = categoryOuters[i];
+			
+			if (categoryOuter.classList && categoryOuter.classList.contains('geIconsLibrarySearchContainer'))
+			{
+				continue;
+			}
+			
+			categoryOuter.style.display = '';
+			
+			var categoryDiv = categoryOuter.querySelector('.geSidebar');
+			if (categoryDiv)
+			{
+				var templates = categoryDiv.querySelectorAll('.geSidebarEntry');
+				for (var j = 0; j < templates.length; j++)
+				{
+					templates[j].style.display = '';
+				}
+			}
 		}
 	}
 	
@@ -1127,14 +1347,22 @@ Draw.loadPlugin(function(editorUi)
 			
 			var searchHandler = function()
 			{
-				performSearch(searchInput.value);
+				var searchValue = searchInput.value;
+				console.log('[图标库搜索] 搜索输入框值:', searchValue);
+				performSearch(searchValue);
 			};
 			
+			// 绑定输入事件（实时搜索）
 			mxEvent.addListener(searchInput, 'input', searchHandler);
+			mxEvent.addListener(searchInput, 'keyup', searchHandler);
+			mxEvent.addListener(searchInput, 'change', searchHandler);
+			
+			// 绑定回车键
 			mxEvent.addListener(searchInput, 'keypress', function(e)
 			{
 				if (e.keyCode == 13)
 				{
+					e.preventDefault();
 					searchHandler();
 				}
 			});
