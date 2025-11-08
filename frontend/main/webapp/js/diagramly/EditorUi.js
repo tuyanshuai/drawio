@@ -20294,10 +20294,16 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 	var vbY = 0;
 	var vbWidth = null;
 	var vbHeight = null;
+	var preserveAspectRatio = svgRoot.getAttribute('preserveAspectRatio') || 'xMidYMid meet';
 
+	// 改进viewBox解析，支持空格和逗号分隔，处理空值
 	if (viewBoxAttr != null && viewBoxAttr !== '')
 	{
-		var vbParts = viewBoxAttr.split(/\s+|,/);
+		// 移除前后空白，支持逗号和空格分隔
+		var cleaned = viewBoxAttr.trim().replace(/[,\s]+/g, ' ').replace(/\s+/g, ' ');
+		var vbParts = cleaned.split(/\s+/);
+		// 过滤空字符串
+		vbParts = vbParts.filter(function(p) { return p !== ''; });
 		if (vbParts.length >= 4)
 		{
 			vbX = parseFloat(vbParts[0]);
@@ -20307,14 +20313,27 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 		}
 	}
 
+	// 如果viewBox无效，尝试从width/height获取
 	if (vbWidth == null || !isFinite(vbWidth) || vbWidth === 0)
 	{
-		vbWidth = parseFloat(svgRoot.getAttribute('width'));
+		var widthAttr = svgRoot.getAttribute('width');
+		if (widthAttr != null && widthAttr !== '')
+		{
+			// 移除单位（px, pt等）
+			widthAttr = widthAttr.replace(/[^\d.-]/g, '');
+			vbWidth = parseFloat(widthAttr);
+		}
 	}
 
 	if (vbHeight == null || !isFinite(vbHeight) || vbHeight === 0)
 	{
-		vbHeight = parseFloat(svgRoot.getAttribute('height'));
+		var heightAttr = svgRoot.getAttribute('height');
+		if (heightAttr != null && heightAttr !== '')
+		{
+			// 移除单位（px, pt等）
+			heightAttr = heightAttr.replace(/[^\d.-]/g, '');
+			vbHeight = parseFloat(heightAttr);
+		}
 	}
 
 	var tempContainer = document.createElement('div');
@@ -20327,6 +20346,128 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 
 	var importedSvg = document.importNode(svgRoot, true);
 	tempContainer.appendChild(importedSvg);
+	
+	/**
+	 * 解析并应用CSS样式到SVG元素
+	 * 确保CSS类样式被正确应用
+	 */
+	var applyCssStyles = function()
+	{
+		try
+		{
+			var styleElements = importedSvg.querySelectorAll('style');
+			if (styleElements.length === 0) return;
+			
+			// 创建一个临时的style元素来解析CSS规则
+			var tempStyle = document.createElement('style');
+			document.head.appendChild(tempStyle);
+			
+			for (var sIdx = 0; sIdx < styleElements.length; sIdx++)
+			{
+				var styleEl = styleElements[sIdx];
+				var cssText = styleEl.textContent || styleEl.innerHTML;
+				if (!cssText) continue;
+				
+				// 将CSS添加到临时style元素
+				tempStyle.textContent = cssText;
+				
+				try
+				{
+					var sheet = tempStyle.sheet;
+					if (sheet && sheet.cssRules)
+					{
+						for (var rIdx = 0; rIdx < sheet.cssRules.length; rIdx++)
+						{
+							var rule = sheet.cssRules[rIdx];
+							if (rule.type === CSSRule.STYLE_RULE && rule.selectorText)
+							{
+								var selectors = rule.selectorText.split(',').map(function(s) { return s.trim(); });
+								for (var selIdx = 0; selIdx < selectors.length; selIdx++)
+								{
+									var selector = selectors[selIdx];
+									// 处理类选择器（如 .cls-1）
+									if (selector.indexOf('.') === 0)
+									{
+										var className = selector.substring(1);
+										var elements = importedSvg.querySelectorAll('.' + className);
+										for (var eIdx = 0; eIdx < elements.length; eIdx++)
+										{
+											var el = elements[eIdx];
+											// 将CSS规则中的属性应用到元素
+											if (rule.style)
+											{
+												for (var propIdx = 0; propIdx < rule.style.length; propIdx++)
+												{
+													var propName = rule.style[propIdx];
+													var propValue = rule.style.getPropertyValue(propName);
+													
+													// 将CSS属性名转换为SVG属性名
+													var svgAttrName = propName;
+													if (propName === 'stroke-width')
+													{
+														svgAttrName = 'stroke-width';
+													}
+													else if (propName === 'stroke-miterlimit')
+													{
+														svgAttrName = 'stroke-miterlimit';
+													}
+													else if (propName === 'stroke-linecap')
+													{
+														svgAttrName = 'stroke-linecap';
+													}
+													else if (propName === 'stroke-linejoin')
+													{
+														svgAttrName = 'stroke-linejoin';
+													}
+													
+													// 对于fill和stroke，总是应用（CSS优先级更高）
+													// 对于其他属性，如果元素还没有这个属性，则应用
+													if (propName === 'fill' || propName === 'stroke' || !el.getAttribute(svgAttrName))
+													{
+														el.setAttribute(svgAttrName, propValue);
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+				catch (cssError)
+				{
+					if (window.console)
+					{
+						console.warn('[SVG Convert] 解析CSS规则失败:', cssError);
+					}
+				}
+			}
+			
+			// 清理临时style元素
+			if (tempStyle.parentNode)
+			{
+				tempStyle.parentNode.removeChild(tempStyle);
+			}
+			
+			// 强制浏览器重新计算样式
+			if (window.getComputedStyle)
+			{
+				// 触发样式重新计算
+				var dummy = importedSvg.offsetHeight;
+			}
+		}
+		catch (e)
+		{
+			if (window.console)
+			{
+				console.warn('[SVG Convert] 应用CSS样式失败:', e);
+			}
+		}
+	};
+	
+	// 应用CSS样式
+	applyCssStyles();
 
 	// 只有在 viewBox 完全不存在时才使用 getBBox()
 	// 不要覆盖已有的 viewBox，因为它定义了正确的坐标系统
@@ -20369,34 +20510,70 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 
 	// 支持的 SVG 元素类型（基本形状和路径）
 	// querySelectorAll 会递归查找所有匹配的元素，包括 g 组内的元素
-	var supportedElements = 'path,polygon,polyline,rect,circle,ellipse,line';
+	var supportedElements = 'path,polygon,polyline,rect,circle,ellipse,line,text,image';
 	var elements = importedSvg.querySelectorAll(supportedElements);
 	
 	// 也处理 use 元素（引用元素）
 	var useElements = importedSvg.querySelectorAll('use');
 	
-	// 检查是否有未支持的元素类型
-	var allElements = importedSvg.querySelectorAll('*');
-	var unsupportedElements = {};
-	for (var elemIdx = 0; elemIdx < allElements.length; elemIdx++)
-	{
-		var elem = allElements[elemIdx];
-		var tagName = elem.tagName ? elem.tagName.toLowerCase() : '';
-		// 跳过已支持的、定义性的和元数据元素
-		if (tagName && 
-		    supportedElements.indexOf(tagName) === -1 &&
-		    tagName !== 'svg' && 
-		    tagName !== 'defs' && 
-		    tagName !== 'style' &&
-		    tagName !== 'metadata' &&
-		    tagName !== 'title' &&
-		    tagName !== 'desc' &&
-		    tagName !== 'clipPath' &&
-		    tagName !== 'g' && // g 元素会通过子元素处理
-		    tagName !== 'use' && // use 元素需要特殊处理
-		    tagName !== 'text' && // text 元素需要特殊处理
-		    tagName !== 'tspan' &&
-		    tagName !== 'image')
+		// 检查是否有未支持的元素类型
+		var allElements = importedSvg.querySelectorAll('*');
+		var unsupportedElements = {};
+		for (var elemIdx = 0; elemIdx < allElements.length; elemIdx++)
+		{
+			var elem = allElements[elemIdx];
+			var tagName = elem.tagName ? elem.tagName.toLowerCase() : '';
+			// 跳过已支持的、定义性的和元数据元素
+			// 注意：tagName已经转换为小写
+			if (tagName && 
+			    supportedElements.indexOf(tagName) === -1 &&
+			    tagName !== 'svg' && 
+			    tagName !== 'defs' && 
+			    tagName !== 'style' &&
+			    tagName !== 'metadata' &&
+			    tagName !== 'title' &&
+			    tagName !== 'desc' &&
+			    tagName !== 'clippath' && // SVG元素名是小写
+			    tagName !== 'g' && // g 元素会通过子元素处理
+			    tagName !== 'use' && // use 元素需要特殊处理
+			    tagName !== 'text' && // text 元素需要特殊处理
+			    tagName !== 'tspan' && // tspan 作为text的子元素处理
+			    tagName !== 'image' &&
+			    tagName !== 'lineargradient' && // SVG元素名是小写
+			    tagName !== 'radialgradient' && // SVG元素名是小写
+			    tagName !== 'stop' &&
+			    tagName !== 'filter' &&
+			    tagName !== 'fegaussianblur' && // SVG元素名是小写
+			    tagName !== 'feoffset' && // SVG元素名是小写
+			    tagName !== 'mask' &&
+			    tagName !== 'marker' &&
+			    tagName !== 'pattern' &&
+			    tagName !== 'symbol' &&
+			    tagName !== 'fecomposite' &&
+			    tagName !== 'feflood' &&
+			    tagName !== 'feblend' &&
+			    tagName !== 'fecolormatrix' &&
+			    tagName !== 'fecomponenttransfer' &&
+			    tagName !== 'fefunca' &&
+			    tagName !== 'fefuncr' &&
+			    tagName !== 'fefuncg' &&
+			    tagName !== 'fefuncb' &&
+			    tagName !== 'fecolormatrix' &&
+			    tagName !== 'fegaussianblur' &&
+			    tagName !== 'fespecularlighting' &&
+			    tagName !== 'fediffuselighting' &&
+			    tagName !== 'fepointlight' &&
+			    tagName !== 'fespotlight' &&
+			    tagName !== 'fedistantlight' &&
+			    tagName !== 'femerge' &&
+			    tagName !== 'femergenode' &&
+			    tagName !== 'feturbolence' &&
+			    tagName !== 'fedisplacementmap' &&
+			    tagName !== 'fecolormatrix' &&
+			    tagName !== 'feconvolvematrix' &&
+			    tagName !== 'femorphology' &&
+			    tagName !== 'feimage' &&
+			    tagName !== 'fetile')
 		{
 			if (!unsupportedElements[tagName])
 			{
@@ -20425,6 +20602,215 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 	var colorCanvas = document.createElement('canvas');
 	colorCanvas.width = colorCanvas.height = 1;
 	var colorCtx = colorCanvas.getContext('2d');
+
+	/**
+	 * 解析SVG transform属性，支持所有transform类型
+	 * @param {string} transformStr - transform属性值
+	 * @returns {DOMMatrix|null} - 变换矩阵，如果无效则返回null
+	 */
+	var parseTransform = function(transformStr)
+	{
+		if (!transformStr || transformStr.trim() === '')
+		{
+			return null;
+		}
+
+		try
+		{
+			// 使用SVG元素创建临时元素来解析transform
+			var tempSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+			var tempG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+			tempSvg.appendChild(tempG);
+			document.body.appendChild(tempSvg);
+			tempG.setAttribute('transform', transformStr);
+			var matrix = tempG.transform.baseVal.consolidate();
+			document.body.removeChild(tempSvg);
+			
+			if (matrix)
+			{
+				return matrix.matrix;
+			}
+		}
+		catch (e)
+		{
+			if (window.console)
+			{
+				console.warn('[SVG Convert] 解析transform失败:', transformStr, e);
+			}
+		}
+
+		// 备用方法：手动解析transform字符串
+		try
+		{
+			var matrix = {a: 1, b: 0, c: 0, d: 1, e: 0, f: 0};
+			var transforms = transformStr.match(/(\w+)\([^)]*\)/g);
+			
+			if (transforms)
+			{
+				for (var i = 0; i < transforms.length; i++)
+				{
+					var match = transforms[i].match(/(\w+)\(([^)]*)\)/);
+					if (!match) continue;
+					
+					var type = match[1].toLowerCase();
+					var params = match[2].split(/[,\s]+/).filter(function(p) { return p !== ''; }).map(parseFloat);
+					
+					var tempMatrix = {a: 1, b: 0, c: 0, d: 1, e: 0, f: 0};
+					
+					switch (type)
+					{
+						case 'matrix':
+							if (params.length >= 6)
+							{
+								tempMatrix = {
+									a: params[0], b: params[1],
+									c: params[2], d: params[3],
+									e: params[4], f: params[5]
+								};
+							}
+							break;
+						case 'translate':
+							if (params.length >= 1)
+							{
+								tempMatrix.e = params[0];
+								tempMatrix.f = params.length >= 2 ? params[1] : 0;
+							}
+							break;
+						case 'scale':
+							if (params.length >= 1)
+							{
+								var sx = params[0];
+								var sy = params.length >= 2 ? params[1] : sx;
+								tempMatrix.a = sx;
+								tempMatrix.d = sy;
+							}
+							break;
+						case 'rotate':
+							if (params.length >= 1)
+							{
+								var angle = params[0] * Math.PI / 180;
+								var cx = params.length >= 2 ? params[1] : 0;
+								var cy = params.length >= 3 ? params[2] : 0;
+								var cos = Math.cos(angle);
+								var sin = Math.sin(angle);
+								tempMatrix.a = cos;
+								tempMatrix.b = sin;
+								tempMatrix.c = -sin;
+								tempMatrix.d = cos;
+								tempMatrix.e = cx - cos * cx + sin * cy;
+								tempMatrix.f = cy - sin * cx - cos * cy;
+							}
+							break;
+						case 'skewx':
+							if (params.length >= 1)
+							{
+								var angle = params[0] * Math.PI / 180;
+								tempMatrix.c = Math.tan(angle);
+							}
+							break;
+						case 'skewy':
+							if (params.length >= 1)
+							{
+								var angle = params[0] * Math.PI / 180;
+								tempMatrix.b = Math.tan(angle);
+							}
+							break;
+					}
+					
+					// 矩阵乘法：matrix = matrix * tempMatrix
+					var newMatrix = {
+						a: matrix.a * tempMatrix.a + matrix.c * tempMatrix.b,
+						b: matrix.b * tempMatrix.a + matrix.d * tempMatrix.b,
+						c: matrix.a * tempMatrix.c + matrix.c * tempMatrix.d,
+						d: matrix.b * tempMatrix.c + matrix.d * tempMatrix.d,
+						e: matrix.a * tempMatrix.e + matrix.c * tempMatrix.f + matrix.e,
+						f: matrix.b * tempMatrix.e + matrix.d * tempMatrix.f + matrix.f
+					};
+					matrix = newMatrix;
+				}
+				
+				return matrix;
+			}
+		}
+		catch (e)
+		{
+			if (window.console)
+			{
+				console.warn('[SVG Convert] 备用transform解析失败:', e);
+			}
+		}
+		
+		return null;
+	};
+
+	/**
+	 * 获取元素及其所有父元素的累积变换矩阵
+	 * @param {SVGElement} el - SVG元素
+	 * @returns {DOMMatrix|Object|null} - 累积变换矩阵
+	 */
+	var getCumulativeTransform = function(el)
+	{
+		if (!el) return null;
+		
+		var matrices = [];
+		var current = el;
+		
+		// 收集所有父元素的transform
+		while (current && current !== importedSvg)
+		{
+			var transformAttr = current.getAttribute ? current.getAttribute('transform') : null;
+			if (transformAttr)
+			{
+				var matrix = parseTransform(transformAttr);
+				if (matrix)
+				{
+					matrices.push(matrix);
+				}
+			}
+			current = current.parentNode;
+		}
+		
+		// 如果没有transform，尝试使用getCTM
+		if (matrices.length === 0 && el.getCTM)
+		{
+			try
+			{
+				var ctm = el.getCTM();
+				if (ctm)
+				{
+					return {
+						a: ctm.a, b: ctm.b,
+						c: ctm.c, d: ctm.d,
+						e: ctm.e, f: ctm.f
+					};
+				}
+			}
+			catch (e)
+			{
+				// ignore
+			}
+		}
+		
+		// 组合所有矩阵（从根到元素）
+		if (matrices.length === 0) return null;
+		
+		var result = matrices[matrices.length - 1];
+		for (var i = matrices.length - 2; i >= 0; i--)
+		{
+			var m1 = result;
+			var m2 = matrices[i];
+			result = {
+				a: m1.a * m2.a + m1.c * m2.b,
+				b: m1.b * m2.a + m1.d * m2.b,
+				c: m1.a * m2.c + m1.c * m2.d,
+				d: m1.b * m2.c + m1.d * m2.d,
+				e: m1.a * m2.e + m1.c * m2.f + m1.e,
+				f: m1.b * m2.e + m1.d * m2.f + m1.f
+			};
+		}
+		
+		return result;
+	};
 
 	var applyMatrix = function(pt, matrix)
 	{
@@ -20516,19 +20902,31 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 		return res;
 	};
 
+	/**
+	 * 将点坐标从SVG坐标系转换到相对坐标(0-1)
+	 * 考虑viewBox偏移，将SVG坐标归一化到draw.io的相对坐标系统
+	 * @param {Object} pt - 点坐标 {x, y}（已应用transform）
+	 * @returns {Array} - 归一化后的坐标 [nx, ny]，范围0-1
+	 */
 	var normalizePoint = function(pt)
 	{
-		// 将点坐标从 SVG 坐标系转换到相对坐标 (0-1)
-		// 考虑 viewBox 的偏移 (vbX, vbY)
-		var nx = (pt.x - vbX) / vbWidth;
-		var ny = (pt.y - vbY) / vbHeight;
+		// 将SVG坐标转换为相对坐标
+		// 首先减去viewBox偏移，得到相对于viewBox的坐标
+		var relativeX = pt.x - vbX;
+		var relativeY = pt.y - vbY;
 		
-		// 确保坐标在有效范围内（允许轻微超出，因为路径可能略超出 viewBox）
-		nx = Math.max(-1, Math.min(2, nx)); // 允许轻微超出
+		// 然后归一化到0-1范围（基于viewBox尺寸）
+		// draw.io使用相对坐标系统，其中0-1对应整个图形的宽度和高度
+		var nx = relativeX / vbWidth;
+		var ny = relativeY / vbHeight;
+		
+		// 确保坐标在合理范围内（允许轻微超出viewBox，因为路径可能略超出）
+		// 限制在-1到2之间，以处理边界情况
+		nx = Math.max(-1, Math.min(2, nx));
 		ny = Math.max(-1, Math.min(2, ny));
 		
-		// 使用更高的精度（6位小数）以确保平滑的曲线
-		return [parseFloat(Number(nx).toFixed(6)), parseFloat(Number(ny).toFixed(6))];
+		// 使用更高精度（8位小数）以确保准确性，避免累积误差
+		return [parseFloat(Number(nx).toFixed(8)), parseFloat(Number(ny).toFixed(8))];
 	};
 
 	/**
@@ -20575,10 +20973,334 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 		return false;
 	};
 
+	/**
+	 * 手动解析SVG path的d属性，作为备用方法
+	 * @param {string} pathData - path的d属性值
+	 * @returns {Array} - 点数组
+	 */
+	var parsePathData = function(pathData)
+	{
+		if (!pathData || pathData.trim() === '')
+		{
+			return {points: [], isClosed: false};
+		}
+		
+		var points = [];
+		var x = 0, y = 0;
+		var startX = 0, startY = 0;
+		var isClosed = false;
+		
+		// 解析path命令
+		var commands = pathData.match(/[MmLlHhVvCcSsQqTtAaZz][^MmLlHhVvCcSsQqTtAaZz]*/g);
+		if (!commands)
+		{
+			return {points: [], isClosed: false};
+		}
+		
+		for (var i = 0; i < commands.length; i++)
+		{
+			var cmd = commands[i].charAt(0).toUpperCase();
+			var isRelative = commands[i].charAt(0) === commands[i].charAt(0).toLowerCase();
+			var coordsStr = commands[i].substring(1).trim();
+			
+			// 改进坐标解析：使用正则表达式匹配所有数字（包括负数和小数）
+			// 这样可以处理各种格式：M10,20 M 10 20 M10.5-20.3 等
+			var coords = [];
+			if (coordsStr.length > 0)
+			{
+				// 匹配数字模式：可选负号、数字、可选小数部分、可选指数
+				var numberPattern = /-?[\d]+\.?[\d]*(?:[eE][+-]?[\d]+)?/g;
+				var matches = coordsStr.match(numberPattern);
+				if (matches)
+				{
+					for (var m = 0; m < matches.length; m++)
+					{
+						var num = parseFloat(matches[m]);
+						if (isFinite(num))
+						{
+							coords.push(num);
+						}
+					}
+				}
+			}
+			
+			try
+			{
+				switch (cmd)
+				{
+					case 'M': // Move to
+						if (coords.length >= 2)
+						{
+							if (isRelative)
+							{
+								x += coords[0];
+								y += coords[1];
+							}
+							else
+							{
+								x = coords[0];
+								y = coords[1];
+							}
+							startX = x;
+							startY = y;
+							points.push({x: x, y: y});
+							// 处理多个坐标对
+							for (var j = 2; j < coords.length; j += 2)
+							{
+								if (j + 1 < coords.length)
+								{
+									if (isRelative)
+									{
+										x += coords[j];
+										y += coords[j + 1];
+									}
+									else
+									{
+										x = coords[j];
+										y = coords[j + 1];
+									}
+									points.push({x: x, y: y});
+								}
+							}
+						}
+						break;
+					case 'L': // Line to
+						for (var j = 0; j < coords.length; j += 2)
+						{
+							if (j + 1 < coords.length)
+							{
+								if (isRelative)
+								{
+									x += coords[j];
+									y += coords[j + 1];
+								}
+								else
+								{
+									x = coords[j];
+									y = coords[j + 1];
+								}
+								points.push({x: x, y: y});
+							}
+						}
+						break;
+					case 'H': // Horizontal line
+						for (var j = 0; j < coords.length; j++)
+						{
+							if (isRelative)
+							{
+								x += coords[j];
+							}
+							else
+							{
+								x = coords[j];
+							}
+							points.push({x: x, y: y});
+						}
+						break;
+					case 'V': // Vertical line
+						for (var j = 0; j < coords.length; j++)
+						{
+							if (isRelative)
+							{
+								y += coords[j];
+							}
+							else
+							{
+								y = coords[j];
+							}
+							points.push({x: x, y: y});
+						}
+						break;
+					case 'C': // Cubic Bezier curve - 采样曲线
+						if (coords.length >= 6)
+						{
+							for (var j = 0; j < coords.length; j += 6)
+							{
+								if (j + 5 < coords.length)
+								{
+									var x1 = isRelative ? x + coords[j] : coords[j];
+									var y1 = isRelative ? y + coords[j + 1] : coords[j + 1];
+									var x2 = isRelative ? x + coords[j + 2] : coords[j + 2];
+									var y2 = isRelative ? y + coords[j + 3] : coords[j + 3];
+									var x3 = isRelative ? x + coords[j + 4] : coords[j + 4];
+									var y3 = isRelative ? y + coords[j + 5] : coords[j + 5];
+									
+									// 采样贝塞尔曲线（8个点）
+									for (var t = 0; t <= 1; t += 0.125)
+									{
+										var mt = 1 - t;
+										var px = mt * mt * mt * x + 3 * mt * mt * t * x1 + 3 * mt * t * t * x2 + t * t * t * x3;
+										var py = mt * mt * mt * y + 3 * mt * mt * t * y1 + 3 * mt * t * t * y2 + t * t * t * y3;
+										points.push({x: px, y: py});
+									}
+									x = x3;
+									y = y3;
+								}
+							}
+						}
+						break;
+					case 'S': // Smooth cubic Bezier - 简化为直线采样
+						if (coords.length >= 4)
+						{
+							for (var j = 0; j < coords.length; j += 4)
+							{
+								if (j + 3 < coords.length)
+								{
+									var x2 = isRelative ? x + coords[j] : coords[j];
+									var y2 = isRelative ? y + coords[j + 1] : coords[j + 1];
+									var x3 = isRelative ? x + coords[j + 2] : coords[j + 2];
+									var y3 = isRelative ? y + coords[j + 3] : coords[j + 3];
+									
+									// 采样曲线
+									for (var t = 0; t <= 1; t += 0.125)
+									{
+										var mt = 1 - t;
+										var px = mt * mt * x + 2 * mt * t * x2 + t * t * x3;
+										var py = mt * mt * y + 2 * mt * t * y2 + t * t * y3;
+										points.push({x: px, y: py});
+									}
+									x = x3;
+									y = y3;
+								}
+							}
+						}
+						break;
+					case 'Q': // Quadratic Bezier
+						if (coords.length >= 4)
+						{
+							for (var j = 0; j < coords.length; j += 4)
+							{
+								if (j + 3 < coords.length)
+								{
+									var x1 = isRelative ? x + coords[j] : coords[j];
+									var y1 = isRelative ? y + coords[j + 1] : coords[j + 1];
+									var x2 = isRelative ? x + coords[j + 2] : coords[j + 2];
+									var y2 = isRelative ? y + coords[j + 3] : coords[j + 3];
+									
+									// 采样二次贝塞尔曲线
+									for (var t = 0; t <= 1; t += 0.125)
+									{
+										var mt = 1 - t;
+										var px = mt * mt * x + 2 * mt * t * x1 + t * t * x2;
+										var py = mt * mt * y + 2 * mt * t * y1 + t * t * y2;
+										points.push({x: px, y: py});
+									}
+									x = x2;
+									y = y2;
+								}
+							}
+						}
+						break;
+					case 'T': // Smooth quadratic - 简化为直线
+						if (coords.length >= 2)
+						{
+							for (var j = 0; j < coords.length; j += 2)
+							{
+								if (j + 1 < coords.length)
+								{
+									if (isRelative)
+									{
+										x += coords[j];
+										y += coords[j + 1];
+									}
+									else
+									{
+										x = coords[j];
+										y = coords[j + 1];
+									}
+									points.push({x: x, y: y});
+								}
+							}
+						}
+						break;
+					case 'A': // Arc - 椭圆弧
+						if (coords.length >= 7)
+						{
+							for (var j = 0; j < coords.length; j += 7)
+							{
+								if (j + 6 < coords.length)
+								{
+									var rx = Math.abs(coords[j]);
+									var ry = Math.abs(coords[j + 1]);
+									var xAngle = coords[j + 2] * Math.PI / 180;
+									var largeArc = coords[j + 3] !== 0;
+									var sweep = coords[j + 4] !== 0;
+									var x2 = isRelative ? x + coords[j + 5] : coords[j + 5];
+									var y2 = isRelative ? y + coords[j + 6] : coords[j + 6];
+									
+									// 简化的弧线处理：采样多个点
+									// 注意：完整的椭圆弧计算很复杂，这里使用简化方法
+									var numSamples = Math.max(16, Math.min(64, Math.round(Math.max(rx, ry) / Math.max(vbWidth, vbHeight) * 100)));
+									for (var t = 0; t <= 1; t += 1 / numSamples)
+									{
+										// 使用简化的椭圆弧近似
+										// 计算中心点（简化）
+										var midX = (x + x2) / 2;
+										var midY = (y + y2) / 2;
+										var dx = (x2 - x) / 2;
+										var dy = (y2 - y) / 2;
+										
+										// 旋转
+										var cosAngle = Math.cos(xAngle);
+										var sinAngle = Math.sin(xAngle);
+										var rotatedDx = dx * cosAngle - dy * sinAngle;
+										var rotatedDy = dx * sinAngle + dy * cosAngle;
+										
+										// 椭圆参数方程
+										var angle = t * Math.PI * (largeArc ? 2 : 1);
+										if (!sweep) angle = -angle;
+										var px = midX + rx * Math.cos(angle) * cosAngle - ry * Math.sin(angle) * sinAngle;
+										var py = midY + rx * Math.cos(angle) * sinAngle + ry * Math.sin(angle) * cosAngle;
+										
+										// 确保起点和终点正确
+										if (t === 0)
+										{
+											px = x;
+											py = y;
+										}
+										else if (t >= 1)
+										{
+											px = x2;
+											py = y2;
+										}
+										
+										points.push({x: px, y: py});
+									}
+									x = x2;
+									y = y2;
+								}
+							}
+						}
+						break;
+					case 'Z': // Close path
+						if (points.length > 0 && (x !== startX || y !== startY))
+						{
+							points.push({x: startX, y: startY});
+						}
+						isClosed = true;
+						x = startX;
+						y = startY;
+						break;
+				}
+			}
+			catch (e)
+			{
+				if (window.console)
+				{
+					console.warn('[SVG Convert] 解析path命令失败:', cmd, e);
+				}
+			}
+		}
+		
+		return {points: points, isClosed: isClosed};
+	};
+
 	var samplePath = function(el)
 	{
 		var pts = [];
 		var total = 0;
+		var useFallback = false;
+		
 		try
 		{
 			total = el.getTotalLength();
@@ -20590,16 +21312,110 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 				console.warn('[SVG Convert] getTotalLength 失败:', e);
 			}
 			total = 0;
+			useFallback = true;
 		}
 		
-		if (total <= 0)
+		// 如果无法获取长度或长度为0，尝试使用路径解析备用方法
+		if (total <= 0 || useFallback)
 		{
-			// 如果无法获取长度，尝试使用路径解析
+			var pathData = el.getAttribute('d');
+			if (pathData && pathData.trim() !== '')
+			{
+				if (window.console)
+				{
+					console.log('[SVG Convert] 使用备用方法解析path，d属性:', pathData.substring(0, 200));
+				}
+				try
+				{
+					var parsed = parsePathData(pathData);
+					if (parsed && parsed.points && parsed.points.length >= 2)
+					{
+						if (window.console)
+						{
+							console.log('[SVG Convert] 备用方法解析成功，生成', parsed.points.length, '个点');
+						}
+						// 应用transform
+						var matrix = getCumulativeTransform(el);
+						for (var i = 0; i < parsed.points.length; i++)
+						{
+							pts.push(applyMatrix(parsed.points[i], matrix));
+						}
+						var sanitized = sanitizePoints(pts);
+						if (sanitized.length >= 2)
+						{
+							return {points: sanitized, isClosed: parsed.isClosed};
+						}
+						else if (window.console)
+						{
+							console.warn('[SVG Convert] 备用方法解析的点经过清理后不足2个');
+						}
+					}
+					else if (window.console)
+					{
+						console.warn('[SVG Convert] 备用方法解析失败，返回点数:', parsed ? (parsed.points ? parsed.points.length : 0) : 0);
+					}
+				}
+				catch (parseError)
+				{
+					if (window.console)
+					{
+						console.error('[SVG Convert] 备用方法解析异常:', parseError);
+						console.error('[SVG Convert] path d属性:', pathData.substring(0, 200));
+					}
+				}
+			}
+			else if (window.console)
+			{
+				console.warn('[SVG Convert] path元素没有d属性或d属性为空');
+			}
+			
 			if (window.console)
 			{
-				console.warn('[SVG Convert] 路径长度为0，尝试备用方法');
+				console.warn('[SVG Convert] 路径长度为0且备用解析失败，尝试getBBox');
 			}
-			// 返回空数组，让上层处理
+			
+			// 最后的备用方法：使用getBBox
+			try
+			{
+				var bbox = el.getBBox();
+				if (bbox && bbox.width > 0 && bbox.height > 0)
+				{
+					if (window.console)
+					{
+						console.log('[SVG Convert] 使用getBBox作为最后备用方法，bbox:', bbox);
+					}
+					var matrix = getCumulativeTransform(el);
+					pts = [
+						applyMatrix({x: bbox.x, y: bbox.y}, matrix),
+						applyMatrix({x: bbox.x + bbox.width, y: bbox.y}, matrix),
+						applyMatrix({x: bbox.x + bbox.width, y: bbox.y + bbox.height}, matrix),
+						applyMatrix({x: bbox.x, y: bbox.y + bbox.height}, matrix)
+					];
+					var sanitized = sanitizePoints(pts);
+					if (sanitized.length >= 2)
+					{
+						return {points: sanitized, isClosed: true};
+					}
+				}
+				else if (window.console)
+				{
+					console.warn('[SVG Convert] getBBox返回无效bbox:', bbox);
+				}
+			}
+			catch (e2)
+			{
+				if (window.console)
+				{
+					console.warn('[SVG Convert] getBBox也失败:', e2);
+				}
+			}
+			
+			if (window.console)
+			{
+				console.error('[SVG Convert] 所有方法都失败，无法生成path点。path元素:', el);
+				console.error('[SVG Convert] path d属性:', el.getAttribute('d'));
+			}
+			
 			return {points: [], isClosed: false};
 		}
 		
@@ -20617,6 +21433,11 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 			console.log('[SVG Convert] 路径采样点数:', segments, '路径长度:', total);
 		}
 		
+		// 优化：在循环外获取transform矩阵
+		var matrix = getCumulativeTransform(el);
+		var failedCount = 0;
+		var maxFailures = Math.min(10, segments / 4); // 允许最多25%的失败
+		
 		for (var i = 0; i <= segments; i++)
 		{
 			try
@@ -20625,16 +21446,45 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 				var p = el.getPointAtLength(length);
 				if (p && isFinite(p.x) && isFinite(p.y))
 				{
-			pts.push(applyMatrix({x: p.x, y: p.y}, el.getCTM ? el.getCTM() : null));
-		}
+					pts.push(applyMatrix({x: p.x, y: p.y}, matrix));
+					failedCount = 0; // 重置失败计数
+				}
+				else
+				{
+					failedCount++;
+				}
 			}
 			catch (e)
 			{
+				failedCount++;
 				if (window.console && i === 0)
 				{
 					console.warn('[SVG Convert] getPointAtLength 在位置', i, '失败:', e);
 				}
-				// 继续处理下一个点
+				// 如果失败太多，尝试备用方法
+				if (failedCount > maxFailures && i > 5)
+				{
+					if (window.console)
+					{
+						console.warn('[SVG Convert] getPointAtLength失败过多，切换到备用解析方法');
+					}
+					// 使用备用方法
+					var pathData = el.getAttribute('d');
+					if (pathData && pathData.trim() !== '')
+					{
+						var parsed = parsePathData(pathData);
+						if (parsed.points && parsed.points.length >= 2)
+						{
+							var fallbackPts = [];
+							for (var j = 0; j < parsed.points.length; j++)
+							{
+								fallbackPts.push(applyMatrix(parsed.points[j], matrix));
+							}
+							return {points: sanitizePoints(fallbackPts), isClosed: parsed.isClosed};
+						}
+					}
+					break;
+				}
 			}
 		}
 		
@@ -20642,8 +21492,48 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 		{
 			if (window.console)
 			{
-				console.warn('[SVG Convert] 路径采样点不足，仅', pts.length, '个点');
+				console.warn('[SVG Convert] 路径采样点不足，仅', pts.length, '个点，尝试备用方法');
 			}
+			
+			// 尝试备用方法
+			var pathData = el.getAttribute('d');
+			if (pathData && pathData.trim() !== '')
+			{
+				var parsed = parsePathData(pathData);
+				if (parsed.points && parsed.points.length >= 2)
+				{
+					var fallbackPts = [];
+					for (var j = 0; j < parsed.points.length; j++)
+					{
+						fallbackPts.push(applyMatrix(parsed.points[j], matrix));
+					}
+					return {points: sanitizePoints(fallbackPts), isClosed: parsed.isClosed};
+				}
+			}
+			
+			// 最后的备用方法：使用getBBox
+			try
+			{
+				var bbox = el.getBBox();
+				if (bbox && bbox.width > 0 && bbox.height > 0)
+				{
+					var bboxPts = [
+						applyMatrix({x: bbox.x, y: bbox.y}, matrix),
+						applyMatrix({x: bbox.x + bbox.width, y: bbox.y}, matrix),
+						applyMatrix({x: bbox.x + bbox.width, y: bbox.y + bbox.height}, matrix),
+						applyMatrix({x: bbox.x, y: bbox.y + bbox.height}, matrix)
+					];
+					return {points: sanitizePoints(bboxPts), isClosed: true};
+				}
+			}
+			catch (e2)
+			{
+				if (window.console)
+				{
+					console.warn('[SVG Convert] 所有方法都失败:', e2);
+				}
+			}
+			
 			return {points: [], isClosed: false};
 		}
 		
@@ -20750,7 +21640,7 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 		results.push({style: style});
 	};
 
-	var pushPolygon = function(points, el, computed)
+	var pushPolygon = function(points, el, computed, additionalInfo)
 	{
 		if (points == null || points.length < 2)
 		{
@@ -20761,8 +21651,77 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 		{
 			normalized.push(normalizePoint(points[i]));
 		}
-		var fill = convertColor(el.getAttribute('fill'), el.getAttribute('fill-opacity'), computed ? computed.fill : null, computed ? computed.fillOpacity : null);
-		var stroke = convertColor(el.getAttribute('stroke'), el.getAttribute('stroke-opacity'), computed ? computed.stroke : null, computed ? computed.strokeOpacity : null);
+		var fillAttr = el.getAttribute('fill');
+		var fill = convertColor(fillAttr, el.getAttribute('fill-opacity'), computed ? computed.fill : null, computed ? computed.fillOpacity : null);
+		var strokeAttr = el.getAttribute('stroke');
+		var stroke = convertColor(strokeAttr, el.getAttribute('stroke-opacity'), computed ? computed.stroke : null, computed ? computed.strokeOpacity : null);
+		
+		// 处理fill渐变
+		var gradientInfo = null;
+		if (fillAttr && /^url\(/i.test(fillAttr))
+		{
+			gradientInfo = processGradientRef(fillAttr, el, computed);
+		}
+		
+		// 处理stroke渐变（如果draw.io支持）
+		var strokeGradientInfo = null;
+		if (strokeAttr && /^url\(/i.test(strokeAttr))
+		{
+			strokeGradientInfo = processGradientRef(strokeAttr, el, computed);
+			// 注意：draw.io可能不支持stroke渐变，这里先记录
+			if (window.console && strokeGradientInfo)
+			{
+				console.log('[SVG Convert] 检测到stroke渐变，但draw.io可能不完全支持');
+			}
+		}
+		
+		// 处理marker引用
+		var markerStart = el.getAttribute('marker-start');
+		var markerEnd = el.getAttribute('marker-end');
+		var markerMid = el.getAttribute('marker-mid');
+		if ((markerStart || markerEnd || markerMid) && window.console)
+		{
+			console.log('[SVG Convert] 检测到marker引用，但draw.io可能不完全支持');
+		}
+		
+		// 处理滤镜
+		var filterAttr = el.getAttribute('filter');
+		var filterInfo = null;
+		if (filterAttr && /^url\(/i.test(filterAttr))
+		{
+			filterInfo = processFilterRef(filterAttr, el, computed);
+		}
+		
+		// 处理裁剪路径
+		var clipPathAttr = el.getAttribute('clip-path');
+		var clipPathPoints = null;
+		if (clipPathAttr && /^url\(/i.test(clipPathAttr))
+		{
+			clipPathPoints = processClipPathRef(clipPathAttr, el);
+		}
+		
+		// 处理透明度（opacity属性）
+		var opacity = el.getAttribute('opacity');
+		if (opacity == null || opacity === '' && computed)
+		{
+			opacity = computed.opacity;
+		}
+		if (opacity != null && opacity !== '')
+		{
+			var opacityValue = parseFloat(opacity);
+			if (isFinite(opacityValue) && opacityValue < 1)
+			{
+				// 将opacity应用到fill和stroke
+				if (fill.alpha > 0)
+				{
+					fill.alpha *= opacityValue;
+				}
+				if (stroke.alpha > 0)
+				{
+					stroke.alpha *= opacityValue;
+				}
+			}
+		}
 		var strokeWidth = el.getAttribute('stroke-width');
 		if ((strokeWidth == null || strokeWidth === '') && computed)
 		{
@@ -20799,7 +21758,18 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 			}
 		}
 		var style = 'shape=manualPolygon;polyCoords=' + JSON.stringify(normalized) + ';';
-		if (!fill.color)
+		if (gradientInfo)
+		{
+			// 使用渐变
+			style += 'fillColor=' + (fill.color || '#000000') + ';';
+			style += 'gradientColor=' + gradientInfo.gradientColor + ';';
+			style += 'gradientDirection=' + gradientInfo.gradientDirection + ';';
+			if (fill.alpha < 1)
+			{
+				style += 'fillOpacity=' + Math.round(fill.alpha * 100) + ';';
+			}
+		}
+		else if (!fill.color)
 		{
 			style += 'fillColor=none;';
 		}
@@ -20846,10 +21816,81 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 		{
 			style += 'strokeLinejoin=' + linejoin + ';';
 		}
+		
+		// 处理stroke-miterlimit
+		var miterlimit = el.getAttribute('stroke-miterlimit');
+		if ((miterlimit == null || miterlimit === '') && computed)
+		{
+			miterlimit = computed.strokeMiterlimit;
+		}
+		if (miterlimit != null && miterlimit !== '')
+		{
+			var miterlimitValue = parseFloat(miterlimit);
+			if (isFinite(miterlimitValue) && miterlimitValue !== 4) // 4是默认值
+			{
+				style += 'strokeMiterlimit=' + Number(miterlimitValue).toFixed(2) + ';';
+			}
+		}
+		
 		if (dashPattern)
 		{
 			style += 'dashed=1;dashPattern=' + dashPattern + ';';
 		}
+		
+		// 处理visibility和display属性
+		var visibility = el.getAttribute('visibility');
+		if ((visibility == null || visibility === '') && computed)
+		{
+			visibility = computed.visibility;
+		}
+		if (visibility === 'hidden' || visibility === 'collapse')
+		{
+			// 隐藏元素，跳过
+			return;
+		}
+		
+		var display = el.getAttribute('display');
+		if ((display == null || display === '') && computed)
+		{
+			display = computed.display;
+		}
+		if (display === 'none')
+		{
+			// 不显示元素，跳过
+			return;
+		}
+		
+		// 应用滤镜效果
+		if (filterInfo)
+		{
+			if (filterInfo.shadow)
+			{
+				style += 'shadow=1;';
+				if (filterInfo.shadowBlur)
+				{
+					style += 'shadowBlur=' + Number(filterInfo.shadowBlur).toFixed(2) + ';';
+				}
+				if (filterInfo.shadowOffsetX)
+				{
+					style += 'shadowOffsetX=' + Number(filterInfo.shadowOffsetX).toFixed(2) + ';';
+				}
+				if (filterInfo.shadowOffsetY)
+				{
+					style += 'shadowOffsetY=' + Number(filterInfo.shadowOffsetY).toFixed(2) + ';';
+				}
+			}
+		}
+		
+		// 处理裁剪路径（如果支持）
+		if (clipPathPoints && clipPathPoints.length >= 3)
+		{
+			// 注意：draw.io可能不直接支持clipPath，这里可以记录信息
+			if (window.console)
+			{
+				console.log('[SVG Convert] 检测到clipPath，但draw.io可能不完全支持');
+			}
+		}
+		
 		results.push({style: style});
 	};
 
@@ -20903,6 +21944,211 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 		}
 	}
 	
+	// 解析defs中的定义（渐变、滤镜、遮罩、裁剪路径等）
+	var defs = importedSvg.querySelector('defs');
+	var gradients = {};
+	var filters = {};
+	var masks = {};
+	var clipPaths = {};
+	var markers = {};
+	
+	if (defs)
+	{
+		// 解析渐变
+		var linearGradients = defs.querySelectorAll('linearGradient');
+		var radialGradients = defs.querySelectorAll('radialGradient');
+		for (var gIdx = 0; gIdx < linearGradients.length; gIdx++)
+		{
+			var grad = linearGradients[gIdx];
+			var id = grad.getAttribute('id');
+			if (id)
+			{
+				gradients[id] = {type: 'linear', element: grad};
+			}
+		}
+		for (var gIdx = 0; gIdx < radialGradients.length; gIdx++)
+		{
+			var grad = radialGradients[gIdx];
+			var id = grad.getAttribute('id');
+			if (id)
+			{
+				gradients[id] = {type: 'radial', element: grad};
+			}
+		}
+		
+		// 解析滤镜
+		var filterElements = defs.querySelectorAll('filter');
+		for (var fIdx = 0; fIdx < filterElements.length; fIdx++)
+		{
+			var filter = filterElements[fIdx];
+			var id = filter.getAttribute('id');
+			if (id)
+			{
+				filters[id] = filter;
+			}
+		}
+		
+		// 解析遮罩
+		var maskElements = defs.querySelectorAll('mask');
+		for (var mIdx = 0; mIdx < maskElements.length; mIdx++)
+		{
+			var mask = maskElements[mIdx];
+			var id = mask.getAttribute('id');
+			if (id)
+			{
+				masks[id] = mask;
+			}
+		}
+		
+		// 解析裁剪路径
+		var clipPathElements = defs.querySelectorAll('clipPath');
+		for (var cIdx = 0; cIdx < clipPathElements.length; cIdx++)
+		{
+			var clipPath = clipPathElements[cIdx];
+			var id = clipPath.getAttribute('id');
+			if (id)
+			{
+				clipPaths[id] = clipPath;
+			}
+		}
+		
+		// 解析标记
+		var markerElements = defs.querySelectorAll('marker');
+		for (var mrIdx = 0; mrIdx < markerElements.length; mrIdx++)
+		{
+			var marker = markerElements[mrIdx];
+			var id = marker.getAttribute('id');
+			if (id)
+			{
+				markers[id] = marker;
+			}
+		}
+	}
+	
+	/**
+	 * 解析url()引用，提取ID
+	 */
+	var parseUrlRef = function(urlStr)
+	{
+		if (!urlStr) return null;
+		var match = urlStr.match(/url\(['"]?#([^'"]+)['"]?\)/i);
+		return match ? match[1] : null;
+	};
+	
+	/**
+	 * 处理渐变引用，转换为draw.io样式
+	 */
+	var processGradientRef = function(urlStr, el, computed)
+	{
+		var gradId = parseUrlRef(urlStr);
+		if (!gradId || !gradients[gradId]) return null;
+		
+		var gradDef = gradients[gradId];
+		var gradEl = gradDef.element;
+		var stops = gradEl.querySelectorAll('stop');
+		
+		if (stops.length < 2) return null;
+		
+		// 获取第一个和最后一个stop的颜色作为渐变
+		var firstStop = stops[0];
+		var lastStop = stops[stops.length - 1];
+		var firstColor = firstStop.getAttribute('stop-color') || '#000000';
+		var lastColor = lastStop.getAttribute('stop-color') || '#000000';
+		
+		// 转换颜色
+		var firstColorObj = convertColor(firstColor, firstStop.getAttribute('stop-opacity'), null, null);
+		var lastColorObj = convertColor(lastColor, lastStop.getAttribute('stop-opacity'), null, null);
+		
+		return {
+			gradientColor: lastColorObj.color || '#000000',
+			gradientDirection: gradDef.type === 'linear' ? 'south' : 'radial'
+		};
+	};
+	
+	/**
+	 * 处理滤镜引用，转换为draw.io样式
+	 */
+	var processFilterRef = function(urlStr, el, computed)
+	{
+		var filterId = parseUrlRef(urlStr);
+		if (!filterId || !filters[filterId]) return null;
+		
+		var filterEl = filters[filterId];
+		var filterEffects = [];
+		
+		// 检查常见滤镜效果
+		var blur = filterEl.querySelector('feGaussianBlur');
+		if (blur)
+		{
+			var stdDev = parseFloat(blur.getAttribute('stdDeviation') || 0);
+			if (stdDev > 0)
+			{
+				filterEffects.push({type: 'blur', value: stdDev * avgScale});
+			}
+		}
+		
+		var offset = filterEl.querySelector('feOffset');
+		if (offset)
+		{
+			var dx = parseFloat(offset.getAttribute('dx') || 0);
+			var dy = parseFloat(offset.getAttribute('dy') || 0);
+			if (dx !== 0 || dy !== 0)
+			{
+				filterEffects.push({type: 'offset', dx: dx * avgScale, dy: dy * avgScale});
+			}
+		}
+		
+		// 如果有模糊效果，转换为shadow
+		if (filterEffects.length > 0)
+		{
+			var blurEffect = filterEffects.find(function(e) { return e.type === 'blur'; });
+			var offsetEffect = filterEffects.find(function(e) { return e.type === 'offset'; });
+			if (blurEffect)
+			{
+				return {
+					shadow: 1,
+					shadowBlur: blurEffect.value,
+					shadowOffsetX: offsetEffect ? offsetEffect.dx : 0,
+					shadowOffsetY: offsetEffect ? offsetEffect.dy : 0
+				};
+			}
+		}
+		
+		return null;
+	};
+	
+	/**
+	 * 处理裁剪路径引用
+	 */
+	var processClipPathRef = function(urlStr, el)
+	{
+		var clipId = parseUrlRef(urlStr);
+		if (!clipId || !clipPaths[clipId]) return null;
+		
+		var clipPathEl = clipPaths[clipId];
+		// 获取clipPath中的路径元素
+		var pathEl = clipPathEl.querySelector('path');
+		if (pathEl)
+		{
+			try
+			{
+				var pathResult = samplePath(pathEl);
+				if (pathResult.points && pathResult.points.length >= 2)
+				{
+					return pathResult.points;
+				}
+			}
+			catch (e)
+			{
+				if (window.console)
+				{
+					console.warn('[SVG Convert] 处理clipPath失败:', e);
+				}
+			}
+		}
+		return null;
+	};
+
 	// 重新获取所有元素（包括 use 引用的元素）
 	elements = importedSvg.querySelectorAll(supportedElements);
 
@@ -20961,6 +22207,66 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 					// 标记已处理，避免下面的 pushPolygon 再次处理
 					pts = null;
 				}
+				else
+				{
+					// samplePath失败，尝试使用getBBox作为最后的备用方法
+					if (window.console)
+					{
+						console.warn('[SVG Convert] path元素samplePath失败，返回点数:', pts ? pts.length : 0);
+						console.warn('[SVG Convert] path d属性:', el.getAttribute('d') ? el.getAttribute('d').substring(0, 200) : 'none');
+					}
+					try
+					{
+						if (el.getBBox && typeof el.getBBox === 'function')
+						{
+							var bbox = el.getBBox();
+							if (bbox && bbox.width > 0 && bbox.height > 0)
+							{
+								if (window.console)
+								{
+									console.log('[SVG Convert] 使用getBBox作为path的备用方法，bbox:', bbox);
+								}
+								var matrix = getCumulativeTransform(el);
+								var bboxPts = [
+									applyMatrix({x: bbox.x, y: bbox.y}, matrix),
+									applyMatrix({x: bbox.x + bbox.width, y: bbox.y}, matrix),
+									applyMatrix({x: bbox.x + bbox.width, y: bbox.y + bbox.height}, matrix),
+									applyMatrix({x: bbox.x, y: bbox.y + bbox.height}, matrix)
+								];
+								pts = sanitizePoints(bboxPts);
+								if (pts && pts.length >= 2)
+								{
+									if (window.console)
+									{
+										console.log('[SVG Convert] getBBox备用方法成功，生成', pts.length, '个点');
+									}
+									pushPolygon(pts, el, computed);
+									pts = null; // 标记已处理
+								}
+								else if (window.console)
+								{
+									console.warn('[SVG Convert] getBBox备用方法生成的点经过清理后不足2个，pts长度:', pts ? pts.length : 0);
+								}
+							}
+							else if (window.console)
+							{
+								console.warn('[SVG Convert] getBBox返回无效bbox:', bbox);
+							}
+						}
+						else if (window.console)
+						{
+							console.warn('[SVG Convert] path元素没有getBBox方法');
+						}
+					}
+					catch (bboxError)
+					{
+						if (window.console)
+						{
+							console.error('[SVG Convert] path元素getBBox也失败:', bboxError);
+							console.error('[SVG Convert] path d属性:', el.getAttribute('d') ? el.getAttribute('d').substring(0, 200) : 'none');
+						}
+					}
+				}
 			}
 			catch (e)
 			{
@@ -20976,12 +22282,13 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 		{
 			// polygon 是闭合的，使用 polygon
 			pts = [];
+			var matrix = getCumulativeTransform(el);
 			if (el.points && el.points.length > 0)
 			{
 				for (var j = 0; j < el.points.length; j++)
 				{
 					var point = el.points[j];
-					pts.push(applyMatrix({x: point.x, y: point.y}, el.getCTM ? el.getCTM() : null));
+					pts.push(applyMatrix({x: point.x, y: point.y}, matrix));
 				}
 			}
 			pts = sanitizePoints(pts);
@@ -20990,12 +22297,13 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 		{
 			// polyline 是开放的，使用 natural spline
 			pts = [];
+			var matrix = getCumulativeTransform(el);
 			if (el.points && el.points.length > 0)
 			{
 				for (var j = 0; j < el.points.length; j++)
 				{
 					var point = el.points[j];
-					pts.push(applyMatrix({x: point.x, y: point.y}, el.getCTM ? el.getCTM() : null));
+					pts.push(applyMatrix({x: point.x, y: point.y}, matrix));
 				}
 			}
 			pts = sanitizePoints(pts);
@@ -21025,12 +22333,76 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 			var y = parseFloat(el.getAttribute('y') || 0);
 			var width = parseFloat(el.getAttribute('width'));
 			var height = parseFloat(el.getAttribute('height'));
-			pts = sanitizePoints([
-				applyMatrix({x: x, y: y}, el.getCTM ? el.getCTM() : null),
-				applyMatrix({x: x + width, y: y}, el.getCTM ? el.getCTM() : null),
-				applyMatrix({x: x + width, y: y + height}, el.getCTM ? el.getCTM() : null),
-				applyMatrix({x: x, y: y + height}, el.getCTM ? el.getCTM() : null)
-			]);
+			var rx = parseFloat(el.getAttribute('rx') || 0);
+			var ry = parseFloat(el.getAttribute('ry') || 0);
+			
+			// 如果ry未指定，使用rx的值
+			if (ry === 0 && rx > 0)
+			{
+				ry = rx;
+			}
+			
+			var matrix = getCumulativeTransform(el);
+			
+			// 如果有圆角，创建带圆角的多边形
+			if (rx > 0 && ry > 0)
+			{
+				// 限制圆角半径不超过宽度和高度的一半
+				rx = Math.min(rx, width / 2);
+				ry = Math.min(ry, height / 2);
+				
+				// 根据圆角大小动态计算分段数
+				var cornerSegments = Math.max(8, Math.min(32, Math.round(Math.max(rx, ry) / Math.max(vbWidth, vbHeight) * 100)));
+				pts = [];
+				
+				// 右上角（从顶部到右侧，角度从0到-π/2）
+				for (var j = 0; j <= cornerSegments; j++)
+				{
+					var angle = -Math.PI / 2 * j / cornerSegments;
+					var px = x + width - rx + rx * Math.cos(angle);
+					var py = y + ry + ry * Math.sin(angle);
+					pts.push(applyMatrix({x: px, y: py}, matrix));
+				}
+				
+				// 右下角（从右侧到底部，角度从-π/2到-π）
+				for (var j = 1; j <= cornerSegments; j++)
+				{
+					var angle = -Math.PI / 2 - Math.PI / 2 * j / cornerSegments;
+					var px = x + width - rx + rx * Math.cos(angle);
+					var py = y + height - ry + ry * Math.sin(angle);
+					pts.push(applyMatrix({x: px, y: py}, matrix));
+				}
+				
+				// 左下角（从底部到左侧，角度从-π到-3π/2或π到π/2）
+				for (var j = 1; j <= cornerSegments; j++)
+				{
+					var angle = Math.PI / 2 * j / cornerSegments;
+					var px = x + rx + rx * Math.cos(angle);
+					var py = y + height - ry + ry * Math.sin(angle);
+					pts.push(applyMatrix({x: px, y: py}, matrix));
+				}
+				
+				// 左上角（从左侧到顶部，角度从π/2到π）
+				for (var j = 1; j <= cornerSegments; j++)
+				{
+					var angle = Math.PI / 2 + Math.PI / 2 * j / cornerSegments;
+					var px = x + rx + rx * Math.cos(angle);
+					var py = y + ry + ry * Math.sin(angle);
+					pts.push(applyMatrix({x: px, y: py}, matrix));
+				}
+				
+				pts = sanitizePoints(pts);
+			}
+			else
+			{
+				// 无圆角，使用简单的4点矩形
+				pts = sanitizePoints([
+					applyMatrix({x: x, y: y}, matrix),
+					applyMatrix({x: x + width, y: y}, matrix),
+					applyMatrix({x: x + width, y: y + height}, matrix),
+					applyMatrix({x: x, y: y + height}, matrix)
+				]);
+			}
 		}
 		else if (tagName === 'circle' || tagName === 'ellipse')
 		{
@@ -21042,27 +22414,226 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 			{
 				ry = rx;
 			}
-			var segments = 40;
+			// 根据尺寸动态调整分段数，确保精度
+			var maxRadius = Math.max(rx, ry);
+			var segments = Math.max(32, Math.min(128, Math.round(maxRadius / Math.max(vbWidth, vbHeight) * 200)));
+			var matrix = getCumulativeTransform(el);
 			pts = [];
 			for (var j = 0; j < segments; j++)
 			{
 				var angle = 2 * Math.PI * j / segments;
 				var px = cx + rx * Math.cos(angle);
 				var py = cy + ry * Math.sin(angle);
-				pts.push(applyMatrix({x: px, y: py}, el.getCTM ? el.getCTM() : null));
+				pts.push(applyMatrix({x: px, y: py}, matrix));
 			}
 		}
 		else if (tagName === 'line')
 		{
+			var matrix = getCumulativeTransform(el);
 			pts = sanitizePoints([
-				applyMatrix({x: parseFloat(el.getAttribute('x1') || 0), y: parseFloat(el.getAttribute('y1') || 0)}, el.getCTM ? el.getCTM() : null),
-				applyMatrix({x: parseFloat(el.getAttribute('x2') || 0), y: parseFloat(el.getAttribute('y2') || 0)}, el.getCTM ? el.getCTM() : null)
+				applyMatrix({x: parseFloat(el.getAttribute('x1') || 0), y: parseFloat(el.getAttribute('y1') || 0)}, matrix),
+				applyMatrix({x: parseFloat(el.getAttribute('x2') || 0), y: parseFloat(el.getAttribute('y2') || 0)}, matrix)
 			]);
+		}
+		else if (tagName === 'text')
+		{
+			// 处理文本元素，支持tspan子元素
+			try
+			{
+				var matrix = getCumulativeTransform(el);
+				var x = parseFloat(el.getAttribute('x') || 0);
+				var y = parseFloat(el.getAttribute('y') || 0);
+				
+				// 收集所有文本内容，包括tspan
+				var collectTextContent = function(textEl)
+				{
+					var content = '';
+					var children = textEl.childNodes;
+					for (var cIdx = 0; cIdx < children.length; cIdx++)
+					{
+						var child = children[cIdx];
+						if (child.nodeType === 3) // 文本节点
+						{
+							content += child.nodeValue || child.textContent || '';
+						}
+						else if (child.nodeName && child.nodeName.toLowerCase() === 'tspan')
+						{
+							// 处理tspan元素
+							var tspanText = child.textContent || child.text || '';
+							content += tspanText;
+							// 如果有换行，添加换行符
+							if (child.getAttribute('x') != null || child.getAttribute('dy') != null)
+							{
+								// tspan可能表示新行
+								var dy = parseFloat(child.getAttribute('dy') || 0);
+								if (dy > 0 && content.length > 0 && content[content.length - 1] !== '\n')
+								{
+									content = content.trim() + '\n' + tspanText;
+								}
+							}
+						}
+					}
+					return content || textEl.textContent || textEl.text || '';
+				};
+				
+				var textContent = collectTextContent(el);
+				
+				// 获取文本样式
+				var fontSize = parseFloat(el.getAttribute('font-size') || (computed ? computed.fontSize : '12'));
+				if (computed && !fontSize)
+				{
+					fontSize = parseFloat(computed.fontSize) || 12;
+				}
+				fontSize = fontSize * avgScale;
+				
+				var fontFamily = el.getAttribute('font-family') || (computed ? computed.fontFamily : 'Arial');
+				var fontWeight = el.getAttribute('font-weight') || (computed ? computed.fontWeight : 'normal');
+				var fontStyle = el.getAttribute('font-style') || (computed ? computed.fontStyle : 'normal');
+				var textAnchor = el.getAttribute('text-anchor') || 'start';
+				var fill = convertColor(el.getAttribute('fill'), el.getAttribute('fill-opacity'), computed ? computed.fill : null, computed ? computed.fillOpacity : null);
+				
+				// 获取文本边界框
+				var bbox = null;
+				try
+				{
+					if (el.getBBox && typeof el.getBBox === 'function')
+					{
+						bbox = el.getBBox();
+					}
+				}
+				catch (e)
+				{
+					// 如果getBBox失败，使用估算
+					var lines = textContent.split('\n');
+					var maxLineLength = 0;
+					for (var lIdx = 0; lIdx < lines.length; lIdx++)
+					{
+						if (lines[lIdx].length > maxLineLength)
+						{
+							maxLineLength = lines[lIdx].length;
+						}
+					}
+					bbox = {
+						x: x,
+						y: y - fontSize,
+						width: maxLineLength * fontSize * 0.6,
+						height: lines.length * fontSize * 1.2
+					};
+				}
+				
+				if (bbox && bbox.width > 0 && bbox.height > 0)
+				{
+					// 将文本转换为矩形（作为占位符，实际文本内容可以通过label显示）
+					pts = sanitizePoints([
+						applyMatrix({x: bbox.x, y: bbox.y}, matrix),
+						applyMatrix({x: bbox.x + bbox.width, y: bbox.y}, matrix),
+						applyMatrix({x: bbox.x + bbox.width, y: bbox.y + bbox.height}, matrix),
+						applyMatrix({x: bbox.x, y: bbox.y + bbox.height}, matrix)
+					]);
+					
+					// 存储文本信息在结果中，以便后续处理
+					if (pts && pts.length >= 4)
+					{
+						// 创建一个带文本标签的多边形
+						var normalized = [];
+						for (var j = 0; j < pts.length; j++)
+						{
+							normalized.push(normalizePoint(pts[j]));
+						}
+						var style = 'shape=manualPolygon;polyCoords=' + JSON.stringify(normalized) + ';';
+						style += 'fillColor=none;strokeColor=none;';
+						style += 'labelPosition=center;verticalAlign=middle;';
+						
+						// 设置文本对齐
+						if (textAnchor === 'middle' || textAnchor === 'center')
+						{
+							style += 'align=center;';
+						}
+						else if (textAnchor === 'end' || textAnchor === 'right')
+						{
+							style += 'align=right;';
+						}
+						else
+						{
+							style += 'align=left;';
+						}
+						
+						style += 'fontSize=' + Math.round(fontSize) + ';fontFamily=' + fontFamily + ';';
+						if (fontWeight === 'bold' || parseInt(fontWeight) >= 600)
+						{
+							style += 'fontStyle=1;';
+						}
+						if (fontStyle === 'italic')
+						{
+							style += 'fontStyle=2;';
+						}
+						if (fill.color)
+						{
+							style += 'fontColor=' + fill.color + ';';
+						}
+						var newCell = {style: style, label: textContent};
+						results.push(newCell);
+						pts = null; // 标记已处理
+					}
+				}
+			}
+			catch (e)
+			{
+				if (window.console)
+				{
+					console.warn('[SVG Convert] 处理text元素失败:', e);
+				}
+			}
+		}
+		else if (tagName === 'image')
+		{
+			// 处理图像元素
+			try
+			{
+				var matrix = getCumulativeTransform(el);
+				var x = parseFloat(el.getAttribute('x') || 0);
+				var y = parseFloat(el.getAttribute('y') || 0);
+				var width = parseFloat(el.getAttribute('width'));
+				var height = parseFloat(el.getAttribute('height'));
+				var href = el.getAttribute('href') || el.getAttribute('xlink:href');
+				
+				if (width > 0 && height > 0 && href)
+				{
+					// 将图像转换为矩形，使用image形状
+					pts = sanitizePoints([
+						applyMatrix({x: x, y: y}, matrix),
+						applyMatrix({x: x + width, y: y}, matrix),
+						applyMatrix({x: x + width, y: y + height}, matrix),
+						applyMatrix({x: x, y: y + height}, matrix)
+					]);
+					
+					if (pts && pts.length >= 4)
+					{
+						var normalized = [];
+						for (var j = 0; j < pts.length; j++)
+						{
+							normalized.push(normalizePoint(pts[j]));
+						}
+						// 使用image形状
+						var style = 'shape=image;verticalLabelPosition=bottom;verticalAlign=top;imageAspect=0;aspect=fixed;image=' + href + ';';
+						var newCell = {style: style};
+						results.push(newCell);
+						pts = null; // 标记已处理
+					}
+				}
+			}
+			catch (e)
+			{
+				if (window.console)
+				{
+					console.warn('[SVG Convert] 处理image元素失败:', e);
+				}
+			}
 		}
 		else
 		{
 			// 对于其他元素类型，尝试使用 getBBox 获取边界框并转换为矩形
-			// 这包括：g, use, text, image 等
+			// 这包括：g, use 等
 			try
 			{
 				if (el.getBBox && typeof el.getBBox === 'function')
@@ -21071,11 +22642,12 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 					if (bbox && bbox.width > 0 && bbox.height > 0)
 					{
 						// 将边界框转换为矩形多边形
+						var matrix = getCumulativeTransform(el);
 						pts = sanitizePoints([
-							applyMatrix({x: bbox.x, y: bbox.y}, el.getCTM ? el.getCTM() : null),
-							applyMatrix({x: bbox.x + bbox.width, y: bbox.y}, el.getCTM ? el.getCTM() : null),
-							applyMatrix({x: bbox.x + bbox.width, y: bbox.y + bbox.height}, el.getCTM ? el.getCTM() : null),
-							applyMatrix({x: bbox.x, y: bbox.y + bbox.height}, el.getCTM ? el.getCTM() : null)
+							applyMatrix({x: bbox.x, y: bbox.y}, matrix),
+							applyMatrix({x: bbox.x + bbox.width, y: bbox.y}, matrix),
+							applyMatrix({x: bbox.x + bbox.width, y: bbox.y + bbox.height}, matrix),
+							applyMatrix({x: bbox.x, y: bbox.y + bbox.height}, matrix)
 						]);
 						
 						if (window.console)
@@ -21100,9 +22672,15 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 		}
 		else if (pts == null || pts.length <= 1)
 		{
-			if (window.console)
+			// 对于path元素，如果pts为null，可能已经通过getBBox备用方法处理过了
+			// 只有在确实没有处理过的情况下才输出警告
+			if (tagName !== 'path' || (pts != null && pts.length <= 1))
 			{
-				console.warn('[SVG Convert] 跳过', tagName, '元素，无法生成有效点');
+				if (window.console)
+				{
+					console.warn('[SVG Convert] 跳过', tagName, '元素，无法生成有效点', 
+						tagName === 'path' ? '(path元素可能已通过备用方法处理)' : '');
+				}
 			}
 		}
 	}
@@ -21129,17 +22707,24 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 		
 		// 输出支持的 SVG 元素类型总结
 		var supportedTypes = {
-			'path (闭合)': '闭合路径 - 使用 polygon 转换',
+			'path (闭合)': '闭合路径 - 使用 polygon 转换，支持所有path命令',
 			'path (开放)': '开放路径 - 使用 natural spline 转换' + (hasNaturalSpline ? '' : ' (不可用时回退到 polygon)'),
 			'polygon': '多边形（闭合）- 直接读取点，使用 polygon',
 			'polyline': '折线（开放）- 直接读取点，使用 natural spline' + (hasNaturalSpline ? '' : ' (不可用时回退到 polygon)'),
-			'rect': '矩形 - 转换为4点多边形',
-			'circle': '圆形 - 转换为多边形（40段）',
-			'ellipse': '椭圆 - 转换为多边形（40段）',
+			'rect': '矩形 - 支持圆角(rx, ry)，转换为多边形',
+			'circle': '圆形 - 转换为多边形（动态分段，32-128段）',
+			'ellipse': '椭圆 - 转换为多边形（动态分段，32-128段）',
 			'line': '直线 - 转换为2点多边形',
-			'其他': '其他元素（g, use, text, image等）- 使用 getBBox() 转换为边界框矩形'
+			'text': '文本 - 支持tspan子元素，转换为带标签的多边形',
+			'image': '图像 - 转换为image形状',
+			'渐变': 'linearGradient, radialGradient - 转换为draw.io渐变样式',
+			'滤镜': 'filter, feGaussianBlur, feOffset - 转换为shadow样式',
+			'裁剪': 'clipPath - 解析裁剪路径（部分支持）',
+			'标记': 'marker - 检测并记录（部分支持）',
+			'其他': '其他元素（g, use等）- 使用 getBBox() 转换为边界框矩形'
 		};
 		console.log('[SVG Convert] 支持的元素类型:', supportedTypes);
+		console.log('[SVG Convert] 支持的属性: fill, stroke, opacity, transform, gradient, filter, clip-path, marker, visibility, display等');
 	}
 
 	var parent = model.getParent(cell);
@@ -21147,7 +22732,8 @@ EditorUi.prototype.convertSvgCellToShapes = function(cell, svgString)
 	for (var idx = 0; idx < results.length; idx++)
 	{
 		var entry = results[idx];
-		var newCell = new mxCell('', geo.clone(), entry.style);
+		var cellValue = entry.label || '';
+		var newCell = new mxCell(cellValue, geo.clone(), entry.style);
 		newCell.vertex = true;
 		model.add(parent, newCell);
 		inserted.push(newCell);

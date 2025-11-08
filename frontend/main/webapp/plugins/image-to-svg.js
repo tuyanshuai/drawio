@@ -138,7 +138,7 @@ Draw.loadPlugin(function(editorUi)
 	}
 	
 	/**
-	 * 使用vtracer将图片转换为SVG
+	 * 使用vtracer将图片转换为SVG（兼容旧接口，默认启用OCR）
 	 * 参考: https://github.com/visioncortex/vtracer/tree/master/webapp
 	 */
 	function convertImageToSvg(imageDataUri, callback)
@@ -154,18 +154,534 @@ Draw.loadPlugin(function(editorUi)
 			console.log('[Image to SVG] 开始转换图片为SVG...');
 		}
 		
-		// 检查是否加载了vtracer
-		if (typeof window.VTracer === 'undefined')
+		// 使用默认选项（启用OCR）
+		var options = {
+			enableOCR: true
+		};
+		
+		convertImageToSvgWithOptions(imageDataUri, options, callback);
+	}
+	
+	/**
+	 * 内部函数：执行转换（兼容旧代码）
+	 */
+	function performConversion(imageDataUri, callback)
+	{
+		// 使用默认选项（启用OCR）
+		var options = {
+			enableOCR: true
+		};
+		performConversionWithOptions(imageDataUri, options, callback);
+	}
+	
+	/**
+	 * OCR相关变量
+	 */
+	var tesseractWorker = null;
+	var tesseractLoading = false;
+	var tesseractLoadCallbacks = [];
+	
+	/**
+	 * 加载Tesseract.js OCR库
+	 * 使用CDN加载，支持中文识别
+	 */
+	function loadTesseract(callback)
+	{
+		if (tesseractWorker)
 		{
-			// 尝试动态加载vtracer
-			loadVtracer(function()
+			// 已经加载
+			if (callback) callback();
+			return;
+		}
+		
+		if (callback)
+		{
+			tesseractLoadCallbacks.push(callback);
+		}
+		
+		if (tesseractLoading)
+		{
+			// 正在加载，等待完成
+			return;
+		}
+		
+		tesseractLoading = true;
+		
+		if (window.console)
+		{
+			console.log('[Image to SVG] 开始加载Tesseract.js OCR库...');
+		}
+		
+		// 动态加载Tesseract.js
+		// 使用CDN，支持中文（chi_sim）和英文（eng）
+		if (typeof Tesseract === 'undefined')
+		{
+			// 加载Tesseract.js核心库
+			var script = document.createElement('script');
+			script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js';
+			script.onload = function()
 			{
-				performConversion(imageDataUri, callback);
-			});
+				if (window.console)
+				{
+					console.log('[Image to SVG] Tesseract.js加载成功，初始化Worker...');
+				}
+				
+				// 初始化Tesseract Worker
+				Tesseract.createWorker({
+					langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+					logger: function(m) {
+						if (window.console && m.status === 'recognizing text')
+						{
+							console.log('[OCR] 进度:', Math.round(m.progress * 100) + '%');
+						}
+					}
+				}).then(function(worker)
+				{
+					tesseractWorker = worker;
+					tesseractLoading = false;
+					
+					if (window.console)
+					{
+						console.log('[Image to SVG] Tesseract Worker初始化成功');
+					}
+					
+					// 加载中文和英文语言包
+					return worker.loadLanguage('chi_sim+eng');
+				}).then(function()
+				{
+					return tesseractWorker.initialize('chi_sim+eng');
+				}).then(function()
+				{
+					if (window.console)
+					{
+						console.log('[Image to SVG] Tesseract OCR准备就绪');
+					}
+					
+					// 执行所有等待的回调
+					tesseractLoadCallbacks.forEach(function(cb) { cb(); });
+					tesseractLoadCallbacks = [];
+				}).catch(function(error)
+				{
+					if (window.console)
+					{
+						console.error('[Image to SVG] Tesseract初始化失败:', error);
+					}
+					tesseractLoading = false;
+					tesseractWorker = null;
+					
+					// 即使OCR失败，也继续执行回调（使用vtracer转换）
+					tesseractLoadCallbacks.forEach(function(cb) { cb(); });
+					tesseractLoadCallbacks = [];
+				});
+			};
+			
+			script.onerror = function()
+			{
+				if (window.console)
+				{
+					console.error('[Image to SVG] Tesseract.js加载失败');
+				}
+				tesseractLoading = false;
+				tesseractWorker = null;
+				
+				// 即使加载失败，也继续执行回调（使用vtracer转换）
+				tesseractLoadCallbacks.forEach(function(cb) { cb(); });
+				tesseractLoadCallbacks = [];
+			};
+			
+			document.head.appendChild(script);
 		}
 		else
 		{
-			performConversion(imageDataUri, callback);
+			// Tesseract已加载，直接初始化Worker
+			Tesseract.createWorker({
+				langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+				logger: function(m) {
+					if (window.console && m.status === 'recognizing text')
+					{
+						console.log('[OCR] 进度:', Math.round(m.progress * 100) + '%');
+					}
+				}
+			}).then(function(worker)
+			{
+				tesseractWorker = worker;
+				tesseractLoading = false;
+				return worker.loadLanguage('chi_sim+eng');
+			}).then(function()
+			{
+				return tesseractWorker.initialize('chi_sim+eng');
+			}).then(function()
+			{
+				if (window.console)
+				{
+					console.log('[Image to SVG] Tesseract OCR准备就绪');
+				}
+				tesseractLoadCallbacks.forEach(function(cb) { cb(); });
+				tesseractLoadCallbacks = [];
+			}).catch(function(error)
+			{
+				if (window.console)
+				{
+					console.error('[Image to SVG] Tesseract初始化失败:', error);
+				}
+				tesseractLoading = false;
+				tesseractWorker = null;
+				tesseractLoadCallbacks.forEach(function(cb) { cb(); });
+				tesseractLoadCallbacks = [];
+			});
+		}
+	}
+	
+	/**
+	 * 使用OCR识别图片中的文字
+	 * 返回文字区域和文字内容
+	 */
+	function recognizeTextWithOCR(imageDataUri, callback)
+	{
+		if (!tesseractWorker)
+		{
+			if (window.console)
+			{
+				console.warn('[Image to SVG] OCR未初始化，跳过文字识别');
+			}
+			callback([]);
+			return;
+		}
+		
+		if (window.console)
+		{
+			console.log('[Image to SVG] 开始OCR文字识别...');
+		}
+		
+		// 使用Tesseract识别文字
+		tesseractWorker.recognize(imageDataUri, 'chi_sim+eng', {
+			tessedit_pageseg_mode: '6', // 统一文本块
+		}).then(function(result)
+		{
+			if (window.console)
+			{
+				console.log('[Image to SVG] OCR识别完成，找到', result.data.words.length, '个文字区域');
+			}
+			
+			// 提取文字信息
+			var textRegions = [];
+			var words = result.data.words || [];
+			
+			for (var i = 0; i < words.length; i++)
+			{
+				var word = words[i];
+				if (word.text && word.text.trim().length > 0 && word.bbox)
+				{
+					textRegions.push({
+						text: word.text.trim(),
+						x: word.bbox.x0,
+						y: word.bbox.y0,
+						width: word.bbox.x1 - word.bbox.x0,
+						height: word.bbox.y1 - word.bbox.y0,
+						confidence: word.confidence || 0
+					});
+				}
+			}
+			
+			// 合并相近的文字区域（同一行的文字）
+			var mergedRegions = mergeTextRegions(textRegions);
+			
+			if (window.console)
+			{
+				console.log('[Image to SVG] 合并后文字区域数量:', mergedRegions.length);
+			}
+			
+			callback(mergedRegions);
+		}).catch(function(error)
+		{
+			if (window.console)
+			{
+				console.error('[Image to SVG] OCR识别失败:', error);
+			}
+			callback([]);
+		});
+	}
+	
+	/**
+	 * 合并相近的文字区域
+	 * 将同一行或相近的文字合并为一个区域
+	 */
+	function mergeTextRegions(regions)
+	{
+		if (regions.length === 0) return [];
+		
+		// 按Y坐标排序
+		regions.sort(function(a, b) {
+			var yDiff = a.y - b.y;
+			if (Math.abs(yDiff) < a.height * 0.5) // 同一行
+			{
+				return a.x - b.x; // 同一行按X排序
+			}
+			return yDiff;
+		});
+		
+		var merged = [];
+		var currentLine = null;
+		
+		for (var i = 0; i < regions.length; i++)
+		{
+			var region = regions[i];
+			
+			if (!currentLine)
+			{
+				currentLine = {
+					text: region.text,
+					x: region.x,
+					y: region.y,
+					width: region.width,
+					height: region.height,
+					confidence: region.confidence
+				};
+			}
+			else
+			{
+				// 检查是否在同一行（Y坐标相近）
+				var yDiff = Math.abs(region.y - currentLine.y);
+				var avgHeight = (currentLine.height + region.height) / 2;
+				
+				if (yDiff < avgHeight * 0.6) // 同一行
+				{
+					// 合并文字
+					currentLine.text += ' ' + region.text;
+					currentLine.width = Math.max(currentLine.x + currentLine.width, region.x + region.width) - currentLine.x;
+					currentLine.height = Math.max(currentLine.height, region.height);
+					currentLine.confidence = Math.min(currentLine.confidence, region.confidence);
+				}
+				else
+				{
+					// 新的一行
+					merged.push(currentLine);
+					currentLine = {
+						text: region.text,
+						x: region.x,
+						y: region.y,
+						width: region.width,
+						height: region.height,
+						confidence: region.confidence
+					};
+				}
+			}
+		}
+		
+		if (currentLine)
+		{
+			merged.push(currentLine);
+		}
+		
+		return merged;
+	}
+	
+	/**
+	 * 检测文字区域周围的背景色
+	 * 返回RGB颜色对象 {r, g, b}
+	 */
+	function detectBackgroundColor(canvas, ctx, region, padding)
+	{
+		var x = Math.max(0, region.x - padding);
+		var y = Math.max(0, region.y - padding);
+		var width = Math.min(canvas.width - x, region.width + padding * 2);
+		var height = Math.min(canvas.height - y, region.height + padding * 2);
+		
+		// 采样文字区域周围的像素（边缘区域）
+		var sampleSize = 3; // 采样边缘的宽度
+		var samples = [];
+		
+		// 采样上边缘
+		for (var i = 0; i < width; i += 2)
+		{
+			for (var j = 0; j < sampleSize && j < height; j++)
+			{
+				var pixelData = ctx.getImageData(x + i, y + j, 1, 1).data;
+				samples.push({r: pixelData[0], g: pixelData[1], b: pixelData[2]});
+			}
+		}
+		
+		// 采样下边缘
+		for (var i = 0; i < width; i += 2)
+		{
+			for (var j = Math.max(0, height - sampleSize); j < height; j++)
+			{
+				var pixelData = ctx.getImageData(x + i, y + j, 1, 1).data;
+				samples.push({r: pixelData[0], g: pixelData[1], b: pixelData[2]});
+			}
+		}
+		
+		// 采样左边缘
+		for (var j = 0; j < height; j += 2)
+		{
+			for (var i = 0; i < sampleSize && i < width; i++)
+			{
+				var pixelData = ctx.getImageData(x + i, y + j, 1, 1).data;
+				samples.push({r: pixelData[0], g: pixelData[1], b: pixelData[2]});
+			}
+		}
+		
+		// 采样右边缘
+		for (var j = 0; j < height; j += 2)
+		{
+			for (var i = Math.max(0, width - sampleSize); i < width; i++)
+			{
+				var pixelData = ctx.getImageData(x + i, y + j, 1, 1).data;
+				samples.push({r: pixelData[0], g: pixelData[1], b: pixelData[2]});
+			}
+		}
+		
+		if (samples.length === 0)
+		{
+			// 如果无法采样，返回白色作为默认值
+			return {r: 255, g: 255, b: 255};
+		}
+		
+		// 计算平均颜色
+		var sumR = 0, sumG = 0, sumB = 0;
+		for (var k = 0; k < samples.length; k++)
+		{
+			sumR += samples[k].r;
+			sumG += samples[k].g;
+			sumB += samples[k].b;
+		}
+		
+		return {
+			r: Math.round(sumR / samples.length),
+			g: Math.round(sumG / samples.length),
+			b: Math.round(sumB / samples.length)
+		};
+	}
+	
+	/**
+	 * 从图片中移除文字区域（用检测到的背景色填充）
+	 * 返回处理后的图片data URI
+	 */
+	function removeTextRegionsFromImage(imageDataUri, textRegions, callback)
+	{
+		var img = new Image();
+		img.onload = function()
+		{
+			var canvas = document.createElement('canvas');
+			var ctx = canvas.getContext('2d');
+			canvas.width = img.width;
+			canvas.height = img.height;
+			
+			// 绘制原图
+			ctx.drawImage(img, 0, 0);
+			
+			// 获取图片数据用于检测背景色
+			var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+			
+			// 用检测到的背景色填充每个文字区域
+			for (var i = 0; i < textRegions.length; i++)
+			{
+				var region = textRegions[i];
+				var padding = 2; // 扩大填充区域，确保完全覆盖
+				
+				// 检测文字区域周围的背景色
+				var bgColor = detectBackgroundColor(canvas, ctx, region, padding + 5);
+				
+				// 使用检测到的背景色填充
+				ctx.fillStyle = 'rgb(' + bgColor.r + ',' + bgColor.g + ',' + bgColor.b + ')';
+				ctx.fillRect(
+					Math.max(0, region.x - padding),
+					Math.max(0, region.y - padding),
+					region.width + padding * 2,
+					region.height + padding * 2
+				);
+				
+				if (window.console && i < 3)
+				{
+					console.log('[Image to SVG] 文字区域', i, '检测到的背景色:', bgColor);
+				}
+			}
+			
+			// 转换为data URI
+			var processedDataUri = canvas.toDataURL('image/png');
+			callback(processedDataUri);
+		};
+		
+		img.onerror = function()
+		{
+			if (window.console)
+			{
+				console.error('[Image to SVG] 加载图片失败');
+			}
+			callback(imageDataUri); // 失败时返回原图
+		};
+		
+		img.src = imageDataUri;
+	}
+	
+	/**
+	 * 将文字区域添加到SVG中
+	 */
+	function addTextRegionsToSvg(svgString, textRegions, imageWidth, imageHeight)
+	{
+		if (!svgString || textRegions.length === 0)
+		{
+			return svgString;
+		}
+		
+		try
+		{
+			var parser = new DOMParser();
+			var svgDoc = parser.parseFromString(svgString, 'image/svg+xml');
+			var svgRoot = svgDoc.documentElement;
+			
+			if (!svgRoot || svgRoot.nodeName !== 'svg')
+			{
+				return svgString;
+			}
+			
+			// 获取SVG的viewBox或尺寸
+			var viewBox = svgRoot.getAttribute('viewBox');
+			var svgWidth = parseFloat(svgRoot.getAttribute('width') || imageWidth || 100);
+			var svgHeight = parseFloat(svgRoot.getAttribute('height') || imageHeight || 100);
+			
+			if (viewBox)
+			{
+				var vbParts = viewBox.split(/\s+/);
+				if (vbParts.length >= 4)
+				{
+					svgWidth = parseFloat(vbParts[2]);
+					svgHeight = parseFloat(vbParts[3]);
+				}
+			}
+			
+			// 计算缩放比例
+			var scaleX = svgWidth / imageWidth;
+			var scaleY = svgHeight / imageHeight;
+			
+			// 添加文字元素
+			for (var i = 0; i < textRegions.length; i++)
+			{
+				var region = textRegions[i];
+				var textEl = svgDoc.createElementNS('http://www.w3.org/2000/svg', 'text');
+				
+				// 设置文字位置和内容
+				textEl.setAttribute('x', (region.x * scaleX).toFixed(2));
+				textEl.setAttribute('y', ((region.y + region.height * 0.8) * scaleY).toFixed(2)); // 调整基线
+				textEl.setAttribute('font-size', (region.height * scaleY * 0.9).toFixed(2));
+				textEl.setAttribute('fill', '#000000');
+				textEl.setAttribute('font-family', 'Arial, sans-serif');
+				textEl.textContent = region.text;
+				
+				svgRoot.appendChild(textEl);
+			}
+			
+			// 转换回字符串
+			var serializer = new XMLSerializer();
+			return serializer.serializeToString(svgRoot);
+		}
+		catch (e)
+		{
+			if (window.console)
+			{
+				console.error('[Image to SVG] 添加文字到SVG失败:', e);
+			}
+			return svgString;
 		}
 	}
 	
@@ -1522,6 +2038,44 @@ Draw.loadPlugin(function(editorUi)
 		
 		form.appendChild(clusteringGroup);
 		
+		// OCR文字识别选项
+		var ocrGroup = document.createElement('div');
+		ocrGroup.style.marginBottom = '15px';
+		ocrGroup.style.padding = '10px';
+		ocrGroup.style.backgroundColor = '#f0f8ff';
+		ocrGroup.style.borderRadius = '5px';
+		ocrGroup.style.border = '1px solid #d0e8ff';
+		
+		var ocrLabel = document.createElement('label');
+		ocrLabel.style.display = 'flex';
+		ocrLabel.style.alignItems = 'center';
+		ocrLabel.style.cursor = 'pointer';
+		
+		var ocrCheckbox = document.createElement('input');
+		ocrCheckbox.type = 'checkbox';
+		ocrCheckbox.checked = true; // 默认启用
+		ocrCheckbox.id = 'ocr-enable';
+		ocrCheckbox.style.marginRight = '8px';
+		ocrCheckbox.style.cursor = 'pointer';
+		
+		var ocrText = document.createElement('span');
+		ocrText.textContent = '启用OCR文字识别（保留可编辑文字）';
+		ocrText.style.fontWeight = 'bold';
+		ocrText.style.cursor = 'pointer';
+		
+		ocrLabel.appendChild(ocrCheckbox);
+		ocrLabel.appendChild(ocrText);
+		ocrGroup.appendChild(ocrLabel);
+		
+		var ocrDesc = document.createElement('div');
+		ocrDesc.textContent = '识别图片中的中英文文字，保留为可编辑的文本元素。其他区域使用矢量化处理。';
+		ocrDesc.style.marginTop = '5px';
+		ocrDesc.style.fontSize = '12px';
+		ocrDesc.style.color = '#666';
+		ocrGroup.appendChild(ocrDesc);
+		
+		form.appendChild(ocrGroup);
+		
 		// Filter Speckle (范围0-128，默认4，实际传递时是平方值)
 		var speckleGroup = createSliderGroup('Filter Speckle（过滤斑点）', 'filter_speckle', 4, 0, 128, 4);
 		form.appendChild(speckleGroup);
@@ -1612,6 +2166,7 @@ Draw.loadPlugin(function(editorUi)
 			// 收集参数
 			var currentMode = curveMode.value;
 			var options = {
+				enableOCR: ocrCheckbox.checked, // OCR选项
 				clustering_mode: clusteringMode.value,
 				hierarchical: hierarchicalMode.value,
 				filter_speckle: parseFloat(speckleGroup.querySelector('input[type="range"]').value),
@@ -1802,9 +2357,94 @@ Draw.loadPlugin(function(editorUi)
 	}
 	
 	/**
-	 * 使用指定选项执行实际的转换
+	 * 使用指定选项执行实际的转换（混合处理：OCR + vtracer）
 	 */
 	function performConversionWithOptions(imageDataUri, options, callback)
+	{
+		// 检查是否启用OCR（默认启用）
+		var enableOCR = options && options.enableOCR !== false;
+		
+		if (!enableOCR)
+		{
+			// 不启用OCR，直接使用vtracer转换
+			performVtracerConversion(imageDataUri, options, callback);
+			return;
+		}
+		
+		// 启用OCR混合处理
+		// 步骤1: 加载OCR库
+		loadTesseract(function()
+		{
+			// 步骤2: 获取图片尺寸
+			var img = new Image();
+			img.onload = function()
+			{
+				var imageWidth = img.width;
+				var imageHeight = img.height;
+				
+				// 步骤3: OCR识别文字
+				recognizeTextWithOCR(imageDataUri, function(textRegions)
+				{
+					if (textRegions.length === 0)
+					{
+						// 没有识别到文字，直接使用vtracer转换
+						if (window.console)
+						{
+							console.log('[Image to SVG] 未识别到文字，直接使用vtracer转换');
+						}
+						performVtracerConversion(imageDataUri, options, callback);
+						return;
+					}
+					
+					if (window.console)
+					{
+						console.log('[Image to SVG] 识别到', textRegions.length, '个文字区域，开始混合处理');
+					}
+					
+					// 步骤4: 从图片中移除文字区域
+					removeTextRegionsFromImage(imageDataUri, textRegions, function(processedImageDataUri)
+					{
+						// 步骤5: 对处理后的图片使用vtracer转换
+						performVtracerConversion(processedImageDataUri, options, function(svgString)
+						{
+							if (!svgString)
+							{
+								callback(null);
+								return;
+							}
+							
+							// 步骤6: 将识别的文字添加到SVG中
+							var finalSvg = addTextRegionsToSvg(svgString, textRegions, imageWidth, imageHeight);
+							
+							if (window.console)
+							{
+								console.log('[Image to SVG] 混合处理完成，已添加', textRegions.length, '个文字元素');
+							}
+							
+							callback(finalSvg);
+						});
+					});
+				});
+			};
+			
+			img.onerror = function()
+			{
+				if (window.console)
+				{
+					console.error('[Image to SVG] 加载图片失败，跳过OCR处理');
+				}
+				// 失败时直接使用vtracer转换
+				performVtracerConversion(imageDataUri, options, callback);
+			};
+			
+			img.src = imageDataUri;
+		});
+	}
+	
+	/**
+	 * 执行vtracer转换（内部函数）
+	 */
+	function performVtracerConversion(imageDataUri, options, callback)
 	{
 		// 检查是否有全局的vtracer转换器类
 		if (window.BinaryImageConverter || window.ColorImageConverter)
