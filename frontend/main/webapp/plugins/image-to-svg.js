@@ -62,6 +62,10 @@ Draw.loadPlugin(function(editorUi)
 		// 如果是URL，需要加载并转换为data URI
 		var img = new Image();
 		
+		// 确保图片不缩放，使用原始尺寸
+		img.style.width = 'auto';
+		img.style.height = 'auto';
+		
 		if (editorUi.crossOriginImages)
 		{
 			img.crossOrigin = 'anonymous';
@@ -71,11 +75,28 @@ Draw.loadPlugin(function(editorUi)
 		{
 			try
 			{
+				// 获取图片的原始尺寸（不缩放）
+				var naturalWidth = img.naturalWidth || img.width;
+				var naturalHeight = img.naturalHeight || img.height;
+				
+				if (window.console)
+				{
+					console.log('[Image to SVG] getImageDataUri - 图片原始尺寸:', naturalWidth + 'x' + naturalHeight);
+					console.log('  - img.width (显示尺寸):', img.width);
+					console.log('  - img.height (显示尺寸):', img.height);
+					console.log('  - img.naturalWidth (原始尺寸):', img.naturalWidth);
+					console.log('  - img.naturalHeight (原始尺寸):', img.naturalHeight);
+				}
+				
 				var canvas = document.createElement('canvas');
 				var ctx = canvas.getContext('2d');
-				canvas.width = img.width;
-				canvas.height = img.height;
-				ctx.drawImage(img, 0, 0);
+				
+				// 使用原始尺寸，不缩放
+				canvas.width = naturalWidth;
+				canvas.height = naturalHeight;
+				
+				// 绘制图片时使用原始尺寸，不指定目标宽高（避免缩放）
+				ctx.drawImage(img, 0, 0, naturalWidth, naturalHeight);
 				
 				// 根据原始图片格式确定MIME类型
 				var mimeType = 'image/png';
@@ -514,15 +535,55 @@ Draw.loadPlugin(function(editorUi)
 		
 		// 加载图片到canvas
 		var img = new Image();
+		
+		// 确保图片不缩放，使用原始尺寸
+		img.style.width = 'auto';
+		img.style.height = 'auto';
+		
 		img.onload = function()
 		{
-			canvas.width = img.naturalWidth;
-			canvas.height = img.naturalHeight;
-			var ctx = canvas.getContext('2d');
-			ctx.drawImage(img, 0, 0);
+			// 获取图片的原始尺寸（不缩放）
+			const width = img.naturalWidth || img.width;
+			const height = img.naturalHeight || img.height;
 			
-			// 设置svg的viewBox
-			svg.setAttribute('viewBox', '0 0 ' + img.naturalWidth + ' ' + img.naturalHeight);
+			// 调试：输出图片尺寸信息
+			if (window.console)
+			{
+				console.log('[Image to SVG] convertWithVtracerWasm - 图片尺寸检查:');
+				console.log('  - img.width (显示尺寸):', img.width);
+				console.log('  - img.height (显示尺寸):', img.height);
+				console.log('  - img.naturalWidth (原始尺寸):', img.naturalWidth);
+				console.log('  - img.naturalHeight (原始尺寸):', img.naturalHeight);
+				console.log('  - 使用的尺寸:', width + 'x' + height);
+				console.log('  - 期望分辨率: 3000x2250');
+				if (width !== 3000 || height !== 2250)
+				{
+					console.warn('[Image to SVG] ⚠️ 图片分辨率不匹配！期望 3000x2250，实际 ' + width + 'x' + height);
+				}
+			}
+			
+			// 设置canvas尺寸（使用原始尺寸，不缩放）
+			canvas.width = width;
+			canvas.height = height;
+			
+			// 清空canvas（与官网一致）
+			var ctx = canvas.getContext('2d');
+			ctx.clearRect(0, 0, canvas.width, canvas.height);
+			
+			// 绘制图片时明确指定原始尺寸，避免任何缩放
+			ctx.drawImage(img, 0, 0, width, height);
+			
+			// 重要：调用getImageData确保图片数据被正确加载到内存（与官网一致）
+			ctx.getImageData(0, 0, canvas.width, canvas.height);
+			
+			// 清空svg（与官网一致）
+			while (svg.firstChild)
+			{
+				svg.removeChild(svg.firstChild);
+			}
+			
+			// 设置svg的viewBox（与官网一致）
+			svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
 			svg.setAttribute('version', '1.1');
 			svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
 			
@@ -678,9 +739,10 @@ Draw.loadPlugin(function(editorUi)
 	function runVtracerConversion(canvas, svg, options, callback, BinaryImageConverter, ColorImageConverter)
 	{
 		// 默认使用ColorImageConverter
+		// 注意：官网默认是 'stacked'，不是 'cutout'
 		var useColor = true;
 		var clusteringMode = 'color';
-		var hierarchical = 'stacked';
+		var hierarchical = 'stacked'; // 与官网默认值一致
 		
 		if (options && options.clustering_mode)
 		{
@@ -688,22 +750,109 @@ Draw.loadPlugin(function(editorUi)
 			useColor = (clusteringMode === 'color');
 		}
 		
+		if (options && options.hierarchical)
+		{
+			hierarchical = options.hierarchical;
+		}
+		
 		// 创建转换器参数
+		// 注意：vtracer的Rust代码要求JSON中包含所有字段，即使某些模式下不使用
+		// 参考：vtracer官网 index.js 中的参数构建方式
+		var currentMode = options && options.mode ? options.mode : 'polygon';
+		
+		// 角度转弧度函数（与官网一致）
+		function deg2rad(deg) {
+			return deg / 180 * 3.141592654;
+		}
+		
+		// 获取参数值（与官网逻辑一致）
+		var filterSpeckleValue = options && options.filter_speckle !== undefined ? options.filter_speckle : 4;
+		var colorPrecisionValue = options && options.color_precision !== undefined ? options.color_precision : 6;
+		var gradientStepValue = options && options.gradient_step !== undefined ? options.gradient_step : (options && options.layer_difference !== undefined ? options.layer_difference : 16);
+		var cornerThresholdDeg = options && options.corner_threshold !== undefined ? (options.corner_threshold * 180 / Math.PI) : 60;
+		var spliceThresholdDeg = options && options.splice_threshold !== undefined ? (options.splice_threshold * 180 / Math.PI) : 45;
+		var lengthThresholdValue = options && options.length_threshold !== undefined ? options.length_threshold : 4;
+		var pathPrecisionValue = options && options.path_precision !== undefined ? options.path_precision : 8;
+		
+		// 构建参数（完全按照官网方式）
 		var converterParams = {
 			canvas_id: canvas.id,
 			svg_id: svg.id,
-			mode: options && options.mode ? options.mode : 'spline',
+			mode: currentMode,
 			clustering_mode: clusteringMode,
 			hierarchical: hierarchical,
-			corner_threshold: options && options.corner_threshold ? options.corner_threshold : (60 * Math.PI / 180),
-			length_threshold: options && options.length_threshold ? options.length_threshold : 4,
+			corner_threshold: deg2rad(cornerThresholdDeg),
+			length_threshold: lengthThresholdValue,
 			max_iterations: 10,
-			splice_threshold: options && options.splice_threshold ? options.splice_threshold : (45 * Math.PI / 180),
-			filter_speckle: options && options.filter_speckle ? options.filter_speckle * options.filter_speckle : 16,
-			color_precision: options && options.color_precision ? (8 - options.color_precision) : 2,
-			layer_difference: options && options.layer_difference ? options.layer_difference : 16,
-			path_precision: options && options.path_precision ? options.path_precision : 8
+			splice_threshold: deg2rad(spliceThresholdDeg),
+			filter_speckle: filterSpeckleValue * filterSpeckleValue, // 平方值，与官网一致
+			color_precision: 8 - colorPrecisionValue, // 反转，与官网一致
+			layer_difference: gradientStepValue,
+			path_precision: pathPrecisionValue
 		};
+		
+		// 详细的调试信息
+		if (window.console)
+		{
+			console.log('========== [Image to SVG] 参数对比调试 ==========');
+			console.log('[1] 用户选择的参数:', JSON.stringify(options, null, 2));
+			console.log('[2] 处理后的参数值:');
+			console.log('  - filter_speckle (原始值):', filterSpeckleValue, '-> (平方值):', filterSpeckleValue * filterSpeckleValue);
+			console.log('  - color_precision (原始值):', colorPrecisionValue, '-> (反转值):', 8 - colorPrecisionValue);
+			console.log('  - gradient_step/layer_difference:', gradientStepValue);
+			console.log('  - corner_threshold (度):', cornerThresholdDeg, '-> (弧度):', deg2rad(cornerThresholdDeg));
+			console.log('  - splice_threshold (度):', spliceThresholdDeg, '-> (弧度):', deg2rad(spliceThresholdDeg));
+			console.log('  - length_threshold:', lengthThresholdValue);
+			console.log('  - path_precision:', pathPrecisionValue);
+			console.log('  - mode:', currentMode);
+			console.log('  - clustering_mode:', clusteringMode);
+			console.log('  - hierarchical:', hierarchical);
+			console.log('[3] 最终传递给vtracer的参数JSON:');
+			console.log(JSON.stringify(converterParams, null, 2));
+			
+			// 生成官网格式的参数（用于对比）
+			var officialFormat = {
+				'canvas_id': converterParams.canvas_id,
+				'svg_id': converterParams.svg_id,
+				'mode': converterParams.mode,
+				'clustering_mode': converterParams.clustering_mode,
+				'hierarchical': converterParams.hierarchical,
+				'corner_threshold': converterParams.corner_threshold,
+				'length_threshold': converterParams.length_threshold,
+				'max_iterations': converterParams.max_iterations,
+				'splice_threshold': converterParams.splice_threshold,
+				'filter_speckle': converterParams.filter_speckle,
+				'color_precision': converterParams.color_precision,
+				'layer_difference': converterParams.layer_difference,
+				'path_precision': converterParams.path_precision
+			};
+			console.log('[4] 官网格式的参数（用于对比）:');
+			console.log(JSON.stringify(officialFormat, null, 2));
+			console.log('[5] 参数对比表:');
+			console.table({
+				'参数': ['filter_speckle', 'color_precision', 'layer_difference', 'corner_threshold', 'splice_threshold', 'length_threshold', 'path_precision', 'mode', 'clustering_mode', 'hierarchical'],
+				'我们的值': [
+					converterParams.filter_speckle,
+					converterParams.color_precision,
+					converterParams.layer_difference,
+					converterParams.corner_threshold.toFixed(6),
+					converterParams.splice_threshold.toFixed(6),
+					converterParams.length_threshold,
+					converterParams.path_precision,
+					converterParams.mode,
+					converterParams.clustering_mode,
+					converterParams.hierarchical
+				]
+			});
+			console.log('================================================');
+			
+			// 保存到全局变量，方便在控制台查看
+			window._lastVtracerParams = {
+				userOptions: options,
+				converterParams: converterParams,
+				officialFormat: officialFormat
+			};
+		}
 		
 		var converterParamsStr = JSON.stringify(converterParams);
 		
@@ -725,61 +874,208 @@ Draw.loadPlugin(function(editorUi)
 		}
 		
 		// 创建转换器
+		if (window.console)
+		{
+			console.log('[Image to SVG] 创建转换器，参数JSON:', converterParamsStr);
+			console.log('[Image to SVG] Canvas信息:');
+			console.log('  - canvas.id:', canvas.id);
+			console.log('  - canvas.width:', canvas.width);
+			console.log('  - canvas.height:', canvas.height);
+			console.log('[Image to SVG] SVG信息:');
+			console.log('  - svg.id:', svg.id);
+			console.log('  - svg.viewBox:', svg.getAttribute('viewBox'));
+		}
+		
 		var converter = ConverterClass.new_with_string(converterParamsStr);
 		converter.init();
 		
-		// 执行转换（使用tick方法）
-		var progress = 0;
-		var maxProgress = 100;
-		var tickInterval = setInterval(function()
+		if (window.console)
 		{
-			var done = converter.tick();
-			progress = converter.progress();
-			
-			if (done || progress >= maxProgress)
-			{
-				clearInterval(tickInterval);
-				
-				// 获取SVG字符串
-				var svgString = new XMLSerializer().serializeToString(svg);
-				
-				// 清理
-				converter.free();
-				document.body.removeChild(canvas);
-				document.body.removeChild(svg);
-				
-				if (svgString && svgString.trim().length > 0)
-				{
-					if (window.console)
-					{
-						console.log('[Image to SVG] vtracer转换成功');
-					}
-					callback(svgString);
-				}
-				else
-				{
-					if (window.console)
-					{
-						console.error('[Image to SVG] vtracer转换返回空结果');
-					}
-					callback(null);
-				}
-			}
-		}, 10);
+			console.log('[Image to SVG] 转换器创建成功，开始转换...');
+			console.log('[Image to SVG] 转换器类型:', useColor ? 'ColorImageConverter' : 'BinaryImageConverter');
+		}
 		
-		// 超时保护（30秒）
-		setTimeout(function()
+		// 跟踪转换器是否已被释放
+		var converterFreed = false;
+		var tickInterval = null;
+		var timeoutId = null;
+		
+		// 安全的清理函数
+		function cleanup()
 		{
+			if (converterFreed)
+			{
+				return; // 已经清理过了
+			}
+			
+			converterFreed = true;
+			
+			// 清除定时器
 			if (tickInterval)
 			{
 				clearInterval(tickInterval);
-				converter.free();
-				document.body.removeChild(canvas);
-				document.body.removeChild(svg);
+				tickInterval = null;
+			}
+			
+			if (timeoutId)
+			{
+				clearTimeout(timeoutId);
+				timeoutId = null;
+			}
+			
+			// 安全释放转换器
+			try
+			{
+				if (converter && typeof converter.free === 'function')
+				{
+					converter.free();
+				}
+			}
+			catch (e)
+			{
+				if (window.console)
+				{
+					console.warn('[Image to SVG] 释放转换器时出错（可能已经释放）:', e);
+				}
+			}
+			
+			// 清理DOM元素
+			try
+			{
+				if (canvas && canvas.parentNode)
+				{
+					document.body.removeChild(canvas);
+				}
+			}
+			catch (e)
+			{
+				if (window.console)
+				{
+					console.warn('[Image to SVG] 移除canvas时出错:', e);
+				}
+			}
+			
+			try
+			{
+				if (svg && svg.parentNode)
+				{
+					document.body.removeChild(svg);
+				}
+			}
+			catch (e)
+			{
+				if (window.console)
+				{
+					console.warn('[Image to SVG] 移除svg时出错:', e);
+				}
+			}
+		}
+		
+		// 执行转换（使用tick方法）
+		// 参考官网：在25ms内尽可能多地执行tick，提高性能
+		var progress = 0;
+		var maxProgress = 100;
+		var tickCount = 0;
+		var clusteringTickCount = 0;
+		var reclusteringTickCount = 0;
+		var vectorizeTickCount = 0;
+		
+		// 使用setTimeout而不是setInterval，与官网一致
+		function tick()
+		{
+			if (converterFreed)
+			{
+				return; // 已经清理，停止执行
+			}
+			
+			try
+			{
+				var done = false;
+				var startTick = performance.now();
+				
+				// 在25ms内尽可能多地执行tick（与官网一致）
+				while (!(done = converter.tick()) && performance.now() - startTick < 25)
+				{
+					tickCount++;
+					// 注意：这里无法直接区分tick类型，但可以通过progress变化来推断
+				}
+				
+				progress = converter.progress();
+				
+				// 调试：记录tick次数和progress
+				if (window.console && tickCount % 50 === 0)
+				{
+					console.log('[Image to SVG] Tick进度:', {
+						tickCount: tickCount,
+						progress: progress,
+						done: done
+					});
+				}
+				
+				if (done || progress >= maxProgress)
+				{
+					if (window.console)
+					{
+						console.log('[Image to SVG] 转换完成统计:');
+						console.log('  - 总tick次数:', tickCount);
+						console.log('  - 最终progress:', progress);
+					}
+					
+					// 获取SVG字符串
+					var svgString = new XMLSerializer().serializeToString(svg);
+					
+					// 清理
+					cleanup();
+					
+					if (svgString && svgString.trim().length > 0)
+					{
+						if (window.console)
+						{
+							console.log('[Image to SVG] vtracer转换成功');
+							console.log('  - SVG长度:', svgString.length, '字符');
+							console.log('  - SVG路径数量:', (svgString.match(/<path[^>]*>/gi) || []).length);
+						}
+						callback(svgString);
+					}
+					else
+					{
+						if (window.console)
+						{
+							console.error('[Image to SVG] vtracer转换返回空结果');
+						}
+						callback(null);
+					}
+				}
+				else
+				{
+					// 继续下一次tick（与官网一致：使用setTimeout，延迟1ms）
+					setTimeout(tick, 1);
+				}
+			}
+			catch (e)
+			{
+				if (window.console)
+				{
+					console.error('[Image to SVG] 转换过程中出错:', e);
+				}
+				cleanup();
+				callback(null);
+			}
+		}
+		
+		// 开始第一次tick（延迟1ms，与官网一致）
+		setTimeout(tick, 1);
+		
+		// 超时保护（30秒）
+		timeoutId = setTimeout(function()
+		{
+			if (!converterFreed)
+			{
 				if (window.console)
 				{
 					console.error('[Image to SVG] vtracer转换超时');
 				}
+				cleanup();
 				callback(null);
 			}
 		}, 30000);
@@ -1123,46 +1419,242 @@ Draw.loadPlugin(function(editorUi)
 	}
 	
 	/**
-	 * 转换图片为SVG的主函数
+	 * 显示参数配置对话框
 	 */
-	function convertImageToSvgAction(cell)
+	function showVtracerConfigDialog(cell, imageUrl, imageDataUri)
 	{
-		if (!isRasterImage(cell))
+		// 创建对话框容器
+		var dialogContainer = document.createElement('div');
+		dialogContainer.style.display = 'flex';
+		dialogContainer.style.flexDirection = 'row';
+		dialogContainer.style.width = '900px';
+		dialogContainer.style.height = '600px';
+		dialogContainer.style.padding = '0';
+		dialogContainer.style.overflow = 'hidden';
+		
+		// 左侧：图片预览
+		var leftPanel = document.createElement('div');
+		leftPanel.style.width = '400px';
+		leftPanel.style.padding = '20px';
+		leftPanel.style.backgroundColor = '#f5f5f5';
+		leftPanel.style.display = 'flex';
+		leftPanel.style.flexDirection = 'column';
+		leftPanel.style.alignItems = 'center';
+		leftPanel.style.justifyContent = 'center';
+		leftPanel.style.overflow = 'auto';
+		
+		var imagePreview = document.createElement('img');
+		imagePreview.src = imageDataUri;
+		// 预览时保持原始比例，不缩放（仅用于显示）
+		imagePreview.style.maxWidth = '100%';
+		imagePreview.style.maxHeight = '100%';
+		imagePreview.style.objectFit = 'contain';
+		// 确保预览图片也使用原始尺寸加载（用于调试）
+		imagePreview.onload = function()
 		{
-			editorUi.handleError({message: '选中的不是PNG/BMP/JPG图片'});
-			return;
-		}
-		
-		var state = graph.view.getState(cell);
-		var style = (state != null) ? state.style : graph.getCellStyle(cell);
-		var imageUrl = mxUtils.getValue(style, mxConstants.STYLE_IMAGE, null);
-		
-		if (!imageUrl)
-		{
-			editorUi.handleError({message: '无法获取图片URL'});
-			return;
-		}
-		
-		// 显示加载提示
-		var loadingDiv = document.createElement('div');
-		loadingDiv.style.padding = '20px';
-		loadingDiv.style.textAlign = 'center';
-		loadingDiv.innerHTML = '<div style="margin-bottom: 10px;">正在转换图片为SVG，请稍候...</div>' +
-			'<div style="color: #666; font-size: 12px;">这可能需要几秒钟时间</div>';
-		
-		editorUi.showDialog(loadingDiv, 300, 120, true, false, null, false, false, null, true);
-		
-		// 获取图片数据
-		getImageDataUri(imageUrl, function(dataUri)
-		{
-			if (!dataUri)
+			if (window.console)
 			{
-				editorUi.hideDialog();
-				return;
+				console.log('[Image to SVG] 预览图片尺寸:');
+				console.log('  - 显示尺寸:', this.width + 'x' + this.height);
+				console.log('  - 原始尺寸:', this.naturalWidth + 'x' + this.naturalHeight);
+			}
+		};
+		leftPanel.appendChild(imagePreview);
+		
+		// 右侧：参数配置
+		var rightPanel = document.createElement('div');
+		rightPanel.style.flex = '1';
+		rightPanel.style.padding = '20px';
+		rightPanel.style.overflow = 'auto';
+		rightPanel.style.backgroundColor = '#fff';
+		
+		// 参数配置表单
+		var form = document.createElement('div');
+		form.style.display = 'flex';
+		form.style.flexDirection = 'column';
+		
+		// 标题
+		var title = document.createElement('h3');
+		title.textContent = 'SVG转换参数';
+		title.style.margin = '0 0 20px 0';
+		title.style.fontSize = '18px';
+		form.appendChild(title);
+		
+		// Clustering 模式
+		var clusteringGroup = document.createElement('div');
+		clusteringGroup.style.marginBottom = '10px';
+		
+		var clusteringLabel = document.createElement('label');
+		clusteringLabel.textContent = 'Clustering（聚类模式）';
+		clusteringLabel.style.display = 'block';
+		clusteringLabel.style.marginBottom = '5px';
+		clusteringLabel.style.fontWeight = 'bold';
+		clusteringGroup.appendChild(clusteringLabel);
+		
+		var clusteringMode = document.createElement('select');
+		clusteringMode.style.width = '100%';
+		clusteringMode.style.padding = '5px';
+		var option1 = document.createElement('option');
+		option1.value = 'color';
+		option1.textContent = 'Color（彩色）';
+		option1.selected = true;
+		clusteringMode.appendChild(option1);
+		var option2 = document.createElement('option');
+		option2.value = 'bw';
+		option2.textContent = 'B/W（黑白）';
+		clusteringMode.appendChild(option2);
+		clusteringGroup.appendChild(clusteringMode);
+		
+		var hierarchicalMode = document.createElement('select');
+		hierarchicalMode.style.width = '100%';
+		hierarchicalMode.style.padding = '5px';
+		hierarchicalMode.style.marginTop = '5px';
+		var opt1 = document.createElement('option');
+		opt1.value = 'cutout';
+		opt1.textContent = 'Cutout（剪切）';
+		hierarchicalMode.appendChild(opt1);
+		var opt2 = document.createElement('option');
+		opt2.value = 'stacked';
+		opt2.textContent = 'Stacked（堆叠）';
+		opt2.selected = true; // 默认选择stacked，与官网一致
+		hierarchicalMode.appendChild(opt2);
+		clusteringGroup.appendChild(hierarchicalMode);
+		
+		form.appendChild(clusteringGroup);
+		
+		// Filter Speckle (范围0-128，默认4，实际传递时是平方值)
+		var speckleGroup = createSliderGroup('Filter Speckle（过滤斑点）', 'filter_speckle', 4, 0, 128, 4);
+		form.appendChild(speckleGroup);
+		
+		// Color Precision
+		var colorPrecisionGroup = createSliderGroup('Color Precision（颜色精度）', 'color_precision', 6, 1, 8, 6);
+		form.appendChild(colorPrecisionGroup);
+		
+		// Gradient Step
+		var gradientStepGroup = createSliderGroup('Gradient Step（渐变步长）', 'gradient_step', 16, 1, 32, 16);
+		form.appendChild(gradientStepGroup);
+		
+		// Curve Fitting
+		var curveFittingGroup = document.createElement('div');
+		curveFittingGroup.style.marginBottom = '10px';
+		
+		var curveLabel = document.createElement('label');
+		curveLabel.textContent = 'Curve Fitting（曲线拟合）';
+		curveLabel.style.display = 'block';
+		curveLabel.style.marginBottom = '5px';
+		curveLabel.style.fontWeight = 'bold';
+		curveFittingGroup.appendChild(curveLabel);
+		
+		var curveMode = document.createElement('select');
+		curveMode.style.width = '100%';
+		curveMode.style.padding = '5px';
+		var pixelOpt = document.createElement('option');
+		pixelOpt.value = 'pixel';
+		pixelOpt.textContent = 'PIXEL（像素）';
+		curveMode.appendChild(pixelOpt);
+		var polygonOpt = document.createElement('option');
+		polygonOpt.value = 'polygon';
+		polygonOpt.textContent = 'Polygon（多边形）';
+		polygonOpt.selected = true;
+		curveMode.appendChild(polygonOpt);
+		var splineOpt = document.createElement('option');
+		splineOpt.value = 'spline';
+		splineOpt.textContent = 'Spline（样条曲线）';
+		curveMode.appendChild(splineOpt);
+		curveFittingGroup.appendChild(curveMode);
+		
+		form.appendChild(curveFittingGroup);
+		
+		// Corner Threshold (只在spline模式下显示)
+		var cornerThresholdGroup = createSliderGroup('Corner Threshold（角阈值）', 'corner_threshold', 60, 0, 180, 60);
+		cornerThresholdGroup.style.display = 'none'; // 默认隐藏（polygon模式）
+		cornerThresholdGroup.setAttribute('data-mode', 'spline');
+		form.appendChild(cornerThresholdGroup);
+		
+		// Segment Length (只在spline模式下显示)
+		var segmentLengthGroup = createSliderGroup('Segment Length（段长度）', 'length_threshold', 4, 1, 20, 4);
+		segmentLengthGroup.style.display = 'none'; // 默认隐藏（polygon模式）
+		segmentLengthGroup.setAttribute('data-mode', 'spline');
+		form.appendChild(segmentLengthGroup);
+		
+		// Splice Threshold (只在spline模式下显示)
+		var spliceThresholdGroup = createSliderGroup('Splice Threshold（拼接阈值）', 'splice_threshold', 45, 0, 180, 45);
+		spliceThresholdGroup.style.display = 'none'; // 默认隐藏（polygon模式）
+		spliceThresholdGroup.setAttribute('data-mode', 'spline');
+		form.appendChild(spliceThresholdGroup);
+		
+		// 根据曲线拟合模式显示/隐藏相关参数
+		function updateCurveFittingOptions()
+		{
+			var mode = curveMode.value;
+			var isSpline = (mode === 'spline');
+			
+			cornerThresholdGroup.style.display = isSpline ? 'block' : 'none';
+			segmentLengthGroup.style.display = isSpline ? 'block' : 'none';
+			spliceThresholdGroup.style.display = isSpline ? 'block' : 'none';
+		}
+		
+		// 监听曲线拟合模式变化
+		curveMode.addEventListener('change', updateCurveFittingOptions);
+		
+		// Path Precision
+		var pathPrecisionGroup = createSliderGroup('Path Precision（路径精度）', 'path_precision', 8, 1, 16, 8);
+		form.appendChild(pathPrecisionGroup);
+		
+		rightPanel.appendChild(form);
+		
+		dialogContainer.appendChild(leftPanel);
+		dialogContainer.appendChild(rightPanel);
+		
+		// 创建对话框
+		var applyFn = function()
+		{
+			// 收集参数
+			var currentMode = curveMode.value;
+			var options = {
+				clustering_mode: clusteringMode.value,
+				hierarchical: hierarchicalMode.value,
+				filter_speckle: parseFloat(speckleGroup.querySelector('input[type="range"]').value),
+				color_precision: parseFloat(colorPrecisionGroup.querySelector('input[type="range"]').value),
+				gradient_step: parseFloat(gradientStepGroup.querySelector('input[type="range"]').value),
+				mode: currentMode,
+				path_precision: parseFloat(pathPrecisionGroup.querySelector('input[type="range"]').value)
+			};
+			
+			// 这些参数在所有模式下都需要（vtracer要求），但只在spline模式下从UI获取
+			// 在polygon/pixel模式下使用默认值
+			if (currentMode === 'spline')
+			{
+				options.corner_threshold = parseFloat(cornerThresholdGroup.querySelector('input[type="range"]').value) * Math.PI / 180;
+				options.length_threshold = parseFloat(segmentLengthGroup.querySelector('input[type="range"]').value);
+				options.splice_threshold = parseFloat(spliceThresholdGroup.querySelector('input[type="range"]').value) * Math.PI / 180;
+			}
+			else
+			{
+				// polygon/pixel模式下使用默认值
+				options.corner_threshold = 60 * Math.PI / 180;
+				options.length_threshold = 4;
+				options.splice_threshold = 45 * Math.PI / 180;
 			}
 			
+			if (window.console)
+			{
+				console.log('[Image to SVG] 转换参数:', JSON.stringify(options, null, 2));
+			}
+			
+			editorUi.hideDialog();
+			
+			// 显示加载提示
+			var loadingDiv = document.createElement('div');
+			loadingDiv.style.padding = '20px';
+			loadingDiv.style.textAlign = 'center';
+			loadingDiv.innerHTML = '<div style="margin-bottom: 10px;">正在转换图片为SVG，请稍候...</div>' +
+				'<div style="color: #666; font-size: 12px;">这可能需要几秒钟时间</div>';
+			
+			editorUi.showDialog(loadingDiv, 300, 120, true, false, null, false, false, null, true);
+			
 			// 转换为SVG
-			convertImageToSvg(dataUri, function(svgString)
+			convertImageToSvgWithOptions(imageDataUri, options, function(svgString)
 			{
 				editorUi.hideDialog();
 				
@@ -1189,7 +1681,157 @@ Draw.loadPlugin(function(editorUi)
 					console.log('[Image to SVG] 图片转换成功');
 				}
 			});
+		};
+		
+		editorUi.showDialog(new CustomDialog(editorUi, dialogContainer, applyFn, function()
+		{
+			editorUi.hideDialog();
+		}, '转换', null, null, false, '取消', false).container, 920, 650, true, true);
+	}
+	
+	/**
+	 * 创建滑块组
+	 */
+	function createSliderGroup(labelText, name, defaultValue, min, max, displayValue)
+	{
+		var group = document.createElement('div');
+		group.style.marginBottom = '10px';
+		
+		var label = document.createElement('label');
+		label.textContent = labelText;
+		label.style.display = 'block';
+		label.style.marginBottom = '5px';
+		label.style.fontWeight = 'bold';
+		group.appendChild(label);
+		
+		var sliderContainer = document.createElement('div');
+		sliderContainer.style.display = 'flex';
+		sliderContainer.style.alignItems = 'center';
+		
+		var slider = document.createElement('input');
+		slider.type = 'range';
+		slider.min = min;
+		slider.max = max;
+		slider.value = defaultValue;
+		slider.style.flex = '1';
+		slider.setAttribute('data-name', name);
+		sliderContainer.appendChild(slider);
+		
+		var valueDisplay = document.createElement('span');
+		valueDisplay.textContent = displayValue || defaultValue;
+		valueDisplay.style.minWidth = '40px';
+		valueDisplay.style.textAlign = 'right';
+		valueDisplay.style.marginLeft = '10px';
+		valueDisplay.setAttribute('data-name', name + '_display');
+		sliderContainer.appendChild(valueDisplay);
+		
+		// 更新显示值
+		slider.addEventListener('input', function()
+		{
+			valueDisplay.textContent = this.value;
 		});
+		
+		group.appendChild(sliderContainer);
+		return group;
+	}
+	
+	/**
+	 * 转换图片为SVG的主函数
+	 */
+	function convertImageToSvgAction(cell)
+	{
+		if (!isRasterImage(cell))
+		{
+			editorUi.handleError({message: '选中的不是PNG/BMP/JPG图片'});
+			return;
+		}
+		
+		var state = graph.view.getState(cell);
+		var style = (state != null) ? state.style : graph.getCellStyle(cell);
+		var imageUrl = mxUtils.getValue(style, mxConstants.STYLE_IMAGE, null);
+		
+		if (!imageUrl)
+		{
+			editorUi.handleError({message: '无法获取图片URL'});
+			return;
+		}
+		
+		// 获取图片数据
+		getImageDataUri(imageUrl, function(dataUri)
+		{
+			if (!dataUri)
+			{
+				editorUi.handleError({message: '无法加载图片'});
+				return;
+			}
+			
+			// 显示参数配置对话框
+			showVtracerConfigDialog(cell, imageUrl, dataUri);
+		});
+	}
+	
+	/**
+	 * 使用指定选项转换图片为SVG
+	 */
+	function convertImageToSvgWithOptions(imageDataUri, options, callback)
+	{
+		if (!imageDataUri)
+		{
+			callback(null);
+			return;
+		}
+		
+		if (window.console)
+		{
+			console.log('[Image to SVG] 开始转换图片为SVG...', options);
+		}
+		
+		// 检查是否加载了vtracer
+		if (typeof window.VTracer === 'undefined')
+		{
+			// 尝试动态加载vtracer
+			loadVtracer(function()
+			{
+				performConversionWithOptions(imageDataUri, options, callback);
+			});
+		}
+		else
+		{
+			performConversionWithOptions(imageDataUri, options, callback);
+		}
+	}
+	
+	/**
+	 * 使用指定选项执行实际的转换
+	 */
+	function performConversionWithOptions(imageDataUri, options, callback)
+	{
+		// 检查是否有全局的vtracer转换器类
+		if (window.BinaryImageConverter || window.ColorImageConverter)
+		{
+			// 使用vtracer wasm进行转换
+			convertWithVtracerWasm(imageDataUri, options, callback);
+		}
+		else if (window.VTracer && window.VTracer.convert)
+		{
+			window.VTracer.convert(imageDataUri, options, function(svgString)
+			{
+				if (svgString)
+				{
+					callback(svgString);
+				}
+				else
+				{
+					editorUi.handleError({message: '图片转换失败'});
+					callback(null);
+				}
+			});
+		}
+		else
+		{
+			// 使用简化实现
+			convertWithImageTracer(imageDataUri, options, callback);
+		}
 	}
 	
 	/**

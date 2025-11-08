@@ -10150,8 +10150,29 @@
 					style += 'editableCssRules=.*;';
 				}
 
+			// 调试信息：importFile 中插入图片
+			if (window.console)
+			{
+				console.log('[图片导入调试] EditorUi.importFile - 插入图片:');
+				console.log('  - dx:', dx);
+				console.log('  - dy:', dy);
+				console.log('  - w (宽度):', w);
+				console.log('  - h (高度):', h);
+				console.log('  - mimeType:', mimeType);
+			}
+			
 			cells = [graph.insertVertex(null, null, '', dx, dy,
 				w, h, style + 'image=' + data + ';')];
+			
+			// 调试信息：插入后的 cell 尺寸
+			if (window.console && cells && cells.length > 0)
+			{
+				var cell = cells[0];
+				var geo = graph.getModel().getGeometry(cell);
+				console.log('[图片导入调试] EditorUi.importFile - 插入完成:');
+				console.log('  - cell 几何宽度:', geo ? geo.width : 'N/A');
+				console.log('  - cell 几何高度:', geo ? geo.height : 'N/A');
+			}
 
 			if (mimeType.substring(0, 9) == 'image/svg' && cells[0] != null)
 			{
@@ -10280,9 +10301,20 @@
 		maxBytes = (maxBytes != null) ? maxBytes : this.maxImageBytes;
 		
 		var crop = x != null && y != null;
-		var resizeImages = true;
+		var resizeImages = false; // 禁用缩放，保持原始像素大小
 		x = (x != null) ? x : 0;
 		y = (y != null) ? y : 0;
+		
+		// 调试信息：importFiles 函数开始
+		if (window.console)
+		{
+			console.log('[图片导入调试] EditorUi.importFiles - 开始:');
+			console.log('  - files.length:', files ? files.length : 0);
+			console.log('  - maxSize:', maxSize);
+			console.log('  - resizeImages:', resizeImages);
+			console.log('  - maxBytes:', maxBytes);
+			console.log('  - resampleThreshold:', resampleThreshold);
+		}
 		
 		// Checks if large images are imported
 		var largeImages = false;
@@ -10510,9 +10542,23 @@
 																		}
 		
 																		data = Editor.createSvgDataUri(mxUtils.getXml(svgRoot));
-																		var s = Math.min(1, Math.min(maxSize / Math.max(1, w)), maxSize / Math.max(1, h));
-																		var cells = fn(data, file.type, x + index * gs, y + index * gs, Math.max(
-																			1, Math.round(w * s)), Math.max(1, Math.round(h * s)), file.name);
+																		// 不缩放，使用原始像素大小
+																		var s = 1;
+																		var finalWidth = Math.max(1, Math.round(w * s));
+																		var finalHeight = Math.max(1, Math.round(h * s));
+																		
+																		// 调试信息：SVG 导入
+																		if (window.console)
+																		{
+																			console.log('[图片导入调试] EditorUi.importFiles - SVG 导入:');
+																			console.log('  - SVG 原始宽度 w:', w);
+																			console.log('  - SVG 原始高度 h:', h);
+																			console.log('  - 缩放比例 s:', s);
+																			console.log('  - 最终宽度:', finalWidth);
+																			console.log('  - 最终高度:', finalHeight);
+																		}
+																		
+																		var cells = fn(data, file.type, x + index * gs, y + index * gs, finalWidth, finalHeight, file.name);
 																		
 																		// Hack to fix width and height asynchronously
 																		if (cells != null && (isNaN(w) || isNaN(h)))
@@ -10610,19 +10656,51 @@
 													{
 														this.loadImage(e.target.result, mxUtils.bind(this, function(img)
 														{
+															// 调试信息：loadImage 回调
+															if (window.console)
+															{
+																console.log('[图片导入调试] EditorUi.importFiles - loadImage 回调:');
+																console.log('  - img.width:', img.width);
+																console.log('  - img.height:', img.height);
+																console.log('  - img.naturalWidth:', img.naturalWidth);
+																console.log('  - img.naturalHeight:', img.naturalHeight);
+																console.log('  - resizeImages:', resizeImages);
+															}
+															
+															// 强制禁用缩放，直接传入 false 而不是使用闭包中的 resizeImages 变量
 															this.resizeImage(img, e.target.result, mxUtils.bind(this, function(data2, w2, h2)
 															{
+																// 调试信息：resizeImage 回调
+																if (window.console)
+																{
+																	console.log('[图片导入调试] EditorUi.importFiles - resizeImage 回调:');
+																	console.log('  - w2:', w2);
+																	console.log('  - h2:', h2);
+																	console.log('  - data2.length:', data2 ? data2.length : 0);
+																}
+																
 																barrier(index, mxUtils.bind(this, function()
 																{
 																	// Refuses to insert images above a certain size as they kill the app
 																	if (data2 != null && data2.length < maxBytes)
 																	{
-																		var s = (!resizeImages || !this.isResampleImageSize(
-																			file.size, resampleThreshold)) ? 1 :
-																			Math.min(1, Math.min(maxSize / w2, maxSize / h2));
+																		// 不缩放，使用原始像素大小
+																		var s = 1;
+																		
+																		var finalWidth = Math.round(w2 * s);
+																		var finalHeight = Math.round(h2 * s);
+																		
+																		// 调试信息：最终导入尺寸
+																		if (window.console)
+																		{
+																			console.log('[图片导入调试] EditorUi.importFiles - 准备调用 fn:');
+																			console.log('  - 缩放比例 s:', s);
+																			console.log('  - 最终宽度:', finalWidth);
+																			console.log('  - 最终高度:', finalHeight);
+																		}
 																		
 																		return fn(data2, file.type, x + index * gs, y + index * gs,
-																			Math.round(w2 * s), Math.round(h2 * s), file.name);
+																			finalWidth, finalHeight, file.name);
 																	}
 																	else
 																	{
@@ -10631,7 +10709,7 @@
 																		return null;
 																	}
 																}));
-															}), resizeImages, maxSize, resampleThreshold, file.size);
+															}), false, maxSize, resampleThreshold, file.size); // 强制传入 false 禁用缩放
 														}), mxUtils.bind(this, function()
 														{
 															this.handleError({message: mxResources.get('invalidOrMissingFile')});
@@ -10702,28 +10780,20 @@
 			}
 		});
 		
-		if (largeImages)
+		// 强制禁用缩放，无论 largeImages 是否为 true
+		// 不调用 confirmImageResize，直接使用 resizeImages = false
+		var tmp = [];
+		
+		for (var i = 0; i < files.length; i++)
 		{
-			// Workaround for lost files array in async code
-			var tmp = [];
-			
-			for (var i = 0; i < files.length; i++)
-			{
-				tmp.push(files[i]);
-			}
-			
-			files = tmp;
-			
-			this.confirmImageResize(function(doResize)
-			{
-				resizeImages = doResize;
-				doImportFiles();
-			}, resizeDialog);
+			tmp.push(files[i]);
 		}
-		else
-		{
-			doImportFiles();
-		}
+		
+		files = tmp;
+		
+		// 确保 resizeImages 为 false，然后直接执行导入
+		resizeImages = false;
+		doImportFiles();
 	};
 
 	/**
@@ -10843,17 +10913,49 @@
 		var w = Math.max(1, img.width);
 		var h = Math.max(1, img.height);
 		var originalData = data;
+		
+		// 调试信息：resizeImage 函数开始
+		if (window.console)
+		{
+			console.log('[图片导入调试] EditorUi.resizeImage - 开始:');
+			console.log('  - img.width:', img.width);
+			console.log('  - img.height:', img.height);
+			console.log('  - img.naturalWidth:', img.naturalWidth);
+			console.log('  - img.naturalHeight:', img.naturalHeight);
+			console.log('  - enabled (是否启用缩放):', enabled);
+			console.log('  - maxSize:', maxSize);
+			console.log('  - thresh:', thresh);
+			console.log('  - fileSize:', fileSize);
+			console.log('  - data.length:', data.length);
+			console.log('  - 初始 w:', w);
+			console.log('  - 初始 h:', h);
+		}
 
 		if (enabled && this.isResampleImageSize((fileSize != null) ? fileSize : data.length, thresh))
 		{
+			if (window.console)
+			{
+				console.log('[图片导入调试] EditorUi.resizeImage - 进入缩放逻辑 (enabled=true):');
+			}
+			
 			try
 			{
 				var factor = Math.max(w / maxSize, h / maxSize);
+				
+				if (window.console)
+				{
+					console.log('  - 计算缩放因子 factor:', factor);
+				}
 				
 				if (factor > 1)
 				{
 					var w2 = Math.round(w / factor);
 					var h2 = Math.round(h / factor);
+					
+					if (window.console)
+					{
+						console.log('  - 缩放后尺寸 w2:', w2, 'h2:', h2);
+					}
 					
 					var canvas = document.createElement('canvas');
 				    canvas.width = w2;
@@ -10865,7 +10967,12 @@
 
 				    // Uses new image if smaller
 				    if (tmp.length < data.length)
-				    {			    
+				    {
+				    	if (window.console)
+				    	{
+				    		console.log('  - 缩放后数据更小，使用缩放后的图片');
+				    	}
+				    	
 				    	// Checks if the image is empty by comparing
 				    	// with an empty image of the same size
 				    	var canvas2 = document.createElement('canvas');
@@ -10874,26 +10981,76 @@
 					    var tmp2 = canvas2.toDataURL();
 					    
 					    if (tmp !== tmp2)
-					    {	
+					    {
+					    	if (window.console)
+					    	{
+					    		console.log('  - 图片非空，应用缩放结果');
+					    	}
+					    	
 					    	data = tmp;
 					    	w = w2;
 					    	h = h2;
 					    }
+					    else
+					    {
+					    	if (window.console)
+					    	{
+					    		console.log('  - 图片为空，保持原始尺寸');
+					    	}
+					    }
 				    }
+				    else
+				    {
+				    	if (window.console)
+				    	{
+				    		console.log('  - 缩放后数据更大，保持原始图片');
+				    	}
+				    }
+				}
+				else
+				{
+					if (window.console)
+					{
+						console.log('  - factor <= 1，不需要缩放');
+					}
 				}
 			}
 			catch (e)
 			{
+				if (window.console)
+				{
+					console.error('[图片导入调试] EditorUi.resizeImage - 缩放出错:', e);
+				}
 				// ignores image scaling errors
+			}
+		}
+		else
+		{
+			if (window.console)
+			{
+				console.log('[图片导入调试] EditorUi.resizeImage - 跳过缩放逻辑:');
+				console.log('  - enabled:', enabled);
+				console.log('  - isResampleImageSize:', enabled ? this.isResampleImageSize((fileSize != null) ? fileSize : data.length, thresh) : 'N/A');
 			}
 		}
 
 		if (enabled && originalData != data && maxSize > this.maxImageSize / 2 && data.length > this.maxImageBytes)
 		{
+			if (window.console)
+			{
+				console.log('[图片导入调试] EditorUi.resizeImage - 递归调用进一步缩放');
+			}
 			this.resizeImage(img, data, fn, enabled, maxSize / 1.5, thresh, fileSize);
 		}
 		else
 		{
+			if (window.console)
+			{
+				console.log('[图片导入调试] EditorUi.resizeImage - 完成，调用回调:');
+				console.log('  - 最终 w:', w);
+				console.log('  - 最终 h:', h);
+				console.log('  - data 是否改变:', originalData !== data);
+			}
 			fn(data, w, h);
 		}
 	};

@@ -1,0 +1,12 @@
+/vtracer 的转化信息 
+265vtracer_webapp_bg.js:411 Clustering tick
+147vtracer_webapp_bg.js:411 Clustering tick
+411vtracer_webapp_bg.js:411 Reclustering tick
+408vtracer_webapp_bg.js:411 Vectorize tick
+
+右键的转化信息
+44 vtracer_webapp_bg.js:411 Clustering tick
+129 vtracer_webapp_bg.js:411 Clustering tick
+44 vtracer_webapp_bg.js:411 Reclustering tick
+128 vtracer_webapp_bg.js:411 Reclustering tick
+335 vtracer_webapp_bg.js:411 Vectorize tick

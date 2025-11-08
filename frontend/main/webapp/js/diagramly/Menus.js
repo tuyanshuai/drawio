@@ -2875,16 +2875,61 @@
 				{
 					editorUi.loadImage(data, mxUtils.bind(this, function(img)
 	    			{
-			    		var resizeImages = true;
+			    		var resizeImages = false; // 禁用缩放，保持原始像素大小
+			    		
+			    		// 调试信息：图片加载后的原始尺寸
+			    		if (window.console)
+			    		{
+			    			console.log('[图片导入调试] Menus.js - loadImage 回调:');
+			    			console.log('  - img.width:', img.width);
+			    			console.log('  - img.height:', img.height);
+			    			console.log('  - img.naturalWidth:', img.naturalWidth);
+			    			console.log('  - img.naturalHeight:', img.naturalHeight);
+			    			console.log('  - resizeImages:', resizeImages);
+			    		}
 			    		
 			    		var doInsert = mxUtils.bind(this, function()
 			    		{
 		    				editorUi.resizeImage(img, data, mxUtils.bind(this, function(data2, w2, h2)
 	    	    			{
-	    		    			var s = (resizeImages) ? Math.min(1, Math.min(editorUi.maxImageSize / w2, editorUi.maxImageSize / h2)) : 1;
-	
-    							editorUi.importFile(data, mime, x, y, Math.round(w2 * s), Math.round(h2 * s), filename, function(cells)
+	    	    				// 调试信息：resizeImage 回调后的尺寸
+	    	    				if (window.console)
+	    	    				{
+	    	    					console.log('[图片导入调试] Menus.js - resizeImage 回调:');
+	    	    					console.log('  - 原始 data 长度:', data.length);
+	    	    					console.log('  - 处理后 data2 长度:', data2.length);
+	    	    					console.log('  - w2 (宽度):', w2);
+	    	    					console.log('  - h2 (高度):', h2);
+	    	    					console.log('  - data === data2:', data === data2);
+	    	    				}
+	    	    				
+	    		    			// 不缩放，使用原始像素大小
+	    		    			var s = 1;
+	    		    			
+	    		    			var finalWidth = Math.round(w2 * s);
+	    		    			var finalHeight = Math.round(h2 * s);
+	    		    			
+	    		    			// 调试信息：最终导入尺寸
+	    		    			if (window.console)
+	    		    			{
+	    		    				console.log('[图片导入调试] Menus.js - 准备导入:');
+	    		    				console.log('  - 缩放比例 s:', s);
+	    		    				console.log('  - 最终宽度:', finalWidth);
+	    		    				console.log('  - 最终高度:', finalHeight);
+	    		    			}
+
+    							editorUi.importFile(data, mime, x, y, finalWidth, finalHeight, filename, function(cells)
     							{
+    								// 调试信息：导入完成后的 cell 尺寸
+    								if (window.console && cells && cells.length > 0)
+    								{
+    									var cell = cells[0];
+    									var geo = graph.getModel().getGeometry(cell);
+    									console.log('[图片导入调试] Menus.js - importFile 完成:');
+    									console.log('  - cell 几何宽度:', geo ? geo.width : 'N/A');
+    									console.log('  - cell 几何高度:', geo ? geo.height : 'N/A');
+    								}
+    								
     								editorUi.spinner.stop();
     								graph.setSelectionCells(cells);
     								graph.scrollCellToVisible(graph.getSelectionCell());
@@ -2892,18 +2937,8 @@
 	    	    			}), resizeImages);
 			    		});
 			    		
-			    		if (data.length > editorUi.resampleThreshold)
-			    		{
-			    			editorUi.confirmImageResize(function(doResize)
-	    					{
-	    						resizeImages = doResize;
-	    						doInsert();
-	    					});
-			    		}
-			    		else
-		    			{
-			    			doInsert();
-		    			}
+			    		// 直接插入，不询问是否缩放
+			    		doInsert();
 	    			}), mxUtils.bind(this, function()
 	    			{
 	    				editorUi.handleError({message: mxResources.get('cannotOpenFile')});
