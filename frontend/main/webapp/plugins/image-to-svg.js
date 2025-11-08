@@ -149,86 +149,451 @@ Draw.loadPlugin(function(editorUi)
 	}
 	
 	/**
-	 * 加载vtracer库
+	 * 加载vtracer库 (wasm版本)
 	 * 参考: https://github.com/visioncortex/vtracer/tree/master/webapp
 	 */
+	var vtracerModule = null;
+	var vtracerLoading = false;
+	var vtracerLoadCallbacks = [];
+	
 	function loadVtracer(callback)
 	{
-		if (window.console)
+		if (vtracerModule)
 		{
-			console.log('[Image to SVG] 加载vtracer库...');
+			// 已经加载
+			if (callback) callback();
+			return;
 		}
 		
-		// 首先尝试加载ImageTracer.js作为vtracer的替代实现
-		// ImageTracer.js是一个纯JavaScript实现的图片矢量化工具，会将位图转换为矢量路径
-		// 使用本地文件以避免CSP限制
-		if (typeof ImageTracer === 'undefined')
+		if (callback)
+		{
+			vtracerLoadCallbacks.push(callback);
+		}
+		
+		if (vtracerLoading)
+		{
+			// 正在加载，等待完成
+			return;
+		}
+		
+		vtracerLoading = true;
+		
+		if (window.console)
+		{
+			console.log('[Image to SVG] 开始加载vtracer wasm库...');
+		}
+		
+		// 动态加载vtracer的bootstrap.js
+		// 注意：vtracer使用webpack打包，需要从/vtracer路径加载
+		var script = document.createElement('script');
+		script.src = 'vtracer/bootstrap.js';
+		
+		script.onload = function()
 		{
 			if (window.console)
 			{
-				console.log('[Image to SVG] 开始加载ImageTracer.js库（本地）...');
+				console.log('[Image to SVG] vtracer bootstrap.js加载成功，等待模块初始化...');
 			}
 			
-			var script = document.createElement('script');
-			// 使用本地文件路径，避免CSP限制
-			script.src = 'js/imagetracer/imagetracer_v1.2.6.js';
-			
-			script.onload = function()
+			// 等待webpack模块加载完成
+			// vtracer模块会通过webpack动态加载，我们需要等待它可用
+			var checkInterval = setInterval(function()
 			{
-				if (window.console)
+				// 检查webpack是否已经加载了vtracer模块
+				// 通过检查window上的webpack模块或者直接尝试访问
+				if (window.webpackJsonp && window.webpackJsonp.length > 0)
 				{
-					console.log('[Image to SVG] ImageTracer.js加载成功');
-					// 检查可用的API
-					if (typeof ImageTracer !== 'undefined')
+					// webpack已加载，尝试获取vtracer模块
+					try
 					{
-						console.log('[Image to SVG] ImageTracer可用方法:', Object.keys(ImageTracer));
+						// 等待一段时间让模块完全初始化
+						setTimeout(function()
+						{
+							initVtracerWrapper();
+							clearInterval(checkInterval);
+						}, 500);
+					}
+					catch (e)
+					{
+						if (window.console)
+						{
+							console.error('[Image to SVG] 初始化vtracer模块失败:', e);
+						}
 					}
 				}
-				initVtracerWrapper(callback);
-			};
+			}, 100);
 			
-			script.onerror = function()
+			// 最多等待10秒
+			setTimeout(function()
 			{
-				if (window.console)
+				clearInterval(checkInterval);
+				if (!vtracerModule)
 				{
-					console.error('[Image to SVG] ImageTracer.js加载失败:', script.src);
-					console.error('[Image to SVG] 将使用基础实现（非矢量化）');
+					if (window.console)
+					{
+						console.error('[Image to SVG] vtracer模块加载超时');
+					}
+					vtracerLoading = false;
+					// 调用所有等待的回调
+					vtracerLoadCallbacks.forEach(function(cb) { cb(); });
+					vtracerLoadCallbacks = [];
 				}
-				initVtracerWrapper(callback);
-			};
-			
-			document.head.appendChild(script);
-		}
-		else
+			}, 10000);
+		};
+		
+		script.onerror = function()
 		{
 			if (window.console)
 			{
-				console.log('[Image to SVG] ImageTracer.js已存在');
+				console.error('[Image to SVG] vtracer bootstrap.js加载失败:', script.src);
 			}
-			initVtracerWrapper(callback);
-		}
+			vtracerLoading = false;
+			// 调用所有等待的回调
+			vtracerLoadCallbacks.forEach(function(cb) { cb(); });
+			vtracerLoadCallbacks = [];
+		};
+		
+		document.head.appendChild(script);
 	}
 	
 	/**
 	 * 初始化vtracer包装器
+	 * 从webpack模块中提取vtracer的API
 	 */
-	function initVtracerWrapper(callback)
+	function initVtracerWrapper()
 	{
-		if (!window.VTracer)
+		if (vtracerModule)
 		{
-			window.VTracer = {
-				convert: function(imageDataUri, options, callback)
-				{
-					convertWithImageTracer(imageDataUri, options, callback);
-				}
-			};
+			// 已经初始化
+			vtracerLoading = false;
+			vtracerLoadCallbacks.forEach(function(cb) { cb(); });
+			vtracerLoadCallbacks = [];
+			return;
 		}
 		
-		if (callback) callback();
+		// 由于vtracer使用webpack打包，模块不会直接暴露在全局作用域
+		// 我们需要通过webpack的模块系统访问，或者使用其他方法
+		// 最简单的方法是：创建一个包装器，在运行时动态访问webpack模块
+		
+		window.VTracer = {
+			convert: function(imageDataUri, options, callback)
+			{
+				convertWithVtracerWasm(imageDataUri, options, callback);
+			},
+			// 存储webpack模块引用（如果可用）
+			_module: null
+		};
+		
+		vtracerModule = window.VTracer;
+		vtracerLoading = false;
+		
+		if (window.console)
+		{
+			console.log('[Image to SVG] vtracer包装器初始化完成');
+		}
+		
+		// 调用所有等待的回调
+		vtracerLoadCallbacks.forEach(function(cb) { cb(); });
+		vtracerLoadCallbacks = [];
 	}
 	
 	/**
-	 * 使用ImageTracer.js进行转换
+	 * 使用vtracer wasm进行转换
+	 * 创建隐藏的canvas和svg元素，使用vtracer的API进行转换
+	 */
+	function convertWithVtracerWasm(imageDataUri, options, callback)
+	{
+		if (window.console)
+		{
+			console.log('[Image to SVG] 使用vtracer wasm进行转换...');
+		}
+		
+		// 创建隐藏的canvas和svg元素
+		var canvas = document.createElement('canvas');
+		canvas.style.display = 'none';
+		canvas.id = 'vtracer-canvas-' + Date.now();
+		document.body.appendChild(canvas);
+		
+		var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		svg.style.display = 'none';
+		svg.id = 'vtracer-svg-' + Date.now();
+		document.body.appendChild(svg);
+		
+		// 加载图片到canvas
+		var img = new Image();
+		img.onload = function()
+		{
+			canvas.width = img.naturalWidth;
+			canvas.height = img.naturalHeight;
+			var ctx = canvas.getContext('2d');
+			ctx.drawImage(img, 0, 0);
+			
+			// 设置svg的viewBox
+			svg.setAttribute('viewBox', '0 0 ' + img.naturalWidth + ' ' + img.naturalHeight);
+			svg.setAttribute('version', '1.1');
+			svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+			
+			// 尝试使用vtracer的API
+			// 由于vtracer使用webpack打包，我们需要通过webpack的模块系统访问
+			// 等待webpack模块加载完成后，尝试访问vtracer模块
+			try
+			{
+				// 检查是否有全局的vtracer API（某些情况下可能会暴露）
+				if (window.BinaryImageConverter && window.ColorImageConverter)
+				{
+					// 直接使用全局API
+					runVtracerConversion(canvas, svg, options, callback);
+					return;
+				}
+				
+				// 尝试从webpack模块中获取
+				// 等待webpack模块加载
+				var checkCount = 0;
+				var maxChecks = 200; // 20秒
+				var checkInterval = setInterval(function()
+				{
+					checkCount++;
+					
+					// 方法1: 尝试通过webpack的require系统访问
+					if (window.__webpack_require__)
+					{
+						try
+						{
+							// 尝试require vtracer模块（路径可能需要调整）
+							var modulePaths = ['./index.js', '../index.js', 'vtracer/index.js'];
+							for (var i = 0; i < modulePaths.length; i++)
+							{
+								try
+								{
+									var vtracer = window.__webpack_require__(modulePaths[i]);
+									if (vtracer && (vtracer.BinaryImageConverter || vtracer.ColorImageConverter))
+									{
+										clearInterval(checkInterval);
+										runVtracerConversionWithModule(canvas, svg, options, callback, vtracer);
+										return;
+									}
+								}
+								catch (e)
+								{
+									// 继续尝试下一个路径
+								}
+							}
+						}
+						catch (e)
+						{
+							// 继续尝试其他方法
+						}
+					}
+					
+					// 方法2: 尝试通过webpack的模块缓存访问
+					if (window.__webpack_require__ && window.__webpack_require__.c)
+					{
+						try
+						{
+							var cache = window.__webpack_require__.c;
+							for (var moduleId in cache)
+							{
+								var module = cache[moduleId];
+								if (module && module.exports)
+								{
+									var exports = module.exports;
+									if (exports && (exports.BinaryImageConverter || exports.ColorImageConverter))
+									{
+										clearInterval(checkInterval);
+										runVtracerConversionWithModule(canvas, svg, options, callback, exports);
+										return;
+									}
+								}
+							}
+						}
+						catch (e)
+						{
+							// 继续尝试
+						}
+					}
+					
+					// 如果超时，使用fallback
+					if (checkCount >= maxChecks)
+					{
+						clearInterval(checkInterval);
+						if (window.console)
+						{
+							console.warn('[Image to SVG] 无法访问vtracer模块，使用fallback方法');
+						}
+						// 使用ImageTracer作为fallback
+						convertWithImageTracer(imageDataUri, options, callback);
+						// 清理
+						document.body.removeChild(canvas);
+						document.body.removeChild(svg);
+					}
+				}, 100);
+			}
+			catch (e)
+			{
+				if (window.console)
+				{
+					console.error('[Image to SVG] vtracer转换出错:', e);
+				}
+				// 使用fallback
+				convertWithImageTracer(imageDataUri, options, callback);
+				// 清理
+				document.body.removeChild(canvas);
+				document.body.removeChild(svg);
+			}
+		};
+		
+		img.onerror = function()
+		{
+			if (window.console)
+			{
+				console.error('[Image to SVG] 图片加载失败');
+			}
+			document.body.removeChild(canvas);
+			document.body.removeChild(svg);
+			callback(null);
+		};
+		
+		img.src = imageDataUri;
+	}
+	
+	/**
+	 * 使用vtracer模块进行转换
+	 */
+	function runVtracerConversionWithModule(canvas, svg, options, callback, vtracerModule)
+	{
+		var BinaryImageConverter = vtracerModule.BinaryImageConverter;
+		var ColorImageConverter = vtracerModule.ColorImageConverter;
+		
+		if (!BinaryImageConverter && !ColorImageConverter)
+		{
+			if (window.console)
+			{
+				console.error('[Image to SVG] vtracer模块中找不到转换器类');
+			}
+			document.body.removeChild(canvas);
+			document.body.removeChild(svg);
+			callback(null);
+			return;
+		}
+		
+		runVtracerConversion(canvas, svg, options, callback, BinaryImageConverter, ColorImageConverter);
+	}
+	
+	/**
+	 * 执行vtracer转换
+	 */
+	function runVtracerConversion(canvas, svg, options, callback, BinaryImageConverter, ColorImageConverter)
+	{
+		// 默认使用ColorImageConverter
+		var useColor = true;
+		var clusteringMode = 'color';
+		var hierarchical = 'stacked';
+		
+		if (options && options.clustering_mode)
+		{
+			clusteringMode = options.clustering_mode;
+			useColor = (clusteringMode === 'color');
+		}
+		
+		// 创建转换器参数
+		var converterParams = {
+			canvas_id: canvas.id,
+			svg_id: svg.id,
+			mode: options && options.mode ? options.mode : 'spline',
+			clustering_mode: clusteringMode,
+			hierarchical: hierarchical,
+			corner_threshold: options && options.corner_threshold ? options.corner_threshold : (60 * Math.PI / 180),
+			length_threshold: options && options.length_threshold ? options.length_threshold : 4,
+			max_iterations: 10,
+			splice_threshold: options && options.splice_threshold ? options.splice_threshold : (45 * Math.PI / 180),
+			filter_speckle: options && options.filter_speckle ? options.filter_speckle * options.filter_speckle : 16,
+			color_precision: options && options.color_precision ? (8 - options.color_precision) : 2,
+			layer_difference: options && options.layer_difference ? options.layer_difference : 16,
+			path_precision: options && options.path_precision ? options.path_precision : 8
+		};
+		
+		var converterParamsStr = JSON.stringify(converterParams);
+		
+		// 获取转换器类（从全局或参数传入）
+		var ConverterClass = useColor ? 
+			(ColorImageConverter || window.ColorImageConverter) : 
+			(BinaryImageConverter || window.BinaryImageConverter);
+		
+		if (!ConverterClass)
+		{
+			if (window.console)
+			{
+				console.error('[Image to SVG] 找不到vtracer转换器类');
+			}
+			document.body.removeChild(canvas);
+			document.body.removeChild(svg);
+			callback(null);
+			return;
+		}
+		
+		// 创建转换器
+		var converter = ConverterClass.new_with_string(converterParamsStr);
+		converter.init();
+		
+		// 执行转换（使用tick方法）
+		var progress = 0;
+		var maxProgress = 100;
+		var tickInterval = setInterval(function()
+		{
+			var done = converter.tick();
+			progress = converter.progress();
+			
+			if (done || progress >= maxProgress)
+			{
+				clearInterval(tickInterval);
+				
+				// 获取SVG字符串
+				var svgString = new XMLSerializer().serializeToString(svg);
+				
+				// 清理
+				converter.free();
+				document.body.removeChild(canvas);
+				document.body.removeChild(svg);
+				
+				if (svgString && svgString.trim().length > 0)
+				{
+					if (window.console)
+					{
+						console.log('[Image to SVG] vtracer转换成功');
+					}
+					callback(svgString);
+				}
+				else
+				{
+					if (window.console)
+					{
+						console.error('[Image to SVG] vtracer转换返回空结果');
+					}
+					callback(null);
+				}
+			}
+		}, 10);
+		
+		// 超时保护（30秒）
+		setTimeout(function()
+		{
+			if (tickInterval)
+			{
+				clearInterval(tickInterval);
+				converter.free();
+				document.body.removeChild(canvas);
+				document.body.removeChild(svg);
+				if (window.console)
+				{
+					console.error('[Image to SVG] vtracer转换超时');
+				}
+				callback(null);
+			}
+		}, 30000);
+	}
+	
+	/**
+	 * 使用ImageTracer.js进行转换（fallback方法）
 	 * ImageTracer.js是一个类似vtracer的JavaScript实现，会将位图转换为矢量路径（线条和填充）
 	 */
 	function convertWithImageTracer(imageDataUri, options, callback)
