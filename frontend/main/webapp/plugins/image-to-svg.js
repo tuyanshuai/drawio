@@ -184,62 +184,237 @@ Draw.loadPlugin(function(editorUi)
 		}
 		
 		// 动态加载vtracer的bootstrap.js
-		// 注意：vtracer使用webpack打包，需要从/vtracer路径加载
+		// bootstrap.js已修改为只加载wasm模块，不加载index.js（避免DOM依赖）
 		var script = document.createElement('script');
 		script.src = 'vtracer/bootstrap.js';
+		
+		// 监听vtracer wasm模块加载完成事件
+		var wasmLoadedHandler = function()
+		{
+			if (window.console)
+			{
+				console.log('[Image to SVG] 步骤0: 收到vtracer-wasm-loaded事件，开始查找转换器类...');
+			}
+			
+			// 查找vtracer模块
+			findVtracerModule();
+		};
+		window.addEventListener('vtracer-wasm-loaded', wasmLoadedHandler);
+		
+		if (window.console)
+		{
+			console.log('[Image to SVG] 步骤0.1: 已注册vtracer-wasm-loaded事件监听器');
+		}
 		
 		script.onload = function()
 		{
 			if (window.console)
 			{
-				console.log('[Image to SVG] vtracer bootstrap.js加载成功，等待模块初始化...');
+				console.log('[Image to SVG] 步骤0.2: vtracer bootstrap.js脚本加载成功');
+				console.log('[Image to SVG] 步骤0.3: 检查webpack状态...');
+				console.log('[Image to SVG] 步骤0.4: __webpack_require__ 存在?', !!window.__webpack_require__);
+				console.log('[Image to SVG] 步骤0.5: webpackJsonp 存在?', !!window.webpackJsonp);
 			}
 			
-			// 等待webpack模块加载完成
-			// vtracer模块会通过webpack动态加载，我们需要等待它可用
-			var checkInterval = setInterval(function()
-			{
-				// 检查webpack是否已经加载了vtracer模块
-				// 通过检查window上的webpack模块或者直接尝试访问
-				if (window.webpackJsonp && window.webpackJsonp.length > 0)
-				{
-					// webpack已加载，尝试获取vtracer模块
-					try
-					{
-						// 等待一段时间让模块完全初始化
-						setTimeout(function()
-						{
-							initVtracerWrapper();
-							clearInterval(checkInterval);
-						}, 500);
-					}
-					catch (e)
-					{
-						if (window.console)
-						{
-							console.error('[Image to SVG] 初始化vtracer模块失败:', e);
-						}
-					}
-				}
-			}, 100);
-			
-			// 最多等待10秒
+			// 如果事件已经触发（在脚本加载之前），立即查找
 			setTimeout(function()
 			{
-				clearInterval(checkInterval);
 				if (!vtracerModule)
 				{
 					if (window.console)
 					{
-						console.error('[Image to SVG] vtracer模块加载超时');
+						console.log('[Image to SVG] 步骤0.6: 延迟500ms后开始查找模块（事件可能还未触发）');
 					}
-					vtracerLoading = false;
-					// 调用所有等待的回调
-					vtracerLoadCallbacks.forEach(function(cb) { cb(); });
-					vtracerLoadCallbacks = [];
+					findVtracerModule();
 				}
-			}, 10000);
+			}, 500);
 		};
+		
+		// 查找vtracer模块的函数
+		var findVtracerAttempts = 0;
+		var maxFindAttempts = 100; // 最多尝试100次（10秒）
+		
+		function findVtracerModule()
+		{
+			findVtracerAttempts++;
+			
+			if (window.console)
+			{
+				console.log('[Image to SVG] 步骤1: 查找vtracer模块 (尝试 ' + findVtracerAttempts + '/' + maxFindAttempts + ')');
+			}
+			
+			// 步骤1: 检查webpack是否存在
+			if (!window.__webpack_require__)
+			{
+				if (window.console)
+				{
+					console.log('[Image to SVG] 步骤1.1: __webpack_require__ 不存在，继续等待...');
+				}
+				if (findVtracerAttempts < maxFindAttempts)
+				{
+					setTimeout(findVtracerModule, 100);
+				}
+				return;
+			}
+			
+			if (window.console)
+			{
+				console.log('[Image to SVG] 步骤1.2: __webpack_require__ 存在');
+			}
+			
+			// 步骤2: 检查模块缓存
+			if (!window.__webpack_require__.c)
+			{
+				if (window.console)
+				{
+					console.log('[Image to SVG] 步骤1.3: __webpack_require__.c 不存在，继续等待...');
+				}
+				if (findVtracerAttempts < maxFindAttempts)
+				{
+					setTimeout(findVtracerModule, 100);
+				}
+				return;
+			}
+			
+			if (window.console)
+			{
+				console.log('[Image to SVG] 步骤1.4: __webpack_require__.c 存在，开始遍历模块缓存');
+			}
+			
+			try
+			{
+				// 步骤3: 直接尝试加载vtracer模块（已知模块ID）
+				var vtracerModuleId = "../pkg/vtracer_webapp.js";
+				
+				// 方法1: 尝试直接require模块
+				try
+				{
+					var vtracerModule = window.__webpack_require__(vtracerModuleId);
+					if (vtracerModule && (vtracerModule.BinaryImageConverter || vtracerModule.ColorImageConverter))
+					{
+						if (window.console)
+						{
+							console.log('[Image to SVG] 步骤2: 通过require找到vtracer模块!');
+							console.log('[Image to SVG] 步骤2.1: BinaryImageConverter:', !!vtracerModule.BinaryImageConverter);
+							console.log('[Image to SVG] 步骤2.2: ColorImageConverter:', !!vtracerModule.ColorImageConverter);
+						}
+						
+						// 找到vtracer模块，将其暴露到全局
+						window.BinaryImageConverter = vtracerModule.BinaryImageConverter;
+						window.ColorImageConverter = vtracerModule.ColorImageConverter;
+						
+						// 移除事件监听器
+						window.removeEventListener('vtracer-wasm-loaded', wasmLoadedHandler);
+						
+						initVtracerWrapper();
+						return;
+					}
+				}
+				catch (e)
+				{
+					if (window.console && findVtracerAttempts === 1)
+					{
+						console.log('[Image to SVG] 步骤1.5: 直接require失败，尝试遍历缓存:', e.message);
+					}
+				}
+				
+				// 方法2: 遍历模块缓存
+				var cache = window.__webpack_require__.c;
+				var moduleCount = 0;
+				var moduleIds = [];
+				
+				for (var moduleId in cache)
+				{
+					moduleCount++;
+					moduleIds.push(moduleId);
+					
+					var module = cache[moduleId];
+					if (!module)
+					{
+						continue;
+					}
+					
+					if (window.console && findVtracerAttempts === 1)
+					{
+						console.log('[Image to SVG] 步骤1.6: 检查模块 ' + moduleId);
+					}
+					
+					// 检查模块的exports
+					if (module.exports)
+					{
+						var exports = module.exports;
+						
+						// 检查是否有BinaryImageConverter或ColorImageConverter
+						if (exports.BinaryImageConverter || exports.ColorImageConverter)
+						{
+							if (window.console)
+							{
+								console.log('[Image to SVG] 步骤2: 在缓存中找到vtracer模块! 模块ID:', moduleId);
+								console.log('[Image to SVG] 步骤2.1: BinaryImageConverter:', !!exports.BinaryImageConverter);
+								console.log('[Image to SVG] 步骤2.2: ColorImageConverter:', !!exports.ColorImageConverter);
+							}
+							
+							// 找到vtracer模块，将其暴露到全局
+							window.BinaryImageConverter = exports.BinaryImageConverter;
+							window.ColorImageConverter = exports.ColorImageConverter;
+							
+							// 移除事件监听器
+							window.removeEventListener('vtracer-wasm-loaded', wasmLoadedHandler);
+							
+							initVtracerWrapper();
+							return;
+						}
+						
+						// 调试：列出模块的所有导出
+						if (window.console && findVtracerAttempts === 1 && typeof exports === 'object')
+						{
+							var exportKeys = Object.keys(exports);
+							if (exportKeys.length > 0 && exportKeys.length < 20)
+							{
+								console.log('[Image to SVG] 步骤1.7: 模块 ' + moduleId + ' 的导出:', exportKeys);
+							}
+						}
+					}
+				}
+				
+				if (window.console && findVtracerAttempts === 1)
+				{
+					console.log('[Image to SVG] 步骤1.8: 总共检查了 ' + moduleCount + ' 个模块');
+					console.log('[Image to SVG] 步骤1.9: 模块ID列表:', moduleIds.slice(0, 10));
+				}
+				
+				// 如果没找到，继续等待
+				if (!vtracerModule && findVtracerAttempts < maxFindAttempts)
+				{
+					if (window.console && findVtracerAttempts % 10 === 0)
+					{
+						console.log('[Image to SVG] 步骤1.9: 未找到vtracer模块，继续等待... (尝试 ' + findVtracerAttempts + ')');
+					}
+					setTimeout(findVtracerModule, 100);
+				}
+				else if (!vtracerModule)
+				{
+					if (window.console)
+					{
+						console.error('[Image to SVG] 步骤1.10: 查找超时，未找到vtracer模块');
+						console.error('[Image to SVG] 调试信息:', {
+							hasWebpack: !!window.__webpack_require__,
+							hasCache: !!(window.__webpack_require__ && window.__webpack_require__.c),
+							moduleCount: moduleCount,
+							moduleIds: moduleIds
+						});
+					}
+				}
+			}
+			catch (e)
+			{
+				if (window.console)
+				{
+					console.error('[Image to SVG] 步骤1.11: 查找vtracer模块时出错:', e);
+					console.error('[Image to SVG] 错误堆栈:', e.stack);
+				}
+			}
+		}
 		
 		script.onerror = function()
 		{
@@ -247,11 +422,29 @@ Draw.loadPlugin(function(editorUi)
 			{
 				console.error('[Image to SVG] vtracer bootstrap.js加载失败:', script.src);
 			}
+			window.removeEventListener('vtracer-wasm-loaded', wasmLoadedHandler);
 			vtracerLoading = false;
 			// 调用所有等待的回调
 			vtracerLoadCallbacks.forEach(function(cb) { cb(); });
 			vtracerLoadCallbacks = [];
 		};
+		
+		// 超时处理（10秒）
+		setTimeout(function()
+		{
+			if (!vtracerModule)
+			{
+				if (window.console)
+				{
+					console.error('[Image to SVG] vtracer模块加载超时');
+				}
+				window.removeEventListener('vtracer-wasm-loaded', wasmLoadedHandler);
+				vtracerLoading = false;
+				// 调用所有等待的回调
+				vtracerLoadCallbacks.forEach(function(cb) { cb(); });
+				vtracerLoadCallbacks = [];
+			}
+		}, 10000);
 		
 		document.head.appendChild(script);
 	}

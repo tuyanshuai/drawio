@@ -330,7 +330,7 @@
 /******/ 	__webpack_require__.o = function(object, property) { return Object.prototype.hasOwnProperty.call(object, property); };
 /******/
 /******/ 	// __webpack_public_path__
-/******/ 	__webpack_require__.p = "";
+/******/ 	__webpack_require__.p = "/vtracer/";
 /******/
 /******/ 	// on error function for async loading
 /******/ 	__webpack_require__.oe = function(err) { console.error(err); throw err; };
@@ -346,6 +346,11 @@
 /******/ 	var parentJsonpFunction = oldJsonpFunction;
 /******/
 /******/
+/******/ 	// Expose __webpack_require__ to window for external access
+/******/ 	if (typeof window !== 'undefined') {
+/******/ 		window.__webpack_require__ = __webpack_require__;
+/******/ 	}
+/******/
 /******/ 	// Load entry module and return exports
 /******/ 	return __webpack_require__(__webpack_require__.s = "./bootstrap.js");
 /******/ })
@@ -359,7 +364,7 @@
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-eval("// A dependency graph that contains any wasm must all be imported\n// asynchronously. This `bootstrap.js` file does the single async import, so\n// that no one else needs to worry about it again.\n__webpack_require__.e(/*! import() */ 0).then(__webpack_require__.bind(null, /*! ./index.js */ \"./index.js\"))\n  .catch(e => console.error(\"Error importing `index.js`:\", e));\n\n\n//# sourceURL=webpack:///./bootstrap.js?");
+eval("// A dependency graph that contains any wasm must all be imported\n// asynchronously. This `bootstrap.js` file does the single async import, so\n// that no one else needs to worry about it again.\n// Modified: Load wasm module (chunk 0) but skip index.js to avoid DOM dependencies\n__webpack_require__.e(/*! import() */ 0).then(function() {\n  // Load wasm module only, don't load index.js\n  // The vtracer classes will be available in webpack module cache\n  // Ensure __webpack_require__ is exposed to window\n  if (typeof window !== 'undefined') {\n    window.__webpack_require__ = __webpack_require__;\n    // Trigger module loading event for external code\n    if (window.dispatchEvent) {\n      window.dispatchEvent(new CustomEvent('vtracer-wasm-loaded'));\n    }\n  }\n}).catch(e => console.error(\"Error loading vtracer wasm module:\", e));\n\n\n//# sourceURL=webpack:///./bootstrap.js?");
 
 /***/ })
 
