@@ -223,11 +223,44 @@ function mxinclude(src)
     {
         mxmeta(null, 'default-src \'self\'; script-src \'self\' \'sha256-6g514VrT/cZFZltSaKxIVNFF46+MFaTSDTPB8WfYK+c=\' ' +
             (urlParams['dev'] != '1' ? '' : ' \'unsafe-eval\'') + '; ' +
-            'connect-src \'self\' https://*.draw.io https://*.diagrams.net https://fonts.googleapis.com https://fonts.gstatic.com http://127.0.0.1:8082 http://localhost:8082 http://127.0.0.1:8081 http://localhost:8081 http://127.0.0.1:8000 http://localhost:8000 http://127.0.0.1 http://localhost; ' +
+            'connect-src \'self\' https://*.draw.io https://*.diagrams.net https://fonts.googleapis.com https://fonts.gstatic.com http://127.0.0.1:8082 http://localhost:8082 http://127.0.0.1:8081 http://localhost:8081 http://127.0.0.1:8083 http://localhost:8083 http://127.0.0.1:8000 http://localhost:8000 http://127.0.0.1 http://localhost; ' +
             'img-src * data:; media-src *; font-src *; frame-src \'none\'; style-src \'self\' \'unsafe-inline\' ' +
             'https://fonts.googleapis.com; base-uri \'none\';child-src \'self\';object-src \'none\';', 'Content-Security-Policy');
     }
 })();
+
+// Disable Dropbox support - using local storage instead
+window.DRAWIO_DROPBOX_ID = null;
+window.DRAWIO_DROPBOX_DISABLED = true; // Flag to prevent Init.js from setting default value
+if (typeof window.DropboxClient !== 'undefined')
+{
+    window.DropboxClient = null;
+}
+if (typeof window.Dropbox !== 'undefined')
+{
+    window.Dropbox = null;
+}
+// Remove dropbox mode from URL parameters if present
+if (urlParams['mode'] === 'dropbox')
+{
+    delete urlParams['mode'];
+}
+
+// Disable Google services - use local storage instead
+urlParams['gapi'] = '0';
+urlParams['picker'] = '0';
+// Disable Google Drive client
+if (typeof window.DriveClient !== 'undefined')
+{
+    window.DriveClient = null;
+}
+// Prevent Google API from loading
+window.DrawGapiClientCallback = null;
+// Remove google mode from URL parameters if present
+if (urlParams['mode'] === 'google')
+{
+    delete urlParams['mode'];
+}
 
 // Checks for local storage
 var isLocalStorage = false;

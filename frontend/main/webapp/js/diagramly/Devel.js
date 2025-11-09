@@ -43,9 +43,9 @@ if (!mxIsElectron)
 			'https://*.googleapis.com wss://app.diagrams.net wss://*.pusher.com https://*.pusher.com ' +
 			'https://api.github.com https://raw.githubusercontent.com https://gitlab.com ' +
 			'https://graph.microsoft.com https://my.microsoftpersonalcontent.com https://*.sharepoint.com https://*.sharepoint.de  ' +
-			'https://*.1drv.com https://api.onedrive.com https://dl.dropboxusercontent.com https://api.openai.com ' +
+			'https://*.1drv.com https://api.onedrive.com https://api.openai.com ' +
 			'https://*.google.com https://fonts.gstatic.com https://fonts.googleapis.com ' +
-			'http://127.0.0.1:8082 http://localhost:8082 http://127.0.0.1:8081 http://localhost:8081 http://127.0.0.1:8000 http://localhost:8000 http://127.0.0.1 http://localhost; ' +
+			'http://127.0.0.1:8082 http://localhost:8082 http://127.0.0.1:8081 http://localhost:8081 http://127.0.0.1:8083 http://localhost:8083 http://127.0.0.1:8000 http://localhost:8000 http://127.0.0.1 http://localhost; ' +
 			// font-src about: is required for MathJax HTML-CSS output with STIX
 			'img-src * data: blob:; media-src * data:; font-src * data: about:; ' +
 			// www.draw.io required for browser data migration to app.diagrams.net and
@@ -61,9 +61,9 @@ if (!mxIsElectron)
 		var csp = hashes + directives;
 		var devCsp = csp.
 			// Adds script tags and loads shapes with eval
-			replace(/%script-src%/g, 'https://www.dropbox.com https://api.trello.com \'unsafe-eval\'').
-			// Adds Trello and Dropbox backend storage
-			replace(/%connect-src%/g, 'https://*.dropboxapi.com https://trello.com https://api.trello.com https://my.microsoftpersonalcontent.com').
+			replace(/%script-src%/g, 'https://api.trello.com \'unsafe-eval\'').
+			// Adds Trello backend storage (Dropbox disabled - using local storage instead)
+			replace(/%connect-src%/g, 'https://trello.com https://api.trello.com https://my.microsoftpersonalcontent.com').
 			// Loads common.css from mxgraph
 			replace(/%style-src%/g, '').
 			replace(/%frame-src%/g, '').
@@ -74,14 +74,14 @@ if (!mxIsElectron)
 		if (urlParams['print-csp'] == '1')
 		{
 			console.log('Content-Security-Policy');
-			var app_diagrams_net = csp.replace(/%script-src%/g, 'https://www.dropbox.com https://api.trello.com').
-				replace(/%connect-src%/g, 'https://*.dropboxapi.com https://api.trello.com').
+			var app_diagrams_net = csp.replace(/%script-src%/g, 'https://api.trello.com').
+				replace(/%connect-src%/g, 'https://api.trello.com').
 				replace(/%frame-src%/g, '').
 					replace(/%style-src%/g, '').
 					replace(/  /g, ' ') + ' frame-ancestors \'self\' https://teams.microsoft.com https://*.cloud.microsoft;';
 			console.log('app.diagrams.net:', app_diagrams_net);
 
-			var viewer_diagrams_net = hashes.replace(/%script-src%/g, 'https://www.dropbox.com https://api.trello.com https://app.diagrams.net') +
+			var viewer_diagrams_net = hashes.replace(/%script-src%/g, 'https://api.trello.com https://app.diagrams.net') +
 				'connect-src *; ' +
 				'img-src * data: blob:; ' +
 				'media-src * data:; ' +
@@ -246,9 +246,10 @@ mxscript(drawDevUrl + 'js/diagramly/UrlLibrary.js');
 mxscript(drawDevUrl + 'js/diagramly/DriveFile.js');
 mxscript(drawDevUrl + 'js/diagramly/DriveLibrary.js');
 mxscript(drawDevUrl + 'js/diagramly/DriveClient.js');
-mxscript(drawDevUrl + 'js/diagramly/DropboxFile.js');
-mxscript(drawDevUrl + 'js/diagramly/DropboxLibrary.js');
-mxscript(drawDevUrl + 'js/diagramly/DropboxClient.js');
+// Dropbox support disabled - using local storage instead
+// mxscript(drawDevUrl + 'js/diagramly/DropboxFile.js');
+// mxscript(drawDevUrl + 'js/diagramly/DropboxLibrary.js');
+// mxscript(drawDevUrl + 'js/diagramly/DropboxClient.js');
 mxscript(drawDevUrl + 'js/diagramly/GitHubFile.js');
 mxscript(drawDevUrl + 'js/diagramly/GitHubLibrary.js');
 mxscript(drawDevUrl + 'js/diagramly/GitHubClient.js');

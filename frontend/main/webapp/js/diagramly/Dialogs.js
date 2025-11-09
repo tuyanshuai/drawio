@@ -7383,7 +7383,7 @@ var RevisionDialog = function(editorUi, revs, restoreFn)
 		list.appendChild(table);
 	}
 	else if (file == null || (editorUi.drive == null && file.constructor == window.DriveFile) ||
-		(editorUi.dropbox == null && file.constructor == window.DropboxFile))
+		(editorUi.dropbox == null && typeof window.DropboxFile !== 'undefined' && file.constructor == window.DropboxFile))
 	{
 		container.style.display = 'none';
 		tb.style.display = 'none';

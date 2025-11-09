@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图像生成服务测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 3px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 3px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <h1>图像生成服务测试</h1>
+    
+    <div class="test-section">
+        <h2>1. 健康检查</h2>
+        <button onclick="testHealth()">测试健康检查</button>
+        <div id="health-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>2. 图像生成测试</h2>
+        <input type="text" id="prompt-input" placeholder="输入图像描述" value="一只可爱的小猫" style="width: 300px; padding: 5px;">
+        <button onclick="testGenerate()">测试生成图像</button>
+        <div id="generate-result" class="result"></div>
+        <div id="image-preview" style="margin-top: 10px;"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>3. 详细诊断</h2>
+        <button onclick="runDiagnostics()">运行完整诊断</button>
+        <div id="diagnostics-result" class="result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8083';
+        
+        function log(elementId, message, isError = false) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = 'result ' + (isError ? 'error' : 'success');
+        }
+        
+        async function testHealth() {
+            log('health-result', '正在测试...');
+            try {
+                const response = await fetch(API_BASE + '/api/health');
+                const data = await response.json();
+                log('health-result', '✓ 健康检查成功\n' + JSON.stringify(data, null, 2), false);
+            } catch (error) {
+                log('health-result', '✗ 健康检查失败\n' + error.message, true);
+            }
+        }
+        
+        async function testGenerate() {
+            const prompt = document.getElementById('prompt-input').value;
+            if (!prompt) {
+                alert('请输入图像描述');
+                return;
+            }
+            
+            log('generate-result', '正在生成图像...');
+            document.getElementById('image-preview').innerHTML = '';
+            
+            try {
+                const response = await fetch(API_BASE + '/api/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        prompt: prompt,
+                        aspect_ratio: '16:9'
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                const data = await response.json();
+                log('generate-result', '✓ 图像生成成功\n' + JSON.stringify(data, null, 2), false);
+                
+                if (data.image_url) {
+                    const img = document.createElement('img');
+                    img.src = data.image_url;
+                    img.style.maxWidth = '100%';
+                    img.style.marginTop = '10px';
+                    document.getElementById('image-preview').appendChild(img);
+                }
+            } catch (error) {
+                log('generate-result', '✗ 图像生成失败\n' + error.message, true);
+                console.error('详细错误:', error);
+            }
+        }
+        
+        async function runDiagnostics() {
+            const result = [];
+            result.push('=== 开始诊断 ===\n');
+            
+            // 测试 1: 健康检查
+            result.push('1. 测试健康检查接口...');
+            try {
+                const healthResponse = await fetch(API_BASE + '/api/health');
+                if (healthResponse.ok) {
+                    const healthData = await healthResponse.json();
+                    result.push('   ✓ 健康检查通过');
+                    result.push('   响应: ' + JSON.stringify(healthData));
+                } else {
+                    result.push('   ✗ 健康检查失败: HTTP ' + healthResponse.status);
+                }
+            } catch (error) {
+                result.push('   ✗ 健康检查失败: ' + error.message);
+            }
+            
+            result.push('\n2. 测试 CORS 预检请求...');
+            try {
+                const optionsResponse = await fetch(API_BASE + '/api/generate', {
+                    method: 'OPTIONS'
+                });
+                result.push('   OPTIONS 请求状态: ' + optionsResponse.status);
+            } catch (error) {
+                result.push('   ✗ OPTIONS 请求失败: ' + error.message);
+            }
+            
+            result.push('\n3. 测试图像生成接口...');
+            try {
+                const generateResponse = await fetch(API_BASE + '/api/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        prompt: 'test',
+                        aspect_ratio: '16:9'
+                    })
+                });
+                
+                result.push('   状态码: ' + generateResponse.status);
+                result.push('   状态文本: ' + generateResponse.statusText);
+                
+                const responseText = await generateResponse.text();
+                result.push('   响应长度: ' + responseText.length);
+                
+                if (generateResponse.ok) {
+                    try {
+                        const data = JSON.parse(responseText);
+                        result.push('   ✓ 请求成功');
+                        result.push('   响应: ' + JSON.stringify(data, null, 2).substring(0, 500));
+                    } catch (e) {
+                        result.push('   ⚠ 响应不是有效的 JSON');
+                        result.push('   响应内容: ' + responseText.substring(0, 500));
+                    }
+                } else {
+                    result.push('   ✗ 请求失败');
+                    result.push('   错误响应: ' + responseText.substring(0, 500));
+                }
+            } catch (error) {
+                result.push('   ✗ 请求异常: ' + error.message);
+                result.push('   错误类型: ' + error.constructor.name);
+            }
+            
+            result.push('\n=== 诊断完成 ===');
+            log('diagnostics-result', result.join('\n'), false);
+        }
+        
+        // 页面加载时自动测试健康检查
+        window.onload = function() {
+            testHealth();
+        };
+    </script>
+</body>
+</html>
+

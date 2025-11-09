@@ -22880,7 +22880,7 @@ EditorUi.prototype.commentsSupported = function()
 		
 		return file != null &&
 				((file.constructor == DriveFile && file.isEditable()) ||
-				file.constructor == DropboxFile);
+				(typeof DropboxFile !== 'undefined' && file.constructor == DropboxFile));
 	};
 	
 	//===========Adding methods to find the service running draw.io and allowing calling draw.io remote services

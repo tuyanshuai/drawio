@@ -19,11 +19,10 @@ Draw.loadPlugin(function(editorUi)
 	
 	// Configuration - can be overridden via URL parameters
 	var config = {
-		// NanoBanana proxy API endpoint - defaults to local proxy service
-		apiUrl: urlParams['nanobananaApiUrl'] || 'http://localhost:8083/api/generate',
-		// Default image size
-		width: parseInt(urlParams['imageWidth']) || 1024,
-		height: parseInt(urlParams['imageHeight']) || 1024,
+		// Image generator API endpoint - defaults to local service
+		apiUrl: urlParams['imageGeneratorApiUrl'] || urlParams['nanobananaApiUrl'] || 'http://localhost:8083/api/generate',
+		// Default aspect ratio
+		aspectRatio: urlParams['aspectRatio'] || '16:9',
 		// BioRender style prompt enhancement (handled by backend)
 		biorenderStyle: urlParams['biorenderStyle'] !== '0'
 	};
@@ -62,169 +61,135 @@ Draw.loadPlugin(function(editorUi)
 		
 		editorUi.spinner.spin(document.body, mxResources.get('loading') || '正在生成图像...');
 		
-		// Prepare request payload for proxy service
+		// Enhance prompt if BioRender style is enabled
+		var finalPrompt = config.biorenderStyle ? enhancePromptForBioRender(prompt) : prompt;
+		
+		// Prepare request payload for image generator service
 		var payload = {
-			prompt: prompt,
-			width: config.width,
-			height: config.height,
-			n: 1,
-			response_format: 'url'
+			prompt: finalPrompt,
+			aspect_ratio: config.aspectRatio,
+			max_tokens: 150,
+			temperature: 0.7
 		};
 		
-		// Prepare headers
-		var headers = {
-			'Content-Type': 'application/json'
-		};
-		
-		// Make API request
-		var xhr = new XMLHttpRequest();
-		xhr.open('POST', config.apiUrl, true);
-		
-		// Set headers
-		for (var key in headers)
+		// Use fetch API for better CORS support
+		if (window.console)
 		{
-			xhr.setRequestHeader(key, headers[key]);
+			console.log('[Text to Image] 准备发送请求:', {
+				url: config.apiUrl,
+				method: 'POST',
+				payload: payload
+			});
 		}
 		
-		xhr.onload = function()
+		// Use fetch API instead of XMLHttpRequest for better CORS handling
+		fetch(config.apiUrl, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify(payload),
+			mode: 'cors',
+			credentials: 'omit'
+		})
+		.then(function(response)
 		{
-			editorUi.spinner.stop();
-			
-			if (xhr.status === 200 || xhr.status === 201)
+			if (window.console)
 			{
-				try
-				{
-					var response = JSON.parse(xhr.responseText);
-					
-					if (window.console)
-					{
-						console.log('[Text to Image] API 响应:', response);
-					}
-					
-					// Extract image URL from standardized proxy response
-					var imageUrl = null;
-					
-					if (response.success && response.image_url)
-					{
-						imageUrl = response.image_url;
-					}
-					else if (response.image_url)
-					{
-						// Fallback: direct image_url
-						imageUrl = response.image_url;
-					}
-					else if (response.data && response.data.length > 0)
-					{
-						// Fallback: nested data format
-						imageUrl = response.data[0].url || response.data[0].image_url;
-					}
-					
-					if (imageUrl)
-					{
-						// Load and insert image
-						loadImageToCanvas(imageUrl, callback);
-					}
-					else
-					{
-						var errorMsg = '无法从API响应中提取图像URL。响应格式: ' + JSON.stringify(response);
-						if (window.console)
-						{
-							console.error('[Text to Image]', errorMsg);
-						}
-						if (errorCallback)
-						{
-							errorCallback({message: errorMsg});
-						}
-					}
-				}
-				catch (e)
-				{
-					if (window.console)
-					{
-						console.error('[Text to Image] 解析响应失败:', e);
-					}
-					if (errorCallback)
-					{
-						errorCallback({message: '解析API响应失败: ' + e.message});
-					}
-				}
+				console.log('[Text to Image] 响应状态:', response.status, response.statusText);
 			}
-			else
+			
+			if (!response.ok)
 			{
-				var errorMsg = 'API请求失败: HTTP ' + xhr.status;
-				if (xhr.responseText)
+				// Try to parse error response
+				return response.text().then(function(text)
 				{
+					var errorMsg = 'API请求失败: HTTP ' + response.status;
 					try
 					{
-						var errorResponse = JSON.parse(xhr.responseText);
-						errorMsg += ' - ' + (errorResponse.detail || errorResponse.message || errorResponse.error || xhr.responseText);
+						var errorResponse = JSON.parse(text);
+						errorMsg += ' - ' + (errorResponse.detail || errorResponse.message || errorResponse.error || text);
 					}
 					catch (e)
 					{
-						errorMsg += ' - ' + xhr.responseText.substring(0, 200);
+						errorMsg += ' - ' + text.substring(0, 200);
 					}
-				}
-				
+					throw new Error(errorMsg);
+				});
+			}
+			
+			return response.json();
+		})
+		.then(function(response)
+		{
+			if (window.console)
+			{
+				console.log('[Text to Image] API 响应:', response);
+			}
+			
+			// Extract image URL from response
+			var imageUrl = null;
+			
+			if (response.success && response.image_url)
+			{
+				imageUrl = response.image_url;
+			}
+			else if (response.image_url)
+			{
+				// Fallback: direct image_url
+				imageUrl = response.image_url;
+			}
+			
+			if (imageUrl)
+			{
+				// Load and insert image
+				// imageUrl can be a data URL (data:image/png;base64,...) or regular URL
+				// Note: spinner will be stopped in loadImageToCanvas
+				loadImageToCanvas(imageUrl, callback);
+			}
+			else
+			{
+				editorUi.spinner.stop();
+				var errorMsg = '无法从API响应中提取图像URL。响应格式: ' + JSON.stringify(response);
 				if (window.console)
 				{
 					console.error('[Text to Image]', errorMsg);
 				}
-				
 				if (errorCallback)
 				{
 					errorCallback({message: errorMsg});
 				}
 			}
-		};
-		
-		xhr.onerror = function()
+		})
+		.catch(function(error)
 		{
 			editorUi.spinner.stop();
-			var errorMsg = '网络请求失败，请检查服务是否运行在 ' + config.apiUrl;
+			
+			var errorMsg = '网络请求失败: ' + error.message;
+			
 			if (window.console)
 			{
-				console.error('[Text to Image]', errorMsg);
+				console.error('[Text to Image] 请求失败:', error);
+				console.error('[Text to Image] 错误详情:', {
+					message: error.message,
+					stack: error.stack,
+					url: config.apiUrl
+				});
 			}
+			
+			// Provide more helpful error message
+			if (error.message.indexOf('Failed to fetch') !== -1 || 
+			    error.message.indexOf('NetworkError') !== -1 ||
+			    error.message.indexOf('网络') !== -1)
+			{
+				errorMsg = '网络请求失败，请检查服务是否运行在 ' + config.apiUrl + '\n错误: ' + error.message;
+			}
+			
 			if (errorCallback)
 			{
 				errorCallback({message: errorMsg});
 			}
-		};
-		
-		xhr.ontimeout = function()
-		{
-			editorUi.spinner.stop();
-			var errorMsg = '请求超时，图像生成可能需要更长时间，请稍后重试';
-			if (window.console)
-			{
-				console.error('[Text to Image]', errorMsg);
-			}
-			if (errorCallback)
-			{
-				errorCallback({message: errorMsg});
-			}
-		};
-		
-		// Set timeout (60 seconds for image generation)
-		xhr.timeout = 60000;
-		
-		// Send request
-		try
-		{
-			xhr.send(JSON.stringify(payload));
-		}
-		catch (e)
-		{
-			editorUi.spinner.stop();
-			if (window.console)
-			{
-				console.error('[Text to Image] 发送请求失败:', e);
-			}
-			if (errorCallback)
-			{
-				errorCallback({message: '发送请求失败: ' + e.message});
-			}
-		}
+		});
 	}
 	
 	/**
@@ -234,63 +199,136 @@ Draw.loadPlugin(function(editorUi)
 	{
 		if (window.console)
 		{
-			console.log('[Text to Image] 加载图像:', imageUrl);
+			console.log('[Text to Image] 加载图像:', imageUrl.substring(0, 100) + '...');
+			console.log('[Text to Image] 图像URL类型:', imageUrl.substring(0, 20));
+			console.log('[Text to Image] 图像URL长度:', imageUrl.length);
 		}
 		
 		editorUi.spinner.spin(document.body, mxResources.get('loading') || '正在插入图像...');
 		
 		var img = new Image();
-		img.crossOrigin = 'anonymous';
+		
+		// 对于 data URL，不需要设置 crossOrigin
+		if (imageUrl.substring(0, 5) !== 'data:')
+		{
+			img.crossOrigin = 'anonymous';
+		}
 		
 		img.onload = function()
 		{
 			editorUi.spinner.stop();
+			
+			if (window.console)
+			{
+				console.log('[Text to Image] 图像加载成功:', {
+					width: img.width,
+					height: img.height,
+					naturalWidth: img.naturalWidth,
+					naturalHeight: img.naturalHeight,
+					complete: img.complete
+				});
+			}
+			
+			// 检查图像尺寸
+			var imgWidth = img.naturalWidth || img.width || 800;
+			var imgHeight = img.naturalHeight || img.height || 600;
+			
+			if (imgWidth === 0 || imgHeight === 0)
+			{
+				editorUi.handleError({message: '图像尺寸无效 (0x0)，可能是图像数据损坏'});
+				return;
+			}
 			
 			// Calculate insert position
 			var insertPoint = graph.getFreeInsertPoint();
 			var x = Math.max(insertPoint.x, 20);
 			var y = Math.max(insertPoint.y, 20);
 			
-			// Insert image into graph
-			var cell = graph.insertVertex(graph.getDefaultParent(), null, '', x, y, 
-				img.width, img.height, 'image;html=1;aspect=fixed;');
-			
-			if (cell)
+			// Prepare image URL for style (remove data URI encoding info if present)
+			var imageStyleUrl = imageUrl;
+			// Only process data URIs (data:image/...)
+			if (imageUrl.substring(0, 5) === 'data:')
 			{
-				// Set image source
-				graph.setAttributeForCell(cell, 'image', imageUrl);
-				
-				// Select the new cell
-				graph.setSelectionCell(cell);
-				graph.scrollCellToVisible(cell);
-				
-				// Show success message
-				editorUi.editor.setStatus(mxResources.get('done') || '完成');
-				
-				if (window.console)
+				var semi = imageUrl.indexOf(';');
+				if (semi > 0 && imageUrl.indexOf(',') > semi)
 				{
-					console.log('[Text to Image] 图像已插入画布:', {
-						位置: {x: x, y: y},
-						尺寸: {width: img.width, height: img.height},
-						单元格: cell
-					});
-				}
-				
-				if (callback)
-				{
-					callback(cell, imageUrl);
+					// Remove encoding info (e.g., ;base64,) for cell style
+					// Format: data:image/png;base64,xxxxx -> data:image/png,xxxxx
+					imageStyleUrl = imageUrl.substring(0, semi) + imageUrl.substring(imageUrl.indexOf(',', semi + 1));
 				}
 			}
-			else
+			
+			// Build proper style string with image URL
+			var style = 'shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;' +
+				'verticalAlign=top;aspect=fixed;imageAspect=0;image=' + imageStyleUrl + ';';
+			
+			if (window.console)
 			{
-				editorUi.handleError({message: '插入图像失败'});
+				console.log('[Text to Image] 插入图片:', {
+					位置: {x: x, y: y},
+					尺寸: {width: imgWidth, height: imgHeight},
+					样式: style.substring(0, 100) + '...',
+					imageUrl: imageUrl.substring(0, 100) + '...'
+				});
+			}
+			
+			// Insert image into graph with proper style
+			graph.getModel().beginUpdate();
+			try
+			{
+				var cell = graph.insertVertex(graph.getDefaultParent(), null, '', x, y, 
+					imgWidth, imgHeight, style);
+				
+				if (cell)
+				{
+					// Ensure shape is set to image
+					graph.setCellStyles(mxConstants.STYLE_SHAPE, 'image', [cell]);
+					
+					// Refresh the cell to ensure image is displayed
+					graph.refresh(cell);
+					
+					// Select the new cell
+					graph.setSelectionCell(cell);
+					graph.scrollCellToVisible(cell);
+					
+					// Show success message
+					editorUi.editor.setStatus(mxResources.get('done') || '完成');
+					
+					if (window.console)
+					{
+						console.log('[Text to Image] 图像已插入画布:', {
+							位置: {x: x, y: y},
+							尺寸: {width: imgWidth, height: imgHeight},
+							单元格: cell,
+							图片URL: imageUrl.substring(0, 100) + '...'
+						});
+					}
+					
+					if (callback)
+					{
+						callback(cell, imageUrl);
+					}
+				}
+				else
+				{
+					editorUi.handleError({message: '插入图像失败'});
+				}
+			}
+			finally
+			{
+				graph.getModel().endUpdate();
 			}
 		};
 		
-		img.onerror = function()
+		img.onerror = function(e)
 		{
 			editorUi.spinner.stop();
-			editorUi.handleError({message: '加载图像失败，请检查图像URL'});
+			if (window.console)
+			{
+				console.error('[Text to Image] 图像加载失败:', e);
+				console.error('[Text to Image] 图像URL前100字符:', imageUrl.substring(0, 100));
+			}
+			editorUi.handleError({message: '加载图像失败，请检查图像URL或数据格式'});
 		};
 		
 		// Start loading image
@@ -329,6 +367,10 @@ Draw.loadPlugin(function(editorUi)
 			// Text area for prompt
 			var textarea = document.createElement('textarea');
 			textarea.setAttribute('placeholder', '例如：细胞分裂过程，DNA双螺旋结构，蛋白质合成过程...');
+			textarea.setAttribute('spellcheck', 'false');
+			textarea.setAttribute('autocomplete', 'off');
+			textarea.setAttribute('autocorrect', 'off');
+			textarea.setAttribute('autocapitalize', 'off');
 			textarea.style.width = '100%';
 			textarea.style.height = '80px';
 			textarea.style.padding = '8px';
@@ -339,6 +381,79 @@ Draw.loadPlugin(function(editorUi)
 			textarea.style.fontFamily = 'inherit';
 			textarea.style.resize = 'vertical';
 			textarea.style.boxSizing = 'border-box';
+			textarea.style.outline = 'none';
+			textarea.style.background = '#fff';
+			
+			// Ensure textarea is always editable and can receive focus
+			textarea.addEventListener('mousedown', function(e)
+			{
+				// Prevent any event that might block input
+				e.stopPropagation();
+			}, true);
+			
+			textarea.addEventListener('click', function(e)
+			{
+				// Ensure focus on click
+				if (document.activeElement !== textarea)
+				{
+					textarea.focus();
+				}
+				e.stopPropagation();
+			}, true);
+			
+			textarea.addEventListener('focus', function(e)
+			{
+				// Ensure textarea is not readonly when focused
+				textarea.removeAttribute('readonly');
+				textarea.removeAttribute('disabled');
+				e.stopPropagation();
+			}, true);
+			
+			// Prevent graph from capturing keyboard events when typing in textarea
+			textarea.addEventListener('keydown', function(e)
+			{
+				e.stopPropagation();
+			}, true);
+			
+			textarea.addEventListener('keyup', function(e)
+			{
+				e.stopPropagation();
+			}, true);
+			
+			textarea.addEventListener('input', function(e)
+			{
+				e.stopPropagation();
+			}, true);
+			
+			// Ensure textarea is always editable - periodic check
+			var ensureTextareaEditable = function()
+			{
+				if (textarea.hasAttribute('readonly'))
+				{
+					textarea.removeAttribute('readonly');
+				}
+				if (textarea.hasAttribute('disabled'))
+				{
+					textarea.removeAttribute('disabled');
+				}
+			};
+			
+			// Check periodically to ensure textarea is always editable
+			var editableCheckInterval = setInterval(ensureTextareaEditable, 500);
+			
+			// Clean up interval when palette is removed
+			var originalRemovePalette = sidebar.removePalette;
+			if (originalRemovePalette)
+			{
+				sidebar.removePalette = function(name)
+				{
+					if (name === 'textToImage' && editableCheckInterval)
+					{
+						clearInterval(editableCheckInterval);
+					}
+					return originalRemovePalette.apply(this, arguments);
+				};
+			}
 			
 			// Generate button
 			var generateBtn = mxUtils.button('生成图像', function()
@@ -348,10 +463,15 @@ Draw.loadPlugin(function(editorUi)
 				if (!prompt)
 				{
 					editorUi.handleError({message: '请输入描述文字'});
+					// Ensure textarea can still receive focus after error
+					setTimeout(function() { textarea.focus(); }, 100);
 					return;
 				}
 				
-				// Disable button during generation
+				// Ensure textarea is editable before generation
+				ensureTextareaEditable();
+				
+				// Disable button during generation (but NOT textarea)
 				generateBtn.setAttribute('disabled', 'disabled');
 				generateBtn.textContent = '生成中...';
 				
@@ -361,15 +481,27 @@ Draw.loadPlugin(function(editorUi)
 					generateBtn.removeAttribute('disabled');
 					generateBtn.textContent = '生成图像';
 					
-					// Clear textarea after successful generation
+					// Ensure textarea is still editable after generation
+					ensureTextareaEditable();
+					
+					// Clear textarea but keep it editable
 					textarea.value = '';
+					
+					// Optionally focus textarea for next input
+					setTimeout(function() { textarea.focus(); }, 100);
 				}, function(error)
 				{
 					// Re-enable button on error
 					generateBtn.removeAttribute('disabled');
 					generateBtn.textContent = '生成图像';
 					
+					// Ensure textarea is still editable after error
+					ensureTextareaEditable();
+					
 					editorUi.handleError(error);
+					
+					// Focus textarea so user can continue typing
+					setTimeout(function() { textarea.focus(); }, 100);
 				});
 			});
 			
@@ -384,9 +516,9 @@ Draw.loadPlugin(function(editorUi)
 			infoText.style.marginTop = '8px';
 			infoText.style.lineHeight = '1.4';
 			infoText.innerHTML = '💡 提示：描述越详细，生成的图像质量越好<br/>' +
-				'📐 风格：自动应用 BioRender 科研插图风格<br/>' +
-				'⚙️ 配置：可通过 URL 参数 nanobananaApiUrl 设置 API 地址<br/>' +
-				'🔧 服务：需要启动 nanobanana 代理服务 (端口 8083)';
+				'📐 风格：使用 gemini-2.5-flash-image 模型生成图像<br/>' +
+				'⚙️ 配置：可通过 URL 参数 imageGeneratorApiUrl 设置 API 地址<br/>' +
+				'🔧 服务：需要启动图像生成服务 (端口 8083)';
 			
 			// Style toggle checkbox
 			var styleDiv = document.createElement('div');

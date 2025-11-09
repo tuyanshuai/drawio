@@ -411,11 +411,12 @@ App.getStoredMode = function()
 	{
 		if (urlParams['offline'] != '1')
 		{
+			// Dropbox mode disabled - using local storage instead
 			// Switches to dropbox mode for db.draw.io
-			if (window.location.hostname == 'db.draw.io' && urlParams['mode'] == null)
-			{
-				urlParams['mode'] = 'dropbox';
-			}
+			// if (window.location.hostname == 'db.draw.io' && urlParams['mode'] == null)
+			// {
+			// 	urlParams['mode'] = 'dropbox';
+			// }
 			
 			App.mode = urlParams['mode'];
 		}
@@ -461,33 +462,13 @@ App.getStoredMode = function()
 					}
 				}
 	
+				// Dropbox support disabled - using local storage instead
 				// Loads dropbox for all browsers but IE8 and below (no CORS) if not disabled or if enabled and in embed mode
 				// KNOWN: Picker does not work in IE11 (https://dropbox.zendesk.com/requests/1650781)
 				if (typeof window.DropboxClient === 'function')
 				{
-					if (urlParams['db'] != '0' && isSvgBrowser &&
-						(document.documentMode == null || document.documentMode > 9))
-					{
-						// Immediately loads client
-						if (App.mode == App.MODE_DROPBOX || (window.location.hash != null &&
-							window.location.hash.substring(0, 2) == '#D'))
-						{
-							mxscript(App.DROPBOX_URL, function()
-							{
-								// Must load this after the dropbox SDK since they use the same namespace
-								mxscript(App.DROPINS_URL, null, 'dropboxjs', App.DROPBOX_APPKEY, true);
-							});							
-						}
-						else if (urlParams['chrome'] == '0')
-						{
-							window.DropboxClient = null;
-						}
-					}
-					else
-					{
-						// Disables loading of client
-						window.DropboxClient = null;
-					}
+					// Disables loading of client - Dropbox disabled
+					window.DropboxClient = null;
 				}
 				
 				// Loads OneDrive for all browsers but IE6/IOS if not disabled or if enabled and in embed mode
@@ -1862,52 +1843,53 @@ App.prototype.init = function()
 		initDriveClient();
 	}
 
-	if (urlParams['embed'] != '1' || urlParams['db'] == '1')
-	{
-		/**
-		 * Creates dropbox client if all required libraries are available.
-		 */
-		var initDropboxClient = mxUtils.bind(this, function()
-		{
-			if (typeof Dropbox === 'function')
-			{
-				/**
-				 * Clears dropbox client callback.
-				 */
-				window.DrawDropboxClientCallback = null;
-				
-				/**
-				 * Holds the x-coordinate of the point.
-				 */
-				try
-				{
-					this.dropbox = new DropboxClient(this);
-					
-					this.dropbox.addListener('userChanged', mxUtils.bind(this, function()
-					{
-						this.updateButtonContainer();
-						this.restoreLibraries();
-					}));
-					
-					// Notifies listeners of new client
-					this.fireEvent(new mxEventObject('clientLoaded', 'client', this.dropbox));
-				}
-				catch (e)
-				{
-					if (window.console != null)
-					{
-						console.log('DropboxClient disabled: ' + e.message);
-					}
-				}
-			}
-			else if (window.DrawDropboxClientCallback == null)
-			{
-				window.DrawDropboxClientCallback = initDropboxClient;
-			}
-		});
-
-		initDropboxClient();
-	}
+	// Dropbox support disabled - using local storage instead
+	// if (urlParams['embed'] != '1' || urlParams['db'] == '1')
+	// {
+	// 	/**
+	// 	 * Creates dropbox client if all required libraries are available.
+	// 	 */
+	// 	var initDropboxClient = mxUtils.bind(this, function()
+	// 	{
+	// 		if (typeof Dropbox === 'function')
+	// 		{
+	// 			/**
+	// 			 * Clears dropbox client callback.
+	// 			 */
+	// 			window.DrawDropboxClientCallback = null;
+	// 			
+	// 			/**
+	// 			 * Holds the x-coordinate of the point.
+	// 			 */
+	// 			try
+	// 			{
+	// 				this.dropbox = new DropboxClient(this);
+	// 				
+	// 				this.dropbox.addListener('userChanged', mxUtils.bind(this, function()
+	// 				{
+	// 					this.updateButtonContainer();
+	// 					this.restoreLibraries();
+	// 				}));
+	// 				
+	// 				// Notifies listeners of new client
+	// 				this.fireEvent(new mxEventObject('clientLoaded', 'client', this.dropbox));
+	// 			}
+	// 			catch (e)
+	// 			{
+	// 				if (window.console != null)
+	// 				{
+	// 					console.log('DropboxClient disabled: ' + e.message);
+	// 				}
+	// 			}
+	// 		}
+	// 		else if (window.DrawDropboxClientCallback == null)
+	// 		{
+	// 			window.DrawDropboxClientCallback = initDropboxClient;
+	// 		}
+	// 	});
+	//
+	// 	initDropboxClient();
+	// }
 
 	if (urlParams['embed'] != '1')
 	{
@@ -5222,7 +5204,7 @@ App.prototype.isModeReady = function(mode)
 {
 	return this.getServiceForName(mode) != null &&
 		(mode != App.MODE_DROPBOX ||
-		typeof Dropbox.choose !== 'undefined');
+		(typeof Dropbox !== 'undefined' && typeof Dropbox.choose !== 'undefined'));
 };
 
 /**
@@ -6005,7 +5987,7 @@ App.prototype.getLibraryStorageHint = function(file)
 	{
 		tip += ' (' + mxResources.get('trello') + ')';
 	}
-	else if (file.constructor == DropboxLibrary)
+	else if (typeof DropboxLibrary !== 'undefined' && file.constructor == DropboxLibrary)
 	{
 		tip += ' (' + mxResources.get('dropbox') + ')';
 	}
@@ -8084,7 +8066,7 @@ App.prototype.toggleUserPanel = function()
 			{
 				var file = this.getCurrentFile();
 
-				if (file != null && file.constructor == DropboxFile)
+				if (file != null && typeof DropboxFile !== 'undefined' && file.constructor == DropboxFile)
 				{
 					var doLogout = mxUtils.bind(this, function()
 					{
