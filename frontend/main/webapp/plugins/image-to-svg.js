@@ -66,7 +66,13 @@ Draw.loadPlugin(function(editorUi)
 		img.style.width = 'auto';
 		img.style.height = 'auto';
 		
-		if (editorUi.crossOriginImages)
+		// 对于所有非 data URI 的图片，必须设置 crossOrigin 才能避免画布被污染
+		// 这样在调用 toDataURL 时才不会报错
+		if (imageUrl.substring(0, 5) !== 'data:')
+		{
+			img.crossOrigin = 'anonymous';
+		}
+		else if (editorUi.crossOriginImages)
 		{
 			img.crossOrigin = 'anonymous';
 		}

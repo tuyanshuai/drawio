@@ -58,8 +58,59 @@ USE_TEST_IMAGE = False  # 设置为 False 或注释掉以使用真实生成
 TEST_IMAGE_FILENAME = "generated_image_20251109_215652.png"
 # ============================================================================
 
-# 挂载静态文件服务
-app.mount("/images", StaticFiles(directory=str(OUTPUT_DIR)), name="images")
+# 处理图片文件的 OPTIONS 预检请求
+@app.options("/images/{filename}")
+async def options_image(filename: str):
+    """处理图片文件的 CORS 预检请求"""
+    return JSONResponse(
+        content={},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "3600",
+        }
+    )
+
+# 自定义图片路由，确保返回正确的 CORS 头
+@app.get("/images/{filename}")
+async def get_image(filename: str):
+    """
+    获取生成的图片文件，确保返回正确的 CORS 头
+    """
+    image_path = OUTPUT_DIR / filename
+    
+    if not image_path.exists() or not image_path.is_file():
+        raise HTTPException(status_code=404, detail="图片文件不存在")
+    
+    # 检查文件扩展名，确保是图片文件
+    if not filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg')):
+        raise HTTPException(status_code=400, detail="不支持的文件类型")
+    
+    # 确定正确的 media type
+    ext = filename.split('.')[-1].lower()
+    media_type_map = {
+        'png': 'image/png',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'gif': 'image/gif',
+        'webp': 'image/webp',
+        'svg': 'image/svg+xml'
+    }
+    media_type = media_type_map.get(ext, 'image/png')
+    
+    return FileResponse(
+        path=str(image_path),
+        media_type=media_type,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
+
+# 挂载静态文件服务（作为备用，但优先使用上面的路由）
+# app.mount("/images", StaticFiles(directory=str(OUTPUT_DIR)), name="images")
 
 class GenerateRequest(BaseModel):
     prompt: str
